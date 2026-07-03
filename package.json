@@ -1,0 +1,53 @@
+{
+  "name": "hybrid-lms-backend",
+  "version": "0.1.0",
+  "description": "Hybrid LMS — Backend API (AUTH + MFA + OAuth + KYC and beyond)",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch",
+    "lint": "eslint src tests",
+    "lint:fix": "eslint src tests --fix",
+    "format": "prettier --write \"src/**/*.js\" \"tests/**/*.js\"",
+    "prepare": "husky"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "author": "Yazan Joureah — 174681",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@node-rs/argon2": "^2.0.0",
+    "compression": "^1.7.4",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0",
+    "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.5.0",
+    "nodemailer": "^6.9.14",
+    "winston": "^3.13.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-security": "^3.0.1",
+    "fast-check": "^3.19.0",
+    "husky": "^9.1.4",
+    "jest": "^29.7.0",
+    "lint-staged": "^15.2.7",
+    "nodemon": "^3.1.4",
+    "prettier": "^3.3.3",
+    "supertest": "^7.0.0"
+  },
+  "lint-staged": {
+  "*.js": ["eslint --fix", "prettier --write"]
+}
+}
