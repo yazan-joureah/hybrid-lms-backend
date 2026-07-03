@@ -52,7 +52,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: SAST (Semgrep — OWASP Top 10 ruleset)
-        uses: semgrep/semgrep@v1
+        uses: semgrep/semgrep-action@v1
         with:
           config: p/owasp-top-ten
         continue-on-error: false # tune to `false` once findings are triaged
