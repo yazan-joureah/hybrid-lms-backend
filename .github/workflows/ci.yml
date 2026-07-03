@@ -44,7 +44,7 @@ jobs:
 
       - name: Dependency vulnerability audit
         run: npm audit --audit-level=high
-        continue-on-error: true # tune to `false` once dependency baseline is clean
+        continue-on-error: false # tune to `false` once dependency baseline is clean
 
       - name: Secret scan (Gitleaks)
         uses: gitleaks/gitleaks-action@v2
@@ -52,10 +52,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: SAST (Semgrep — OWASP Top 10 ruleset)
-        uses: semgrep/semgrep-action@v1
+        uses: semgrep/semgrep@v1
         with:
           config: p/owasp-top-ten
-        continue-on-error: true # tune to `false` once findings are triaged
+        continue-on-error: false # tune to `false` once findings are triaged
 
       - name: Build Docker image (build-only, no push)
         run: docker build -t hybrid-lms-backend:${{ github.sha }} .
