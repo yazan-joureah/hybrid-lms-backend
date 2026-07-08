@@ -1,0 +1,768 @@
+{
+  "info": {
+    "_postman_id": "d4e5f6a7-0000-4000-8000-000000000000",
+    "name": "Hybrid LMS Backend — AUTH Module",
+    "description": "Curated, representative Postman test suite for the AUTH module of the Hybrid LMS backend (Yazan Jawriyyeh — 174681). Covers every endpoint actually implemented as of this collection's creation date: Health Check, Registration, Email Verification, Guardian Approval, and Login. Requests marked [MANUAL] in their description require a value copied by a human from the running server's console (dev-mode email log) or a real inbox, because raw verification/approval tokens are, by design (DP-08), never returned in any API response. See README.md in this folder for full setup and CI/CD notes.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Collection-wide utility: a fresh unique email + matching NFR-01-compliant",
+          "// password for every request that needs brand-new, never-seen-before test data.",
+          "const ts = Date.now();",
+          "pm.collectionVariables.set('timestamp', ts);",
+          "pm.collectionVariables.set('randomEmail', `postman.dynamic.${ts}@example.com`);",
+          "pm.collectionVariables.set('randomPassword', `Postman-Dynamic-Passphrase-${ts}`);",
+          "",
+          "function isoDateYearsAgo(years, extraDays = 0) {",
+          "  const d = new Date();",
+          "  d.setFullYear(d.getFullYear() - years);",
+          "  d.setDate(d.getDate() - extraDays);",
+          "  return d.toISOString().split('T')[0];",
+          "}",
+          "pm.collectionVariables.set('adultBirthDate', isoDateYearsAgo(30));",
+          "pm.collectionVariables.set('exactly18BirthDate', isoDateYearsAgo(18));",
+          "pm.collectionVariables.set('minorBirthDate', isoDateYearsAgo(17, 364));"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api/v1" }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "item": [
+        {
+          "name": "GET /health — service is up",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('success is true', () => pm.expect(body.success).to.eql(true));",
+                  "pm.test('data.status is ok', () => pm.expect(body.data.status).to.eql('ok'));",
+                  "pm.test('data.timestamp is a valid ISO date', () => {",
+                  "  pm.expect(new Date(body.data.timestamp).toISOString()).to.eql(body.data.timestamp);",
+                  "});",
+                  "pm.test('Content-Type is application/json', () => {",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+            "description": "Liveness check only — does NOT verify DB/Redis connectivity. See README for why this matters when interpreting a green result."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authentication — Registration",
+      "item": [
+        {
+          "name": "Success Cases",
+          "item": [
+            {
+              "name": "Register — Adult Student",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 201', () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "pm.test('success is true', () => pm.expect(body.success).to.eql(true));",
+                      "pm.test('message mentions verification email', () => {",
+                      "  pm.expect(body.data.message.toLowerCase()).to.include('verification email');",
+                      "});",
+                      "pm.test('requires_guardian_approval is NOT present for an adult', () => {",
+                      "  pm.expect(body.data.requires_guardian_approval).to.be.undefined;",
+                      "});",
+                      "pm.test('CSP security header is present (Helmet)', () => {",
+                      "  pm.expect(pm.response.headers.has('Content-Security-Policy')).to.be.true;",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Postman Adult Student\",\n  \"email\": \"{{randomEmail}}\",\n  \"password\": \"{{randomPassword}}\",\n  \"birth_date\": \"{{adultBirthDate}}\",\n  \"role\": \"Student\",\n  \"privacy_consent_version\": \"v1.0\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+                "description": "UC-AUTH-01 adult path. Uses a fresh random email/password generated by the collection-level pre-request script — safe to run repeatedly without collisions."
+              }
+            },
+            {
+              "name": "Register — Minor Student (with guardian_email)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 201', () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "pm.test('requires_guardian_approval is true', () => {",
+                      "  pm.expect(body.data.requires_guardian_approval).to.eql(true);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Postman Minor Student\",\n  \"email\": \"minor.{{timestamp}}@example.com\",\n  \"password\": \"{{randomPassword}}\",\n  \"birth_date\": \"{{minorBirthDate}}\",\n  \"role\": \"Student\",\n  \"privacy_consent_version\": \"v1.0\",\n  \"guardian_email\": \"guardian.{{timestamp}}@example.com\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+                "description": "UC-AUTH-01 minor path — triggers UC-AUTH-02 (Guardian Approval) internally. birth_date is exactly 17 years and 364 days ago (still a minor), computed by the pre-request script."
+              }
+            },
+            {
+              "name": "Register — Instructor",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 201', () => pm.response.to.have.status(201));",
+                      "pm.test('success is true', () => pm.expect(pm.response.json().success).to.eql(true));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Postman Instructor\",\n  \"email\": \"instructor.{{timestamp}}@example.com\",\n  \"password\": \"{{randomPassword}}\",\n  \"birth_date\": \"{{adultBirthDate}}\",\n  \"role\": \"Instructor\",\n  \"privacy_consent_version\": \"v1.0\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validation Errors",
+          "item": [
+            {
+              "name": "Register — Password Too Short (NFR-01)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 400', () => pm.response.to.have.status(400));",
+                      "pm.test('success is false', () => pm.expect(pm.response.json().success).to.eql(false));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Too Short Password\",\n  \"email\": \"shortpw.{{timestamp}}@example.com\",\n  \"password\": \"short\",\n  \"birth_date\": \"{{adultBirthDate}}\",\n  \"role\": \"Student\",\n  \"privacy_consent_version\": \"v1.0\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] }
+              }
+            },
+            {
+              "name": "Register — Invalid Email Format",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": ["pm.test('status code is 400', () => pm.response.to.have.status(400));"]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Invalid Email\",\n  \"email\": \"not-an-email\",\n  \"password\": \"{{randomPassword}}\",\n  \"birth_date\": \"{{adultBirthDate}}\",\n  \"role\": \"Student\",\n  \"privacy_consent_version\": \"v1.0\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] }
+              }
+            },
+            {
+              "name": "Register — guardian_email equals email (MUC-AUTH-09)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": ["pm.test('status code is 400', () => pm.response.to.have.status(400));"]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Same Guardian Email\",\n  \"email\": \"same.{{timestamp}}@example.com\",\n  \"password\": \"{{randomPassword}}\",\n  \"birth_date\": \"{{minorBirthDate}}\",\n  \"role\": \"Student\",\n  \"privacy_consent_version\": \"v1.0\",\n  \"guardian_email\": \"same.{{timestamp}}@example.com\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] }
+              }
+            },
+            {
+              "name": "Register — Missing Required Fields",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": ["pm.test('status code is 400', () => pm.response.to.have.status(400));"]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"missing.{{timestamp}}@example.com\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Edge Cases",
+          "item": [
+            {
+              "name": "Register — birth_date exactly 18 years ago (adult boundary)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 201 (treated as adult)', () => pm.response.to.have.status(201));",
+                      "pm.test('requires_guardian_approval is NOT present', () => {",
+                      "  pm.expect(pm.response.json().data.requires_guardian_approval).to.be.undefined;",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Exactly Eighteen\",\n  \"email\": \"exactly18.{{timestamp}}@example.com\",\n  \"password\": \"{{randomPassword}}\",\n  \"birth_date\": \"{{exactly18BirthDate}}\",\n  \"role\": \"Student\",\n  \"privacy_consent_version\": \"v1.0\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+                "description": "Boundary test for ageCalculator.isMinor() — turning 18 exactly today must be classified as adult, matching the unit test already covering this in tests/unit/ageCalculator.test.js."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rate Limiting (Android-style backoff)",
+          "item": [
+            {
+              "name": "Register — repeat this request 6x via Collection Runner to trigger 429",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// On the 6th+ run within the window, this assertion is what should pass.",
+                      "// On runs 1-5 it will correctly show as a 'failed' assertion — that is expected,",
+                      "// not a bug. See README section 'Rate limiting test interpretation'.",
+                      "if (pm.response.code === 429) {",
+                      "  pm.test('429 body has error.code=RATE_LIMITED', () => {",
+                      "    pm.expect(pm.response.json().error.code).to.eql('RATE_LIMITED');",
+                      "  });",
+                      "  pm.test('Retry-After header is a positive integer', () => {",
+                      "    const retryAfter = Number(pm.response.headers.get('Retry-After'));",
+                      "    pm.expect(retryAfter).to.be.above(0);",
+                      "  });",
+                      "} else {",
+                      "  pm.test('below threshold — 201 as expected', () => pm.response.to.have.status(201));",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Rate Limit Target\",\n  \"email\": \"rate.limit.target@example.com\",\n  \"password\": \"{{randomPassword}}\",\n  \"birth_date\": \"{{adultBirthDate}}\",\n  \"role\": \"Student\",\n  \"privacy_consent_version\": \"v1.0\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+                "description": "IMPORTANT: uses a FIXED email (not the dynamic {{randomEmail}}) on purpose — the rate limiter keys off the identifier, so repeating this exact request is what accumulates hits. Run via Collection Runner with 6+ iterations, or Newman with -n 6. Because the backoff is escalating and persists 24h (violationsTtlSeconds), flush Redis between full test-suite runs — see README."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Authentication — Email Verification",
+      "item": [
+        {
+          "name": "Verify Email — Invalid Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('error.code is TOKEN_INVALID', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('TOKEN_INVALID');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-email?token=this-token-does-not-exist",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "verify-email"],
+              "query": [{ "key": "token", "value": "this-token-does-not-exist" }]
+            }
+          }
+        },
+        {
+          "name": "[MANUAL] Verify Email — Valid Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('manualVerificationToken')) {",
+                  "  pm.test.skip('manualVerificationToken environment variable is empty — see request description');",
+                  "} else {",
+                  "  pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                  "  pm.test('status is active or guardian_pending', () => {",
+                  "    pm.expect(['active', 'guardian_pending']).to.include(pm.response.json().data.status);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-email?token={{manualVerificationToken}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "verify-email"],
+              "query": [{ "key": "token", "value": "{{manualVerificationToken}}" }]
+            },
+            "description": "MANUAL STEP REQUIRED: run 'Register — Adult Student' above first, then copy the token from the '--- DEV EMAIL ---' block printed in the server's terminal (or the real inbox if Gmail is configured), paste it into the 'manualVerificationToken' environment variable, then run this request. This cannot be automated in Newman/CI without a dedicated test-only endpoint — see README."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authentication — Guardian Approval",
+      "item": [
+        {
+          "name": "Placeholder GET (Frontend team's future page)",
+          "item": [
+            {
+              "name": "GET /guardian/approve — without token",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                      "pm.test('token_received is false', () => {",
+                      "  pm.expect(pm.response.json().data.token_received).to.eql(false);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/auth/guardian/approve", "host": ["{{baseUrl}}"], "path": ["auth", "guardian", "approve"] }
+              }
+            },
+            {
+              "name": "GET /guardian/approve — with token",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                      "pm.test('token_received is true', () => {",
+                      "  pm.expect(pm.response.json().data.token_received).to.eql(true);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/guardian/approve?token=anything",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["auth", "guardian", "approve"],
+                  "query": [{ "key": "token", "value": "anything" }]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validation Errors",
+          "item": [
+            {
+              "name": "POST Approve — approve without consent=true",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": ["pm.test('status code is 400', () => pm.response.to.have.status(400));"]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"token\": \"irrelevant-fails-validation-first\",\n  \"decision\": \"approve\",\n  \"guardian_full_name\": \"Test Guardian\",\n  \"relationship\": \"parent\"\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": { "raw": "{{baseUrl}}/auth/guardian/approve", "host": ["{{baseUrl}}"], "path": ["auth", "guardian", "approve"] }
+              }
+            },
+            {
+              "name": "POST Approve — invalid relationship value",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": ["pm.test('status code is 400', () => pm.response.to.have.status(400));"]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"token\": \"irrelevant\",\n  \"decision\": \"approve\",\n  \"guardian_full_name\": \"Test Guardian\",\n  \"relationship\": \"uncle\",\n  \"consent\": true\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": { "raw": "{{baseUrl}}/auth/guardian/approve", "host": ["{{baseUrl}}"], "path": ["auth", "guardian", "approve"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token Error Cases",
+          "item": [
+            {
+              "name": "POST Approve — invalid token (TOKEN_INVALID)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 400', () => pm.response.to.have.status(400));",
+                      "pm.test('error.code is TOKEN_INVALID', () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql('TOKEN_INVALID');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"token\": \"this-token-does-not-exist\",\n  \"decision\": \"approve\",\n  \"guardian_full_name\": \"Test Guardian\",\n  \"relationship\": \"parent\",\n  \"consent\": true\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": { "raw": "{{baseUrl}}/auth/guardian/approve", "host": ["{{baseUrl}}"], "path": ["auth", "guardian", "approve"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "[MANUAL] Approve — valid token, full flow",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('manualGuardianApprovalToken')) {",
+                  "  pm.test.skip('manualGuardianApprovalToken environment variable is empty — see request description');",
+                  "} else {",
+                  "  pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{manualGuardianApprovalToken}}\",\n  \"decision\": \"approve\",\n  \"guardian_full_name\": \"Test Guardian\",\n  \"relationship\": \"parent\",\n  \"consent\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/auth/guardian/approve", "host": ["{{baseUrl}}"], "path": ["auth", "guardian", "approve"] },
+            "description": "MANUAL STEP REQUIRED: run 'Register — Minor Student' above, copy the approval_token from the server console's DEV EMAIL block (subject 'Guardian approval needed...'), paste into 'manualGuardianApprovalToken', then run this."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authentication — Login",
+      "item": [
+        {
+          "name": "Login — Success (no MFA, seeded user)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('access_token is present', () => pm.expect(body.data.access_token).to.be.a('string'));",
+                  "pm.test('redirect_to is /dashboard for a Student', () => {",
+                  "  pm.expect(body.data.user.redirect_to).to.eql('/dashboard');",
+                  "});",
+                  "pm.test('refresh_token cookie is set as HttpOnly', () => {",
+                  "  const setCookie = pm.response.headers.get('Set-Cookie') || '';",
+                  "  pm.expect(setCookie).to.include('refresh_token=');",
+                  "  pm.expect(setCookie).to.include('HttpOnly');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{seededLoginEmail}}\",\n  \"password\": \"{{seededPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "description": "REQUIRES running scripts/seedTestUser.js once against your local database first — see README."
+          }
+        },
+        {
+          "name": "Login — MFA required (seeded MFA user)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('mfa_required is true', () => pm.expect(body.data.mfa_required).to.eql(true));",
+                  "pm.test('mfa_temp_token is present, access_token is NOT', () => {",
+                  "  pm.expect(body.data.mfa_temp_token).to.be.a('string');",
+                  "  pm.expect(body.data.access_token).to.be.undefined;",
+                  "});",
+                  "pm.test('no refresh_token cookie is set before MFA is proven', () => {",
+                  "  pm.expect(pm.response.headers.has('Set-Cookie')).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{seededMfaEmail}}\",\n  \"password\": \"{{seededPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Login — Invalid Credentials (User Enumeration check)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error.code is INVALID_CREDENTIALS', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('INVALID_CREDENTIALS');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"this.account.does.not.exist@example.com\",\n  \"password\": \"{{seededPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "description": "Run this AND a request with a real email + wrong password, then diff the two bodies by hand once — they must be byte-identical (see tests/integration/login.test.js for the automated version of this exact check)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Security & Headers",
+      "item": [
+        {
+          "name": "Security headers present on any response",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Content-Security-Policy is present', () => {",
+                  "  pm.expect(pm.response.headers.has('Content-Security-Policy')).to.be.true;",
+                  "});",
+                  "pm.test('X-Content-Type-Options is nosniff', () => {",
+                  "  pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.eql('nosniff');",
+                  "});",
+                  "pm.test('X-Powered-By is NOT exposed', () => {",
+                  "  pm.expect(pm.response.headers.has('X-Powered-By')).to.be.false;",
+                  "});",
+                  "pm.test('Strict-Transport-Security is present (Helmet default — see README caveat)', () => {",
+                  "  pm.expect(pm.response.headers.has('Strict-Transport-Security')).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+          }
+        },
+        {
+          "name": "CORS preflight (OPTIONS /auth/register)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 204', () => pm.response.to.have.status(204));",
+                  "pm.test('Access-Control-Allow-Origin is present', () => {",
+                  "  pm.expect(pm.response.headers.has('Access-Control-Allow-Origin')).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "OPTIONS",
+            "header": [
+              { "key": "Origin", "value": "http://localhost:5173" },
+              { "key": "Access-Control-Request-Method", "value": "POST" }
+            ],
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Error Handling",
+      "item": [
+        {
+          "name": "GET /nonexistent — 404 Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 404', () => pm.response.to.have.status(404));",
+                  "const raw = pm.response.text();",
+                  "pm.test('no stack trace leaked', () => {",
+                  "  pm.expect(raw).to.not.match(/at .+\\.js:\\d+/);",
+                  "  pm.expect(raw).to.not.include('node_modules');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/nonexistent-route", "host": ["{{baseUrl}}"], "path": ["nonexistent-route"] }
+          }
+        }
+      ]
+    }
+  ]
+}

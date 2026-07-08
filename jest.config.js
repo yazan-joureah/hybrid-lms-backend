@@ -7,6 +7,7 @@ module.exports = {
     '!src/config/database.js',
     '!src/config/redis.js',
   ],
+  setupFiles: ['<rootDir>/tests/setup/disableRealGmail.js'],
   coverageThreshold: {
     global: {
       branches: 60,

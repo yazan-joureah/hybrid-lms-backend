@@ -9,7 +9,7 @@ const compression = require('compression');
 
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const healthRoutes = require('./routes/healthRoutes');
-// const authRoutes = require('./routes/authRoutes'); // enabled once implemented
+const authRoutes = require('./routes/authRoutes');
 
 const env = require('./config/env');
 
@@ -40,7 +40,7 @@ app.use(compression());
 
 // ── Routes ──────────────────────────────────────────────────────────────
 app.use('/api/v1', healthRoutes);
-// app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/auth', authRoutes);
 
 // ── 404 + Error handling (must be last) ──────────────────────────────────
 app.use(notFoundHandler);

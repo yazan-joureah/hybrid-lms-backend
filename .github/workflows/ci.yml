@@ -10,6 +10,7 @@ permissions:
   actions: read
   contents: read
   security-events: write
+  pull-requests: write
 
 jobs:
   build-test-scan:
@@ -39,6 +40,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Full git history — required by Gitleaks to diff the PR's commit range; default (1) causes "ambiguous argument" errors
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -88,6 +91,7 @@ jobs:
       actions: read
       contents: read
       security-events: write
+      pull-requests: write
 
     steps:
       - name: Checkout repository

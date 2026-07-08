@@ -9,7 +9,10 @@
     "plugin:security/recommended-legacy",
     "plugin:node/recommended"
   ],
-  "plugins": ["security", "node"],
+  "plugins": [
+    "security",
+    "node"
+  ],
   "parserOptions": {
     "ecmaVersion": 2022,
     "sourceType": "script"
@@ -18,7 +21,31 @@
     "node/no-unpublished-require": "off",
     "node/no-missing-require": "off",
     "security/detect-object-injection": "warn",
-    "no-console": ["warn", { "allow": ["warn", "error"] }],
-    "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
-  }
+    "no-console": [
+      "warn",
+      {
+        "allow": [
+          "warn",
+          "error"
+        ]
+      }
+    ],
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "scripts/**/*.js"
+      ],
+      "rules": {
+        "no-process-exit": "off"
+      }
+    }
+  ]
 }
