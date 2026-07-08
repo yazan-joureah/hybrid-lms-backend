@@ -12,6 +12,7 @@ const RefreshToken = require('../../src/models/RefreshToken');
 const { hashPassword } = require('../../src/utils/crypto');
 const redisClient = require('../../src/config/redis');
 
+// gitleaks:allow
 const PLAIN_PASSWORD = 'a-genuinely-long-passphrase-2026';
 
 beforeAll(async () => {

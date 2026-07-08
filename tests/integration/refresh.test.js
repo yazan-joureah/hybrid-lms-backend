@@ -17,7 +17,7 @@ const User = require('../../src/models/User');
 const Session = require('../../src/models/Session');
 const RefreshToken = require('../../src/models/RefreshToken');
 const redisClient = require('../../src/config/redis');
-
+// gitleaks:allow
 const PLAIN_PASSWORD = 'a-genuinely-long-passphrase-2026';
 
 beforeAll(async () => {

@@ -7,6 +7,7 @@ const {
 
 describe('Argon2id password hashing', () => {
   it('produces a hash that verifies correctly against the original password', async () => {
+    // gitleaks:allow
     const password = 'a-genuinely-long-passphrase-2026';
     const hash = await hashPassword(password);
 
@@ -24,6 +25,7 @@ describe('Argon2id password hashing', () => {
   });
 
   it('produces different hashes for the same password (random salt per call)', async () => {
+    // gitleaks:allow
     const password = 'same-password-different-salt-2026';
     const hash1 = await hashPassword(password);
     const hash2 = await hashPassword(password);

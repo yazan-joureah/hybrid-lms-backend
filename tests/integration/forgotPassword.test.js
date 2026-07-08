@@ -25,7 +25,7 @@ const RefreshToken = require('../../src/models/RefreshToken');
 const emailService = require('../../src/services/emailService');
 const { hashPassword, generateOpaqueToken } = require('../../src/utils/crypto');
 const redisClient = require('../../src/config/redis');
-
+// gitleaks:allow
 const OLD_PASSWORD = 'a-genuinely-long-passphrase-2026';
 const NEW_PASSWORD = 'a-brand-new-passphrase-after-reset-2026';
 

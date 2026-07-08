@@ -21,6 +21,7 @@ const redisClient = require('../../src/config/redis');
 const ADULT_PAYLOAD = {
   full_name: 'Test Adult User',
   email: 'adult.integration.test@example.com',
+  // gitleaks:allow
   password: 'a-genuinely-long-passphrase-2026',
   birth_date: '1995-06-20',
   role: 'Student',
@@ -30,6 +31,7 @@ const ADULT_PAYLOAD = {
 const MINOR_PAYLOAD = {
   full_name: 'Test Minor User',
   email: 'minor.integration.test@example.com',
+  // gitleaks:allow
   password: 'another-long-passphrase-2026',
   birth_date: '2012-01-01', // < 18 as of 2026
   role: 'Student',

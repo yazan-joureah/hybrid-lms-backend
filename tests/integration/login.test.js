@@ -25,7 +25,7 @@ const LoginAttempt = require('../../src/models/LoginAttempt');
 const { hashPassword } = require('../../src/utils/crypto');
 const authService = require('../../src/services/authService');
 const redisClient = require('../../src/config/redis');
-
+// gitleaks:allow
 const PLAIN_PASSWORD = 'a-genuinely-long-passphrase-2026';
 
 beforeAll(async () => {
