@@ -6,6 +6,11 @@ const QRCode = require('qrcode');
 const mfaService = require('../services/auth/mfa.service');
 const authService = require('../services/authService');
 const env = require('../config/env');
+const {
+  generateCsrfToken,
+  setCsrfCookie,
+  CSRF_COOKIE_NAME,
+} = require('../middleware/csrfProtection');
 
 async function register(req, res, next) {
   try {
@@ -156,6 +161,9 @@ async function login(req, res, next) {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
+    const csrfToken = generateCsrfToken();
+    setCsrfCookie(res, csrfToken, env.nodeEnv === 'production');
+
     return res.status(200).json({
       success: true,
       data: {
@@ -185,7 +193,11 @@ async function logout(req, res, next) {
       secure: env.nodeEnv === 'production',
       sameSite: 'lax',
     });
-
+    res.clearCookie(CSRF_COOKIE_NAME, {
+      httpOnly: false,
+      secure: env.nodeEnv === 'production',
+      sameSite: 'lax',
+    });
     return res.status(200).json({
       success: true,
       data: { message: 'Logged out successfully' },
@@ -222,6 +234,9 @@ async function refresh(req, res, next) {
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
+
+    const csrfToken = generateCsrfToken();
+    setCsrfCookie(res, csrfToken, env.nodeEnv === 'production');
 
     return res.status(200).json({ success: true, data: { access_token: result.accessToken } });
   } catch (err) {

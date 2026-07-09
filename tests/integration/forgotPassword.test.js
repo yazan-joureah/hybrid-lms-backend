@@ -182,7 +182,14 @@ describe('CAPSTONE — full lifecycle: Login → Forgot → Reset → old sessio
       .post('/api/v1/auth/login')
       .send({ email: user.email, password: OLD_PASSWORD });
     expect(loginRes.status).toBe(200);
-    const oldRefreshCookie = loginRes.headers['set-cookie'][0].split(';')[0];
+
+    const oldRefreshCookie = loginRes.headers['set-cookie']
+      .find((c) => c.startsWith('refresh_token='))
+      .split(';')[0];
+    const oldCsrfCookie = loginRes.headers['set-cookie']
+      .find((c) => c.startsWith('csrf_token='))
+      .split(';')[0];
+    const oldCsrfValue = oldCsrfCookie.split('=')[1];
 
     const sessionsBeforeReset = await RefreshToken.countDocuments({
       user_id: user._id,
@@ -217,7 +224,9 @@ describe('CAPSTONE — full lifecycle: Login → Forgot → Reset → old sessio
     // together is correct, layered behavior, not a contradiction.
     const refreshWithOldCookie = await request(app)
       .post('/api/v1/auth/refresh')
-      .set('Cookie', oldRefreshCookie);
+      .set('Cookie', [oldRefreshCookie, oldCsrfCookie])
+      .set('X-CSRF-Token', oldCsrfValue);
+
     expect(refreshWithOldCookie.status).toBe(401);
     expect(refreshWithOldCookie.body.error.code).toBe('TOKEN_INVALID');
 
