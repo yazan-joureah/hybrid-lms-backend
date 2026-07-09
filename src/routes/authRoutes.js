@@ -25,12 +25,17 @@ router.post(
   authController.register
 );
 
-router.get('/verify-email', authController.verifyEmail);
+router.get(
+  '/verify-email',
+  rateLimit('verify-email', (req) => req.ip),
+  authController.verifyEmail
+);
 
 router.get('/guardian/approve', authController.guardianApprovePagePlaceholder);
 
 router.post(
   '/guardian/approve',
+  rateLimit('guardian-approve', (req) => req.ip),
   validateBody(guardianApproveSchema),
   authController.guardianApprove
 );
@@ -44,7 +49,11 @@ router.post(
 
 router.post('/logout', requireAuth, authController.logout);
 
-router.post('/refresh', authController.refresh);
+router.post(
+  '/refresh',
+  rateLimit('refresh', (req) => req.ip),
+  authController.refresh
+);
 
 router.post(
   '/forgot-password',
@@ -53,9 +62,19 @@ router.post(
   authController.forgotPassword
 );
 
-router.post('/reset-password', validateBody(resetPasswordSchema), authController.resetPassword);
+router.post(
+  '/reset-password',
+  rateLimit('reset-password', (req) => req.ip),
+  validateBody(resetPasswordSchema),
+  authController.resetPassword
+);
 
-router.post('/mfa/totp/setup', requireAuth, authController.setupTotp);
+router.post(
+  '/mfa/totp/setup',
+  requireAuth,
+  rateLimit('mfa-setup', (req) => req.user.id),
+  authController.setupTotp
+);
 
 router.post(
   '/mfa/totp/verify',
