@@ -17,6 +17,7 @@ const {
   totpVerifySchema,
 } = require('../validators/authSchemas');
 const { requireAuth } = require('../middleware/authMiddleware');
+const { requireCsrfToken } = require('../middleware/csrfProtection');
 
 router.post(
   '/register',
@@ -52,6 +53,7 @@ router.post('/logout', requireAuth, authController.logout);
 router.post(
   '/refresh',
   rateLimit('refresh', (req) => req.ip),
+  requireCsrfToken,
   authController.refresh
 );
 

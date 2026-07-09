@@ -17,7 +17,7 @@ const User = require('../../src/models/User');
 const Session = require('../../src/models/Session');
 const RefreshToken = require('../../src/models/RefreshToken');
 const redisClient = require('../../src/config/redis');
-// gitleaks:allow
+
 const PLAIN_PASSWORD = 'a-genuinely-long-passphrase-2026';
 
 beforeAll(async () => {
@@ -36,7 +36,12 @@ afterAll(async () => {
   await redisClient.quit();
 });
 
-async function loginAndGetRefreshCookie() {
+function extractCookie(setCookieHeader, name) {
+  const raw = setCookieHeader.find((c) => c.startsWith(`${name}=`));
+  return { raw: raw.split(';')[0], value: raw.split(';')[0].split('=')[1] };
+}
+
+async function loginAndGetCookies() {
   const { hashPassword } = require('../../src/utils/crypto');
   const passwordHash = await hashPassword(PLAIN_PASSWORD);
   await User.create({
@@ -59,44 +64,52 @@ async function loginAndGetRefreshCookie() {
     .post('/api/v1/auth/login')
     .send({ email: 'refresh.test@example.com', password: PLAIN_PASSWORD });
 
-  const setCookieHeader = loginRes.headers['set-cookie'][0];
-  const refreshCookie = setCookieHeader.split(';')[0]; // "refresh_token=<value>"
-  return { refreshCookie, accessToken: loginRes.body.data.access_token };
+  const refresh = extractCookie(loginRes.headers['set-cookie'], 'refresh_token');
+  const csrf = extractCookie(loginRes.headers['set-cookie'], 'csrf_token');
+  return { refresh, csrf, accessToken: loginRes.body.data.access_token };
+}
+
+/** Convenience wrapper: every real client always sends BOTH the cookie and the matching CSRF header together. */
+function doRefresh(refresh, csrf) {
+  return request(app)
+    .post('/api/v1/auth/refresh')
+    .set('Cookie', [refresh.raw, csrf.raw])
+    .set('X-CSRF-Token', csrf.value);
 }
 
 describe('POST /auth/refresh — success path (Token Rotation)', () => {
-  it('issues a new access_token and a NEW refresh_token cookie, revoking the old one', async () => {
-    const { refreshCookie } = await loginAndGetRefreshCookie();
+  it('issues a new access_token and NEW refresh_token + csrf_token cookies, revoking the old refresh token', async () => {
+    const { refresh, csrf } = await loginAndGetCookies();
     const oldTokenCount = await RefreshToken.countDocuments({ revoked_at: null });
     expect(oldTokenCount).toBe(1);
 
-    const res = await request(app).post('/api/v1/auth/refresh').set('Cookie', refreshCookie);
+    const res = await doRefresh(refresh, csrf);
 
     expect(res.status).toBe(200);
     expect(res.body.data.access_token).toBeTruthy();
 
-    const newSetCookie = res.headers['set-cookie'][0];
-    expect(newSetCookie).toMatch(/refresh_token=/);
-    const newRefreshCookie = newSetCookie.split(';')[0];
-    expect(newRefreshCookie).not.toBe(refreshCookie); // genuinely a DIFFERENT value — real rotation, not reuse
+    const newRefresh = extractCookie(res.headers['set-cookie'], 'refresh_token');
+    expect(newRefresh.value).not.toBe(refresh.value);
 
     const tokens = await RefreshToken.find({}).sort({ created_at: 1 });
     expect(tokens).toHaveLength(2);
-    expect(tokens[0].revoked_at).not.toBeNull(); // the presented one is now revoked
-    expect(tokens[1].revoked_at).toBeNull(); // the newly minted one is active
+    expect(tokens[0].revoked_at).not.toBeNull();
+    expect(tokens[1].revoked_at).toBeNull();
   });
 });
 
 describe('POST /auth/refresh — replay protection (rotation theft-detection)', () => {
   it('rejects a SECOND use of the same (already-rotated-away) refresh token', async () => {
-    const { refreshCookie } = await loginAndGetRefreshCookie();
+    const { refresh, csrf } = await loginAndGetCookies();
 
-    const first = await request(app).post('/api/v1/auth/refresh').set('Cookie', refreshCookie);
+    const first = await doRefresh(refresh, csrf);
     expect(first.status).toBe(200);
 
-    // Attacker (or a buggy client) replays the ORIGINAL cookie, which the
-    // server already revoked during the first refresh above.
-    const replay = await request(app).post('/api/v1/auth/refresh').set('Cookie', refreshCookie);
+    // Replay the ORIGINAL cookie+CSRF pair — both are stale now, but the
+    // CSRF pair still matches each other, so this correctly reaches the
+    // refresh-token logic (not blocked at the CSRF layer) and THAT is
+    // what rejects it — proving the two defenses are independent layers.
+    const replay = await doRefresh(refresh, csrf);
 
     expect(replay.status).toBe(401);
     expect(replay.body.error.code).toBe('TOKEN_INVALID');
@@ -104,17 +117,18 @@ describe('POST /auth/refresh — replay protection (rotation theft-detection)', 
 });
 
 describe('POST /auth/refresh — missing / malformed token', () => {
-  it('returns 401 TOKEN_MISSING when no cookie is sent at all', async () => {
+  it('returns 403 CSRF_TOKEN_INVALID when no cookies are sent at all (CSRF layer catches it first)', async () => {
     const res = await request(app).post('/api/v1/auth/refresh');
 
-    expect(res.status).toBe(401);
-    expect(res.body.error.code).toBe('TOKEN_MISSING');
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('CSRF_TOKEN_INVALID');
   });
 
-  it('returns 401 TOKEN_INVALID for a well-formed but nonexistent token', async () => {
-    const res = await request(app)
-      .post('/api/v1/auth/refresh')
-      .set('Cookie', 'refresh_token=this-token-was-never-issued-by-us');
+  it('returns 401 TOKEN_INVALID for a well-formed but nonexistent refresh token, given a VALID matching CSRF pair', async () => {
+    const { csrf } = await loginAndGetCookies();
+    const fakeRefreshCookie = { raw: 'refresh_token=this-token-was-never-issued-by-us' };
+
+    const res = await doRefresh(fakeRefreshCookie, csrf);
 
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('TOKEN_INVALID');
@@ -123,15 +137,11 @@ describe('POST /auth/refresh — missing / malformed token', () => {
 
 describe('POST /auth/refresh — FR-03b: Session Revocation after Password Reset', () => {
   it('returns 403 SESSION_REVOKED when User.token_version no longer matches the token', async () => {
-    const { refreshCookie } = await loginAndGetRefreshCookie();
+    const { refresh, csrf } = await loginAndGetCookies();
 
-    // Simulate what POST /auth/reset-password will do once built: bump
-    // token_version, instantly invalidating every RefreshToken minted
-    // before this moment — WITHOUT touching the RefreshToken collection
-    // at all. This is the entire point of the token_version design.
     await User.updateOne({ email: 'refresh.test@example.com' }, { $inc: { token_version: 1 } });
 
-    const res = await request(app).post('/api/v1/auth/refresh').set('Cookie', refreshCookie);
+    const res = await doRefresh(refresh, csrf);
 
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('SESSION_REVOKED');
@@ -140,17 +150,14 @@ describe('POST /auth/refresh — FR-03b: Session Revocation after Password Reset
 
 describe('POST /auth/refresh — session already revoked via Logout', () => {
   it('returns 401 TOKEN_INVALID for a refresh token whose session was logged out', async () => {
-    const { refreshCookie, accessToken } = await loginAndGetRefreshCookie();
+    const { refresh, csrf, accessToken } = await loginAndGetCookies();
 
     const logoutRes = await request(app)
       .post('/api/v1/auth/logout')
       .set('Authorization', `Bearer ${accessToken}`);
     expect(logoutRes.status).toBe(200);
 
-    // logoutUser() already sets revoked_at on this exact RefreshToken row,
-    // so this actually exercises the SAME guard as the replay-protection
-    // test above — documented here for clarity, not a redundant test.
-    const res = await request(app).post('/api/v1/auth/refresh').set('Cookie', refreshCookie);
+    const res = await doRefresh(refresh, csrf);
 
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('TOKEN_INVALID');
