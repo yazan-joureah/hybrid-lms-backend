@@ -14,6 +14,7 @@ const {
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  totpVerifySchema,
 } = require('../validators/authSchemas');
 const { requireAuth } = require('../middleware/authMiddleware');
 
@@ -53,5 +54,15 @@ router.post(
 );
 
 router.post('/reset-password', validateBody(resetPasswordSchema), authController.resetPassword);
+
+router.post('/mfa/totp/setup', requireAuth, authController.setupTotp);
+
+router.post(
+  '/mfa/totp/verify',
+  requireAuth,
+  rateLimit('mfa-verify', (req) => req.user.id),
+  validateBody(totpVerifySchema),
+  authController.verifyTotp
+);
 
 module.exports = router;
