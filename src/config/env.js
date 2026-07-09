@@ -56,4 +56,8 @@ module.exports = {
   accountLockout: {
     durationMinutes: 15, // OWASP Testing Guide: 5–30 min recommended range
   },
+
+  encryption: {
+    masterKeyHex: process.env.ENCRYPTION_MASTER_KEY,
+  },
 };

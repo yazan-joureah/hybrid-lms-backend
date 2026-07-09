@@ -7,6 +7,10 @@ module.exports = {
     '!src/config/database.js',
     '!src/config/redis.js',
   ],
+  transformIgnorePatterns: [
+    // This tells Jest: "Ignore everything in node_modules EXCEPT otplib, @otplib, and @scure"
+    '/node_modules/(?!(@scure|otplib|@otplib|@noble)/)',
+  ],
   setupFiles: ['<rootDir>/tests/setup/disableRealGmail.js'],
   coverageThreshold: {
     global: {

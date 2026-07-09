@@ -82,6 +82,10 @@ const resetPasswordSchema = z.object({
     .refine((pw) => !isBlocklisted(pw), 'Password is too common'),
 });
 
+const totpVerifySchema = z.object({
+  code: z.string().regex(/^\d{6}$/, 'Code must be exactly 6 digits'),
+});
+
 module.exports = {
   registerSchema,
   isBlocklisted,
@@ -89,4 +93,5 @@ module.exports = {
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  totpVerifySchema,
 };

@@ -62,6 +62,8 @@ jobs:
           MONGO_URI: mongodb://localhost:27017/test
           REDIS_URL: redis://localhost:6379
           JWT_ACCESS_SECRET: test_secret_ci_only_never_use_in_prod
+          ENCRYPTION_MASTER_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
 
       - name: Dependency vulnerability audit
         run: npm audit --audit-level=high

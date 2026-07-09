@@ -2,6 +2,8 @@
  * AUTH controllers — thin layer: parse → call service → shape response.
  * No business logic here (MVCS discipline — see README.md).
  */
+const QRCode = require('qrcode');
+const mfaService = require('../services/auth/mfa.service');
 const authService = require('../services/authService');
 const env = require('../config/env');
 
@@ -309,6 +311,73 @@ async function verifyEmail(req, res, next) {
   }
 }
 
+/**
+ * POST /auth/mfa/totp/setup — requires Bearer JWT (requireAuth).
+ * Self-designed contract (no official REST_API_Contract for Groups 5-8).
+ */
+async function setupTotp(req, res, next) {
+  try {
+    const result = await mfaService.setupTotp(req.user.id, req);
+
+    if (result.error) {
+      return res.status(404).json({
+        success: false,
+        error: { code: result.error, message: 'User not found.' },
+      });
+    }
+
+    // QR image generation is a presentation concern — kept here in the
+    // thin controller layer, not in mfa.service.js, which only deals in
+    // the underlying otpauth:// URI (business data).
+    const qrCodeDataUrl = await QRCode.toDataURL(result.provisioningUri);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        qr_code_data_url: qrCodeDataUrl,
+        manual_entry_key: result.rawSecret,
+        message: 'Scan the QR code, then confirm with POST /auth/mfa/totp/verify',
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+const TOTP_VERIFY_ERROR_RESPONSES = {
+  NO_PENDING_SETUP: { status: 400, message: 'No pending TOTP setup found. Call setup first.' },
+  ALREADY_ENABLED: { status: 409, message: 'MFA is already enabled for this account.' },
+  INVALID_CODE: { status: 400, message: 'Invalid or expired code.' },
+};
+
+/**
+ * POST /auth/mfa/totp/verify — requires Bearer JWT (requireAuth).
+ */
+async function verifyTotp(req, res, next) {
+  try {
+    const result = await mfaService.confirmTotpSetup(req.user.id, req.validatedBody.code, req);
+
+    if (result.error) {
+      const info = TOTP_VERIFY_ERROR_RESPONSES[result.error];
+      return res.status(info.status).json({
+        success: false,
+        error: { code: result.error, message: info.message },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        message:
+          'MFA enabled successfully. Save these backup codes — they will not be shown again.',
+        backup_codes: result.backupCodes,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   register,
   verifyEmail,
@@ -319,4 +388,6 @@ module.exports = {
   refresh,
   forgotPassword,
   resetPassword,
+  setupTotp,
+  verifyTotp,
 };
