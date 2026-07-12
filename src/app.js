@@ -27,6 +27,7 @@ app.use(
   })
 );
 
+// Place this BEFORE your routes (e.g., app.use('/api/v1', ...))
 app.use(
   cors({
     origin: env.appUrl,

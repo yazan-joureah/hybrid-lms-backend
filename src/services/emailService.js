@@ -141,6 +141,13 @@ async function sendPasswordResetEmail(to, resetUrl) {
     html: `<p>We received a request to reset your password.</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>This link expires in 15 minutes and can only be used once. If you didn't request this, you can safely ignore this email.</p>`,
   });
 }
+async function sendGoogleAccountLinkedNotice(to) {
+  return sendMail({
+    to,
+    subject: 'Your Google account has been linked',
+    html: `<p>Your Hybrid LMS account is now linked to your Google account. You can sign in using either method going forward.</p>`,
+  });
+}
 
 module.exports = {
   sendVerificationEmail,
@@ -149,4 +156,5 @@ module.exports = {
   sendGuardianDeclinedNotice,
   sendPasswordResetEmail,
   createMimeMessage,
+  sendGoogleAccountLinkedNotice,
 };

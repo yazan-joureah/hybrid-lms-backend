@@ -119,10 +119,65 @@ function verifyMfaTempToken(token) {
   return decoded;
 }
 
+const OAUTH_PENDING_TTL = '10m'; // enough time for a user to type a password or birth date, not so long it's a lingering risk
+
+function signOAuthLinkPendingToken({ email, providerUserId }) {
+  return jwt.sign(
+    { sub: email, providerUserId, type: 'oauth_link_pending' },
+    env.jwt.accessSecret,
+    { algorithm: 'HS256', expiresIn: OAUTH_PENDING_TTL }
+  );
+}
+
+function verifyOAuthLinkPendingToken(token) {
+  const decoded = verifyRaw(token);
+  if (decoded.type !== 'oauth_link_pending') {
+    throw new JwtError('INVALID', 'Token is not an OAuth link-pending token');
+  }
+  return decoded;
+}
+
+function signOAuthRegistrationPendingToken({ email, providerUserId, fullName }) {
+  return jwt.sign(
+    { sub: email, providerUserId, fullName, type: 'oauth_registration_pending' },
+    env.jwt.accessSecret,
+    { algorithm: 'HS256', expiresIn: OAUTH_PENDING_TTL }
+  );
+}
+
+function verifyOAuthRegistrationPendingToken(token) {
+  const decoded = verifyRaw(token);
+  if (decoded.type !== 'oauth_registration_pending') {
+    throw new JwtError('INVALID', 'Token is not an OAuth registration-pending token');
+  }
+  return decoded;
+}
+
+function signOAuthGuardianPendingToken({ userId }) {
+  return jwt.sign({ sub: String(userId), type: 'oauth_guardian_pending' }, env.jwt.accessSecret, {
+    algorithm: 'HS256',
+    expiresIn: '10m',
+  });
+}
+
+function verifyOAuthGuardianPendingToken(token) {
+  const decoded = verifyRaw(token);
+  if (decoded.type !== 'oauth_guardian_pending') {
+    throw new JwtError('INVALID', 'Token is not an OAuth guardian-pending token');
+  }
+  return decoded;
+}
+
 module.exports = {
   signAccessToken,
   signMfaTempToken,
   verifyAccessToken,
   verifyMfaTempToken,
   JwtError,
+  signOAuthLinkPendingToken,
+  verifyOAuthLinkPendingToken,
+  signOAuthRegistrationPendingToken,
+  verifyOAuthRegistrationPendingToken,
+  signOAuthGuardianPendingToken,
+  verifyOAuthGuardianPendingToken,
 };

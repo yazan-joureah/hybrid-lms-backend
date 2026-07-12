@@ -10,7 +10,7 @@
  */
 const request = require('supertest');
 const mongoose = require('mongoose');
-const { generate } = require('otplib');
+const { generateTotpCode } = require('../../src/utils/totp');
 const app = require('../../src/app');
 const User = require('../../src/models/User');
 const MFAConfiguration = require('../../src/models/MFAConfiguration');
@@ -100,8 +100,7 @@ describe('POST /auth/mfa/totp/verify — success path', () => {
       .set('Authorization', `Bearer ${accessToken}`);
     const rawSecret = setupRes.body.data.manual_entry_key;
 
-    const validCode = await generate({ secret: rawSecret });
-
+    const validCode = generateTotpCode(rawSecret);
     const verifyRes = await request(app)
       .post('/api/v1/auth/mfa/totp/verify')
       .set('Authorization', `Bearer ${accessToken}`)
@@ -128,7 +127,7 @@ describe('POST /auth/mfa/totp/verify — success path', () => {
     const setupRes = await request(app)
       .post('/api/v1/auth/mfa/totp/setup')
       .set('Authorization', `Bearer ${accessToken}`);
-    const validCode = await generate({ secret: setupRes.body.data.manual_entry_key });
+    const validCode = generateTotpCode(setupRes.body.data.manual_entry_key);
     await request(app)
       .post('/api/v1/auth/mfa/totp/verify')
       .set('Authorization', `Bearer ${accessToken}`)

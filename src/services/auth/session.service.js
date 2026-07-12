@@ -57,6 +57,36 @@ function computeRedirectTo(user) {
 }
 
 /**
+ * Shared session-issuance logic — extracted so both password-based login
+ * (loginUser) and Google OAuth login (oauth.service.js) mint sessions
+ * identically, with zero duplicated JWT/Session/RefreshToken code.
+ */
+async function createUserSession(user, req) {
+  const session = await Session.create({
+    user_id: user._id,
+    device_fingerprint: req.get('x-device-fingerprint') || 'unknown',
+    ip_address: req.ip,
+    user_agent: req.get('user-agent') || 'unknown',
+    mfa_verified: false,
+    status: 'active',
+    expires_at: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+  });
+
+  const accessToken = signAccessToken({ userId: user._id, sessionId: session._id });
+  const { raw: refreshTokenRaw, hash: refreshTokenHash } = generateOpaqueToken();
+
+  await RefreshToken.create({
+    user_id: user._id,
+    session_id: session._id,
+    token_hash: refreshTokenHash,
+    token_version: user.token_version,
+    expires_at: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+  });
+
+  return { accessToken, refreshTokenRaw, session };
+}
+
+/**
  * POST /auth/login — UC-AUTH-03 + SF-AUTH-04.
  */
 async function loginUser(input, req) {
@@ -137,26 +167,7 @@ async function loginUser(input, req) {
     };
   }
 
-  const session = await Session.create({
-    user_id: user._id,
-    device_fingerprint: req.get('x-device-fingerprint') || 'unknown',
-    ip_address: req.ip,
-    user_agent: req.get('user-agent') || 'unknown',
-    mfa_verified: false,
-    status: 'active',
-    expires_at: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
-  });
-
-  const accessToken = signAccessToken({ userId: user._id, sessionId: session._id });
-  const { raw: refreshTokenRaw, hash: refreshTokenHash } = generateOpaqueToken();
-
-  await RefreshToken.create({
-    user_id: user._id,
-    session_id: session._id,
-    token_hash: refreshTokenHash,
-    token_version: user.token_version,
-    expires_at: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
-  });
+  const { accessToken, refreshTokenRaw } = await createUserSession(user, req);
 
   await auditService.record({
     actorId: user._id,
@@ -274,4 +285,4 @@ async function refreshSession({ rawRefreshToken }, req) {
   return { error: null, accessToken: newAccessToken, refreshTokenRaw: newRefreshTokenRaw };
 }
 
-module.exports = { loginUser, logoutUser, refreshSession };
+module.exports = { loginUser, logoutUser, refreshSession, createUserSession };

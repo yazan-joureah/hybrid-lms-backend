@@ -86,6 +86,23 @@ const totpVerifySchema = z.object({
   code: z.string().regex(/^\d{6}$/, 'Code must be exactly 6 digits'),
 });
 
+const googleLinkConfirmSchema = z.object({
+  link_pending_token: z.string().min(1),
+  password: z.string().min(1),
+});
+
+const googleRegisterConfirmSchema = z.object({
+  registration_pending_token: z.string().min(1),
+  birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+// authSchemas.js
+const googleGuardianEmailSchema = z.object({
+  guardian_pending_token: z.string().min(1),
+  guardian_email: z.string().trim().toLowerCase().email(),
+});
+// أضِفها لـ module.exports
+
 module.exports = {
   registerSchema,
   isBlocklisted,
@@ -94,4 +111,7 @@ module.exports = {
   forgotPasswordSchema,
   resetPasswordSchema,
   totpVerifySchema,
+  googleLinkConfirmSchema,
+  googleRegisterConfirmSchema,
+  googleGuardianEmailSchema,
 };

@@ -15,6 +15,7 @@ const {
   forgotPasswordSchema,
   resetPasswordSchema,
   totpVerifySchema,
+  googleGuardianEmailSchema,
 } = require('../validators/authSchemas');
 const { requireAuth } = require('../middleware/authMiddleware');
 const { requireCsrfToken } = require('../middleware/csrfProtection');
@@ -84,6 +85,45 @@ router.post(
   rateLimit('mfa-verify', (req) => req.user.id),
   validateBody(totpVerifySchema),
   authController.verifyTotp
+);
+
+const {
+  googleLinkConfirmSchema,
+  googleRegisterConfirmSchema,
+} = require('../validators/authSchemas');
+
+router.get(
+  '/google',
+  rateLimit('google-consent', (req) => req.ip),
+  authController.googleConsent
+);
+
+router.get(
+  '/google/callback',
+  rateLimit('google-callback', (req) => req.ip),
+  authController.googleCallback
+);
+
+router.post(
+  '/google/link/confirm',
+  rateLimit('google-link', (req) => req.ip),
+  validateBody(googleLinkConfirmSchema),
+  authController.googleLinkConfirm
+);
+
+router.post(
+  '/google/register/confirm',
+  rateLimit('google-register', (req) => req.ip),
+  validateBody(googleRegisterConfirmSchema),
+  authController.googleRegisterConfirm
+);
+
+// authRoutes.js
+router.post(
+  '/google/guardian-email',
+  rateLimit('google-guardian-email', (req) => req.ip),
+  validateBody(googleGuardianEmailSchema),
+  authController.googleGuardianEmail
 );
 
 module.exports = router;
