@@ -60,4 +60,10 @@ module.exports = {
   encryption: {
     masterKeyHex: process.env.ENCRYPTION_MASTER_KEY,
   },
+
+  googleOAuthLogin: {
+    clientId: process.env.GOOGLE_OAUTH_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+    redirectUri: process.env.GOOGLE_OAUTH_REDIRECT_URI,
+  },
 };

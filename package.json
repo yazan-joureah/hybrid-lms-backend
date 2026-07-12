@@ -23,6 +23,7 @@
   "license": "UNLICENSED",
   "dependencies": {
     "@node-rs/argon2": "^2.0.0",
+    "@otplib/plugin-base32-scure": "^13.4.1",
     "compression": "^1.7.4",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
@@ -34,7 +35,6 @@
     "ioredis": "^5.4.1",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.5.0",
-    "otplib": "^13.4.1",
     "qrcode": "^1.5.4",
     "winston": "^3.13.0",
     "zod": "^3.23.8"
