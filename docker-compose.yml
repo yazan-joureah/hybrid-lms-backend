@@ -1,4 +1,4 @@
-# Local development infrastructure — MongoDB + Redis + mongo-express (free, open-source images)
+# Local development infrastructure
 version: '3.8'
 services:
   mongo:
@@ -18,7 +18,6 @@ services:
       - "6379:6379"
 
   # Visual DB browser for local development ONLY — never deployed to production.
-  # Free & open-source (MIT). Access at http://localhost:8081
   mongo-express:
     image: mongo-express:1.0
     container_name: hybrid-lms-mongo-express
@@ -32,5 +31,18 @@ services:
       ME_CONFIG_BASICAUTH_USERNAME: admin
       ME_CONFIG_BASICAUTH_PASSWORD: local_dev_only
 
+  # Malware Scanning Daemon (SF-KYC-02)
+  # Pinned to v1.4 for stability.
+  clamav:
+    image: clamav/clamav:1.4
+    container_name: hybrid-lms-clamav
+    restart: unless-stopped
+    ports:
+      - "3310:3310"
+    volumes:
+      # Crucial: Persists the virus signature database to avoid 10+ min downloads on restart
+      - clamav_data:/var/lib/clamav
+
 volumes:
   mongo_data:
+  clamav_data:

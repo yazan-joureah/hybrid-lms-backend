@@ -20,6 +20,7 @@ module.exports = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT, 10) || 3000,
   appUrl: process.env.APP_URL || 'http://localhost:3000',
+  frontUrl: process.env.DEMO_FRONTEND_ORIGIN || 'https://hybrid-auth.base44.app',
 
   mongoUri: required('MONGO_URI'),
   redisUrl: required('REDIS_URL'),
