@@ -28,9 +28,19 @@ app.use(
 );
 
 // Place this BEFORE your routes (e.g., app.use('/api/v1', ...))
+const allowedOrigins = [env.appUrl];
+if (env.nodeEnv !== 'production' && process.env.DEMO_FRONTEND_ORIGIN) {
+  allowedOrigins.push(process.env.DEMO_FRONTEND_ORIGIN);
+}
+
 app.use(
   cors({
-    origin: env.appUrl,
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
   })
 );

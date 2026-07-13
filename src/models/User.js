@@ -68,11 +68,10 @@ const userSchema = new Schema(
 
     kyc_status: {
       type: String,
-      enum: ['not_submitted', 'pending', 'verified', 'rejected', 'age_flagged'],
+      enum: ['not_submitted', 'review_pending', 'verified', 'rejected', 'age_flagged'],
       required: true,
       default: 'not_submitted',
     },
-
     mfa_enabled: { type: Boolean, required: true, default: false },
     token_version: { type: Number, required: true, default: 1 },
     failed_login_count: { type: Number, required: true, default: 0 },

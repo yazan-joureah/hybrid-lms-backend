@@ -24,11 +24,13 @@
   "dependencies": {
     "@node-rs/argon2": "^2.0.0",
     "@otplib/plugin-base32-scure": "^13.4.1",
+    "clamscan": "^2.4.0",
     "compression": "^1.7.4",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "file-type": "^16.5.4",
     "google-auth-library": "^10.9.0",
     "googleapis": "^173.0.0",
     "helmet": "^7.1.0",

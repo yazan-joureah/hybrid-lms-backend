@@ -69,7 +69,7 @@ async function registerUser(input, req) {
     token_type: 'EMAIL_VERIFICATION',
     expires_at: new Date(Date.now() + EMAIL_VERIFICATION_TTL_HOURS * 60 * 60 * 1000),
   });
-  const verifyUrl = `${env.appUrl}/auth/verify-email?token=${verifyRaw}`;
+  const verifyUrl = `${env.frontUrl}/verify-email?token=${verifyRaw}`;
   try {
     await emailService.sendVerificationEmail(user.email, verifyUrl);
   } catch (err) {
@@ -98,8 +98,8 @@ async function registerUser(input, req) {
       student_device_fingerprint: req.get('x-device-fingerprint') || null,
     });
 
-    const approveUrl = `${env.appUrl}/auth/guardian/approve?token=${approvalRaw}`;
-    const manageUrl = `${env.appUrl}/auth/guardian/manage?token=${studentAccessRaw}`;
+    const approveUrl = `${env.frontUrl}/guardian-approve?token=${approvalRaw}`;
+    const manageUrl = `${env.frontUrl}/auth/guardian/manage?token=${studentAccessRaw}`;
 
     try {
       await Promise.all([

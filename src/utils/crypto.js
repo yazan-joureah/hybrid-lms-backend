@@ -99,6 +99,55 @@ function decryptSecret(encryptedBase64) {
   return plaintext.toString('utf8');
 }
 
+// deterministically derive a sub-key
+// for each user_id instead of storing an actual separate key.
+//
+// Determinism is intentional: the same user_id always produces the same sub-key,
+// so there is no need to store additional salts per user — just the user_id
+// (which already exists as a Foreign Key).
+
+const HKDF_SALT = Buffer.from('hybrid-lms-kyc-hkdf-salt-v1', 'utf8'); // ثابت على مستوى التطبيق، وليس سرياً بذاته
+const HKDF_KEY_LENGTH = 32; // 256 بت لـ AES-256
+
+function deriveUserKey(userId) {
+  if (!userId) {
+    throw new Error('deriveUserKey requires a non-empty userId');
+  }
+  const info = Buffer.from(`kyc-document-key:${String(userId)}`, 'utf8');
+  const derived = nodeCrypto.hkdfSync(
+    'sha256',
+    getEncryptionKey(),
+    HKDF_SALT,
+    info,
+    HKDF_KEY_LENGTH
+  );
+  return Buffer.from(derived); // hkdfSync returns an ArrayBuffer, we convert it to a Buffer explicitly
+}
+
+/**
+ * Version of encryptSecret but using a user-specific derived key instead of the global key.
+ * Same GCM logic (random 12-byte IV + AuthTag), just a different key.
+ */
+function encryptForUser(plaintextBuffer, userId) {
+  const key = deriveUserKey(userId);
+  const iv = nodeCrypto.randomBytes(GCM_IV_BYTES);
+  const cipher = nodeCrypto.createCipheriv(ENCRYPTION_ALGORITHM, key, iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintextBuffer), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return Buffer.concat([iv, authTag, ciphertext]); // Raw Buffer, not Base64 — will be stored as BinData in Mongo directly
+}
+
+function decryptForUser(encryptedBuffer, userId) {
+  const key = deriveUserKey(userId);
+  const iv = encryptedBuffer.subarray(0, GCM_IV_BYTES);
+  const authTag = encryptedBuffer.subarray(GCM_IV_BYTES, GCM_IV_BYTES + 16);
+  const ciphertext = encryptedBuffer.subarray(GCM_IV_BYTES + 16);
+
+  const decipher = nodeCrypto.createDecipheriv(ENCRYPTION_ALGORITHM, key, iv);
+  decipher.setAuthTag(authTag);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+}
+
 module.exports = {
   hashPassword,
   verifyPassword,
@@ -106,4 +155,7 @@ module.exports = {
   sha256,
   encryptSecret,
   decryptSecret,
+  deriveUserKey,
+  encryptForUser,
+  decryptForUser,
 };
