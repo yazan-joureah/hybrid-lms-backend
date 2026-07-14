@@ -24,7 +24,6 @@
   "dependencies": {
     "@node-rs/argon2": "^2.0.0",
     "@otplib/plugin-base32-scure": "^13.4.1",
-    "clamscan": "^2.4.0",
     "compression": "^1.7.4",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
