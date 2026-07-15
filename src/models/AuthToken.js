@@ -7,6 +7,7 @@
  * persisted (DP-08) — the raw value exists only in the outbound email.
  */
 const mongoose = require('mongoose');
+const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;
 
 const authTokenSchema = new Schema(
@@ -28,6 +29,8 @@ const authTokenSchema = new Schema(
 );
 
 authTokenSchema.index({ user_id: 1, token_type: 1 });
-authTokenSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 }); // TTL
+authTokenSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 });
+
+applyReferentialIntegrity(authTokenSchema, [{ path: 'user_id', ref: 'User', required: true }]);
 
 module.exports = mongoose.model('AuthToken', authTokenSchema);

@@ -11,6 +11,7 @@
  * audit trail with noise from non-existent accounts.
  */
 const mongoose = require('mongoose');
+const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;
 
 const loginAttemptSchema = new Schema(
@@ -30,6 +31,8 @@ const loginAttemptSchema = new Schema(
 
 loginAttemptSchema.index({ email_entered: 1 });
 loginAttemptSchema.index({ ip_address: 1 });
-loginAttemptSchema.index({ attempted_at: -1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 }); // 30-day TTL per DB spec
+loginAttemptSchema.index({ attempted_at: -1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
+
+applyReferentialIntegrity(loginAttemptSchema, [{ path: 'user_id', ref: 'User', required: false }]);
 
 module.exports = mongoose.model('LoginAttempt', loginAttemptSchema);

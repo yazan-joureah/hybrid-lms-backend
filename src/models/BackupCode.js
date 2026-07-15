@@ -10,6 +10,7 @@
  * hash used for actual credentials.
  */
 const mongoose = require('mongoose');
+const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;
 
 const backupCodeSchema = new Schema(
@@ -29,5 +30,10 @@ const backupCodeSchema = new Schema(
 backupCodeSchema.index({ mfa_config_id: 1 });
 backupCodeSchema.index({ mfa_config_id: 1, used: 1 });
 backupCodeSchema.index({ user_id: 1, used: 1 });
+
+applyReferentialIntegrity(backupCodeSchema, [
+  { path: 'mfa_config_id', ref: 'MFAConfiguration', required: true },
+  { path: 'user_id', ref: 'User', required: true },
+]);
 
 module.exports = mongoose.model('BackupCode', backupCodeSchema);

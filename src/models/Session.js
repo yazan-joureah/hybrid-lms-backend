@@ -10,6 +10,7 @@
  * silently inherit MFA-verified status from another device's session.
  */
 const mongoose = require('mongoose');
+const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;
 
 const sessionSchema = new Schema(
@@ -39,6 +40,8 @@ const sessionSchema = new Schema(
 
 sessionSchema.index({ user_id: 1 });
 sessionSchema.index({ status: 1 });
-sessionSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 }); // TTL — matches AuthToken.js pattern
+sessionSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 });
+
+applyReferentialIntegrity(sessionSchema, [{ path: 'user_id', ref: 'User', required: true }]);
 
 module.exports = mongoose.model('Session', sessionSchema);

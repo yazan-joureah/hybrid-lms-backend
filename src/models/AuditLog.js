@@ -8,6 +8,7 @@
  * no update/delete helpers).
  */
 const mongoose = require('mongoose');
+const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;
 
 const auditLogSchema = new Schema(
@@ -35,5 +36,7 @@ auditLogSchema.index({ actor_id: 1 });
 auditLogSchema.index({ resource_type: 1, resource_id: 1 });
 auditLogSchema.index({ action: 1 });
 auditLogSchema.index({ created_at: -1 });
+
+applyReferentialIntegrity(auditLogSchema, [{ path: 'actor_id', ref: 'User', required: false }]);
 
 module.exports = mongoose.model('AuditLog', auditLogSchema);

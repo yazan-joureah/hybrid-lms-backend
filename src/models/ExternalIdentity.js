@@ -8,6 +8,7 @@
  * spec's own forward-looking design note.
  */
 const mongoose = require('mongoose');
+const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;
 
 const externalIdentitySchema = new Schema(
@@ -29,5 +30,9 @@ const externalIdentitySchema = new Schema(
 // simultaneously (MUC-AUTH-15, explicitly documented in the DB spec).
 externalIdentitySchema.index({ provider: 1, provider_user_id: 1 }, { unique: true });
 externalIdentitySchema.index({ user_id: 1 });
+
+applyReferentialIntegrity(externalIdentitySchema, [
+  { path: 'user_id', ref: 'User', required: true },
+]);
 
 module.exports = mongoose.model('ExternalIdentity', externalIdentitySchema);
