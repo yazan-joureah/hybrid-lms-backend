@@ -7,6 +7,7 @@
 
 const mongoose = require('mongoose');
 const crypto = require('crypto');
+const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 
 const kycDocumentSchema = new mongoose.Schema(
   {
@@ -43,5 +44,7 @@ const kycDocumentSchema = new mongoose.Schema(
   },
   { timestamps: { createdAt: 'created_at', updatedAt: false } } // snake_case حسب المعيار
 );
+
+applyReferentialIntegrity(kycDocumentSchema, [{ path: 'user_id', ref: 'User', required: true }]);
 
 module.exports = mongoose.model('KYCDocument', kycDocumentSchema);

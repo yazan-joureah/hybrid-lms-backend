@@ -13,6 +13,7 @@
  * them individually. This is the mechanism, not a side detail.
  */
 const mongoose = require('mongoose');
+const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;
 
 const refreshTokenSchema = new Schema(
@@ -34,6 +35,11 @@ const refreshTokenSchema = new Schema(
 
 refreshTokenSchema.index({ user_id: 1 });
 refreshTokenSchema.index({ session_id: 1 });
-refreshTokenSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 }); // TTL
+refreshTokenSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 });
+
+applyReferentialIntegrity(refreshTokenSchema, [
+  { path: 'user_id', ref: 'User', required: true },
+  { path: 'session_id', ref: 'Session', required: true },
+]);
 
 module.exports = mongoose.model('RefreshToken', refreshTokenSchema);

@@ -126,4 +126,6 @@ router.post(
   authController.googleGuardianEmail
 );
 
+router.get('/me', requireAuth, authController.getMe);
+
 module.exports = router;

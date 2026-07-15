@@ -7,6 +7,7 @@
  * only be written/read once UC-AUTH-09 (Setup MFA via TOTP) is built.
  */
 const mongoose = require('mongoose');
+const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;
 
 const mfaConfigurationSchema = new Schema(
@@ -22,5 +23,9 @@ const mfaConfigurationSchema = new Schema(
     collection: 'mfa_configurations',
   }
 );
+
+applyReferentialIntegrity(mfaConfigurationSchema, [
+  { path: 'user_id', ref: 'User', required: true },
+]);
 
 module.exports = mongoose.model('MFAConfiguration', mfaConfigurationSchema);

@@ -16,6 +16,7 @@ const emailService = require('../emailService');
 const auditService = require('../auditService');
 const env = require('../../config/env');
 const logger = require('../../utils/logger');
+const { ApiError } = require('../middleware/errorHandler');
 
 const EMAIL_VERIFICATION_TTL_HOURS = 24;
 const GUARDIAN_APPROVAL_TTL_HOURS = 48;
@@ -276,4 +277,32 @@ async function processGuardianApproval({
   return { error: null, status: 'guardian_pending', decision };
 }
 
-module.exports = { registerUser, verifyEmail, processGuardianApproval };
+/**
+ * Service function to fetch the current user's profile.
+ * Used by GET /auth/me.
+ * Throws ApiError if user does not exist.
+ */
+async function getUserProfile(userId) {
+  const user = await User.findById(userId).select(
+    'full_name email role status kyc_status mfa_enabled birth_date created_at'
+  );
+
+  if (!user) {
+    // Same 401 shape as an invalid token, no information leak
+    throw new ApiError(401, 'TOKEN_INVALID', 'User no longer exists');
+  }
+
+  return {
+    id: user._id,
+    full_name: user.full_name,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+    kyc_status: user.kyc_status,
+    mfa_enabled: user.mfa_enabled,
+    birth_date: user.birth_date,
+    created_at: user.created_at,
+  };
+}
+
+module.exports = { registerUser, verifyEmail, processGuardianApproval, getUserProfile };

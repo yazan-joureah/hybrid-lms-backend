@@ -578,6 +578,22 @@ async function googleGuardianEmail(req, res, next) {
   }
 }
 
+/**
+ * GET /auth/me — returns the current authenticated user's safe profile.
+ * Added to close a gap discovered while integrating the Base44 frontend.
+ */
+async function getMe(req, res, next) {
+  try {
+    const userData = await authService.getUserProfile(req.user.id);
+    return res.status(200).json({
+      success: true,
+      data: userData,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   register,
   verifyEmail,
@@ -595,4 +611,5 @@ module.exports = {
   googleLinkConfirm,
   googleRegisterConfirm,
   googleGuardianEmail,
+  getMe,
 };

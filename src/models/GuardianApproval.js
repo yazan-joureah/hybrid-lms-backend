@@ -10,6 +10,7 @@
  *    dead-end identified during the Register/Guardian logic review).
  */
 const mongoose = require('mongoose');
+const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;
 
 const guardianApprovalSchema = new Schema(
@@ -47,7 +48,11 @@ const guardianApprovalSchema = new Schema(
 
 guardianApprovalSchema.index({ user_id: 1 });
 guardianApprovalSchema.index({ status: 1 });
-guardianApprovalSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 }); // TTL
-guardianApprovalSchema.index({ student_registration_ip: 1 }); // MUC-AUTH-09
+guardianApprovalSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 });
+guardianApprovalSchema.index({ student_registration_ip: 1 });
+
+applyReferentialIntegrity(guardianApprovalSchema, [
+  { path: 'user_id', ref: 'User', required: true },
+]);
 
 module.exports = mongoose.model('GuardianApproval', guardianApprovalSchema);

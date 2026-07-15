@@ -1,6 +1,8 @@
 // src/models/KYCRequest.js
 
 const mongoose = require('mongoose');
+const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
+
 const { Schema } = mongoose;
 
 const kycRequestSchema = new Schema(
@@ -79,5 +81,10 @@ const kycRequestSchema = new Schema(
 // review_pending request for the same user?" — a mandatory check for every submission
 // (UC-KYC-01, Precondition 5)
 kycRequestSchema.index({ user_id: 1, status: 1 });
+
+applyReferentialIntegrity(kycRequestSchema, [
+  { path: 'user_id', ref: 'User', required: true },
+  { path: 'reviewed_by_admin_id', ref: 'User', required: false },
+]);
 
 module.exports = mongoose.model('KYCRequest', kycRequestSchema);
