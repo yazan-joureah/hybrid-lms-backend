@@ -16,7 +16,7 @@ const emailService = require('../emailService');
 const auditService = require('../auditService');
 const env = require('../../config/env');
 const logger = require('../../utils/logger');
-const { ApiError } = require('../middleware/errorHandler');
+const { ApiError } = require('../../middleware/errorHandler');
 
 const EMAIL_VERIFICATION_TTL_HOURS = 24;
 const GUARDIAN_APPROVAL_TTL_HOURS = 48;
