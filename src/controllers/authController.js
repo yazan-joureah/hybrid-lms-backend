@@ -6,13 +6,9 @@ const QRCode = require('qrcode');
 const mfaService = require('../services/auth/mfa.service');
 const authService = require('../services/authService');
 const oauthService = require('../services/auth/oauth.service');
-
+const { issueSessionCookies } = require('../utils/sessionCookies.util');
 const env = require('../config/env');
-const {
-  generateCsrfToken,
-  setCsrfCookie,
-  CSRF_COOKIE_NAME,
-} = require('../middleware/csrfProtection');
+const { CSRF_COOKIE_NAME } = require('../middleware/csrfProtection');
 
 async function register(req, res, next) {
   try {
@@ -156,15 +152,7 @@ async function login(req, res, next) {
       });
     }
 
-    res.cookie('refresh_token', result.refreshTokenRaw, {
-      httpOnly: true,
-      secure: env.nodeEnv === 'production', // allow plain HTTP locally in dev/test
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    const csrfToken = generateCsrfToken();
-    setCsrfCookie(res, csrfToken, env.nodeEnv === 'production');
+    issueSessionCookies(res, result.refreshTokenRaw);
 
     return res.status(200).json({
       success: true,
@@ -230,15 +218,7 @@ async function refresh(req, res, next) {
       });
     }
 
-    res.cookie('refresh_token', result.refreshTokenRaw, {
-      httpOnly: true,
-      secure: env.nodeEnv === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    const csrfToken = generateCsrfToken();
-    setCsrfCookie(res, csrfToken, env.nodeEnv === 'production');
+    issueSessionCookies(res, result.refreshTokenRaw);
 
     return res.status(200).json({ success: true, data: { access_token: result.accessToken } });
   } catch (err) {
@@ -424,15 +404,7 @@ async function verifyMfaLogin(req, res, next) {
       });
     }
 
-    res.cookie('refresh_token', result.refreshTokenRaw, {
-      httpOnly: true,
-      secure: env.nodeEnv === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    const csrfToken = generateCsrfToken();
-    setCsrfCookie(res, csrfToken, env.nodeEnv === 'production');
+    issueSessionCookies(res, result.refreshTokenRaw);
 
     return res.status(200).json({
       success: true,
@@ -526,14 +498,7 @@ function finishOAuthLogin(result, res) {
     });
   }
 
-  res.cookie('refresh_token', result.refreshTokenRaw, {
-    httpOnly: true,
-    secure: env.nodeEnv === 'production',
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-  const csrfToken = generateCsrfToken();
-  setCsrfCookie(res, csrfToken, env.nodeEnv === 'production');
+  issueSessionCookies(res, result.refreshTokenRaw);
 
   return res.status(200).json({
     success: true,
