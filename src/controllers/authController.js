@@ -395,6 +395,62 @@ async function verifyTotp(req, res, next) {
   }
 }
 
+const MFA_LOGIN_VERIFY_ERROR_RESPONSES = {
+  MFA_CHALLENGE_EXPIRED: {
+    status: 401,
+    message: 'MFA challenge has expired. Please log in again.',
+  },
+  MFA_CHALLENGE_INVALID: { status: 401, message: 'Invalid MFA challenge.' },
+  INVALID_CODE: { status: 400, message: 'Invalid or expired code.' },
+};
+
+/**
+ * POST /auth/mfa/login/verify — completes login after mfa_required=true.
+ * Cookie-setting logic is DELIBERATELY duplicated from login()/refresh()/
+ * finishOAuthLogin() rather than extracted now — this is the FIRST
+ * refactor candidate flagged for the upcoming full-module refactor pass
+ * (4th occurrence of the identical 6-line block), not addressed here to
+ * keep this fix isolated and low-risk.
+ */
+async function verifyMfaLogin(req, res, next) {
+  try {
+    const result = await mfaService.completeMfaLogin(req.validatedBody, req);
+
+    if (result.error) {
+      const info = MFA_LOGIN_VERIFY_ERROR_RESPONSES[result.error];
+      return res.status(info.status).json({
+        success: false,
+        error: { code: result.error, message: info.message },
+      });
+    }
+
+    res.cookie('refresh_token', result.refreshTokenRaw, {
+      httpOnly: true,
+      secure: env.nodeEnv === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    const csrfToken = generateCsrfToken();
+    setCsrfCookie(res, csrfToken, env.nodeEnv === 'production');
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        access_token: result.accessToken,
+        user: {
+          role: result.user.role,
+          mfa_enabled: result.user.mfaEnabled,
+          kyc_status: result.user.kycStatus,
+          redirect_to: result.user.redirectTo,
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function googleConsent(req, res, next) {
   try {
     const url = await oauthService.getGoogleConsentUrl();
@@ -606,6 +662,7 @@ module.exports = {
   resetPassword,
   setupTotp,
   verifyTotp,
+  verifyMfaLogin,
   googleConsent,
   googleCallback,
   googleLinkConfirm,

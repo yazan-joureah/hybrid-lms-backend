@@ -13,6 +13,8 @@ const {
   verifyTotpCode,
 } = require('../../utils/totp');
 const { hashPassword, generateOpaqueToken } = require('../../utils/crypto');
+const { verifyMfaTempToken, JwtError } = require('../../utils/jwt');
+const { createUserSession, computeRedirectToPublic } = require('./session.service');
 const auditService = require('../auditService');
 
 const BACKUP_CODE_COUNT = 10; // Industry convention (Google, GitHub) — UC-AUTH-09 doesn't pin an exact number
@@ -131,4 +133,82 @@ async function confirmTotpSetup(userId, code, req) {
   return { error: null, backupCodes: rawBackupCodes };
 }
 
-module.exports = { setupTotp, confirmTotpSetup };
+/**
+ * POST /auth/mfa/login/verify — completes UC-AUTH-05's MFA challenge
+ * issued by loginUser() (session.service.js) when User.mfa_enabled is
+ * true. Mirrors createUserSession's usage in loginUser exactly — same
+ * session/token issuance path, just gated by a verified TOTP code instead
+ * of a bare password check.
+ *
+ * DEVIATION (documented): rate limiting here is per-mfa_temp_token via
+ * the existing Redis rateLimiter (route layer), NOT via User.failed_
+ * login_count/lock_until — that counter is reserved for password
+ * attempts (UC-AUTH-04) specifically. A wrong MFA code does not lock the
+ * password-protected account; it only throttles guesses against this
+ * one 5-minute-lived temp token, which self-expires regardless.
+ */
+async function completeMfaLogin({ mfaTempToken, code }, req) {
+  let decoded;
+  try {
+    decoded = verifyMfaTempToken(mfaTempToken);
+  } catch (err) {
+    if (err instanceof JwtError) {
+      return { error: err.code === 'EXPIRED' ? 'MFA_CHALLENGE_EXPIRED' : 'MFA_CHALLENGE_INVALID' };
+    }
+    throw err;
+  }
+
+  const user = await User.findById(decoded.sub);
+  if (!user || !user.mfa_enabled) {
+    return { error: 'MFA_CHALLENGE_INVALID' };
+  }
+
+  const mfaConfig = await MFAConfiguration.findOne({ user_id: user._id });
+  if (!mfaConfig || !mfaConfig.enabled) {
+    return { error: 'MFA_CHALLENGE_INVALID' };
+  }
+
+  const isValid = await verifyTotpCode(mfaConfig.secret_encrypted, code);
+  if (!isValid) {
+    await auditService.record({
+      actorId: user._id,
+      actorRole: user.role,
+      action: 'MFA_LOGIN_CODE_REJECTED',
+      resourceType: 'user',
+      resourceId: user._id,
+      req,
+    });
+    return { error: 'INVALID_CODE' };
+  }
+
+  const { accessToken, refreshTokenRaw, session } = await createUserSession(user, req);
+  // Fix: createUserSession always sets mfa_verified=false (correct for
+  // the no-MFA login path) — this call site DID just verify MFA, so we
+  // correct the field on the returned document rather than change the
+  // shared function's behavior.
+  session.mfa_verified = true;
+  await session.save();
+
+  await auditService.record({
+    actorId: user._id,
+    actorRole: user.role,
+    action: 'LOGIN_SUCCESS_VIA_MFA',
+    resourceType: 'user',
+    resourceId: user._id,
+    req,
+  });
+
+  return {
+    error: null,
+    accessToken,
+    refreshTokenRaw,
+    user: {
+      role: user.role,
+      mfaEnabled: user.mfa_enabled,
+      kycStatus: user.kyc_status,
+      redirectTo: computeRedirectToPublic(user),
+    },
+  };
+}
+
+module.exports = { setupTotp, confirmTotpSetup, completeMfaLogin };
