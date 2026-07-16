@@ -285,4 +285,4 @@ async function refreshSession({ rawRefreshToken }, req) {
   return { error: null, accessToken: newAccessToken, refreshTokenRaw: newRefreshTokenRaw };
 }
 
-module.exports = { loginUser, logoutUser, refreshSession, createUserSession };
+module.exports = { loginUser, logoutUser, refreshSession, createUserSession, computeRedirectTo };
