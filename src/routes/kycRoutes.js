@@ -8,7 +8,7 @@ const { requireAuth } = require('../middleware/authMiddleware');
 const { requireRole } = require('../middleware/requireRole');
 const { rateLimit } = require('../middleware/rateLimiter');
 const { createMemoryUpload } = require('../middleware/upload.util');
-const { ApiError } = require('../middleware/errorHandler');
+const { AppError } = require('../middleware/errorHandler');
 const { KYC_MAX_FILE_SIZE_BYTES } = require('../utils/fileValidation.util');
 const { kycSubmitSchema, kycApproveSchema, kycRejectSchema } = require('../validators/kycSchemas');
 
@@ -23,7 +23,7 @@ function handleUploadErrors(uploadMiddleware) {
   return (req, res, next) => {
     uploadMiddleware(req, res, (err) => {
       if (err instanceof multer.MulterError) {
-        return next(new ApiError(400, err.code, 'File upload failed: ' + err.message));
+        return next(new AppError(400, err.code, 'File upload failed: ' + err.message));
       }
       if (err) return next(err);
       return next();

@@ -1,4 +1,5 @@
 const authService = require('../../services/authService');
+const { AppError } = require('../../middleware/errorHandler');
 
 async function register(req, res, next) {
   try {
@@ -14,14 +15,17 @@ async function register(req, res, next) {
       });
     }
 
-    return res.status(201).json({
-      success: true,
-      data: { message: 'Verification email sent' },
-    });
+    return res.status(201).json({ success: true, data: { message: 'Verification email sent' } });
   } catch (err) {
     next(err);
   }
 }
+
+const VERIFY_EMAIL_ERRORS = {
+  TOKEN_INVALID: 'This verification link is invalid.',
+  TOKEN_ALREADY_USED: 'This verification link has already been used.',
+  TOKEN_EXPIRED: 'This verification link has expired. Please request a new one.',
+};
 
 /** GET /auth/verify-email */
 async function verifyEmail(req, res, next) {
@@ -29,24 +33,13 @@ async function verifyEmail(req, res, next) {
     const rawToken = req.query.token;
 
     if (!rawToken || typeof rawToken !== 'string') {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'TOKEN_INVALID', message: 'Verification token is missing or invalid.' },
-      });
+      throw new AppError(400, 'TOKEN_INVALID', 'Verification token is missing or invalid.');
     }
 
     const result = await authService.verifyEmail({ rawToken, req });
 
     if (result.error) {
-      const ERROR_MESSAGES = {
-        TOKEN_INVALID: 'This verification link is invalid.',
-        TOKEN_ALREADY_USED: 'This verification link has already been used.',
-        TOKEN_EXPIRED: 'This verification link has expired. Please request a new one.',
-      };
-      return res.status(400).json({
-        success: false,
-        error: { code: result.error, message: ERROR_MESSAGES[result.error] },
-      });
+      throw new AppError(400, result.error, VERIFY_EMAIL_ERRORS[result.error]);
     }
 
     const message =
@@ -78,6 +71,12 @@ async function guardianApprovePagePlaceholder(req, res) {
   });
 }
 
+const GUARDIAN_APPROVE_ERRORS = {
+  TOKEN_INVALID: 'This approval link is invalid.',
+  TOKEN_ALREADY_USED: 'This approval link has already been used.',
+  TOKEN_EXPIRED: 'This approval link has expired. The account has been removed per policy.',
+};
+
 async function guardianApprove(req, res, next) {
   try {
     const {
@@ -96,15 +95,7 @@ async function guardianApprove(req, res, next) {
     });
 
     if (result.error) {
-      const ERROR_MESSAGES = {
-        TOKEN_INVALID: 'This approval link is invalid.',
-        TOKEN_ALREADY_USED: 'This approval link has already been used.',
-        TOKEN_EXPIRED: 'This approval link has expired. The account has been removed per policy.',
-      };
-      return res.status(400).json({
-        success: false,
-        error: { code: result.error, message: ERROR_MESSAGES[result.error] },
-      });
+      throw new AppError(400, result.error, GUARDIAN_APPROVE_ERRORS[result.error]);
     }
 
     const MESSAGES = {

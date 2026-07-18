@@ -6,7 +6,7 @@ const {
   approveKycRequest,
   rejectKycRequest,
 } = require('../../services/kycService');
-const { ApiError } = require('../../middleware/errorHandler');
+const { AppError } = require('../../middleware/errorHandler');
 
 async function listPending(req, res, next) {
   try {
@@ -25,7 +25,7 @@ async function getDetail(req, res, next) {
   try {
     const context = await getRequestForReview(req.params.id);
     if (!context) {
-      throw new ApiError(404, 'REQUEST_NOT_FOUND', 'KYC request not found or not pending review.');
+      throw new AppError(404, 'REQUEST_NOT_FOUND', 'KYC request not found or not pending review.');
     }
 
     const { kycRequest, applicant } = context;
@@ -49,16 +49,11 @@ async function getDetail(req, res, next) {
   }
 }
 
-/**
- * Streams a decrypted document image. Ownership is checked via the
- * KYCRequest's own document references — never trust a raw file_reference
- * passed directly by the client (prevents IDOR across unrelated requests).
- */
 async function getDocumentImage(req, res, next) {
   try {
     const { id, documentType } = req.params;
     if (!['id_document', 'selfie'].includes(documentType)) {
-      throw new ApiError(
+      throw new AppError(
         400,
         'INVALID_DOCUMENT_TYPE',
         'documentType must be id_document or selfie.'
@@ -67,7 +62,7 @@ async function getDocumentImage(req, res, next) {
 
     const kycRequest = await KYCRequest.findById(id);
     if (!kycRequest) {
-      throw new ApiError(404, 'REQUEST_NOT_FOUND', 'KYC request not found.');
+      throw new AppError(404, 'REQUEST_NOT_FOUND', 'KYC request not found.');
     }
 
     const fileReference =
@@ -77,7 +72,7 @@ async function getDocumentImage(req, res, next) {
 
     const document = await KYCDocument.findOne({ file_reference: fileReference });
     if (!document) {
-      throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Document not found.');
+      throw new AppError(404, 'DOCUMENT_NOT_FOUND', 'Document not found.');
     }
 
     const decrypted = decryptForUser(document.encrypted_content, document.user_id);
@@ -101,7 +96,7 @@ async function approve(req, res, next) {
     });
 
     if (!result.success) {
-      throw new ApiError(400, result.reason, 'Could not process the approval.');
+      throw new AppError(400, result.reason, 'Could not process the approval.');
     }
 
     return res.status(200).json({ success: true, data: { outcome: result.outcome } });
@@ -120,7 +115,7 @@ async function reject(req, res, next) {
     });
 
     if (!result.success) {
-      throw new ApiError(400, result.reason, 'Could not process the rejection.');
+      throw new AppError(400, result.reason, 'Could not process the rejection.');
     }
 
     return res.status(200).json({ success: true, data: {} });

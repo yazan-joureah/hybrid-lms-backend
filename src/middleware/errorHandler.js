@@ -1,16 +1,22 @@
 /**
  * Centralized error handler.
- * Returns the standard API error envelope defined in REST_API_Contract_v1.2:
- *   { success: false, error: { code, message } }
- * Never leaks stack traces or internal details to the client (OWASP A09).
+ * Returns the standard API error envelope: { success: false, error: { code, message } }
+ * Never leaks stack traces or internal details (OWASP A09).
  */
 const logger = require('../utils/logger');
 
-class ApiError extends Error {
-  constructor(statusCode, code, message) {
+class AppError extends Error {
+  /**
+   * @param {number} statusCode
+   * @param {string} code - machine-readable error code (e.g. 'INVALID_CREDENTIALS')
+   * @param {string} message - safe, user-facing message (never internal details)
+   * @param {object|null} clientData - extra fields merged into response.data (e.g. { next_step: 'verify_email' })
+   */
+  constructor(statusCode, code, message, clientData = null) {
     super(message);
     this.statusCode = statusCode;
     this.code = code;
+    this.clientData = clientData;
   }
 }
 
@@ -23,10 +29,12 @@ function errorHandler(err, req, res, _next) {
     logger.error('Unhandled error', { error: err.message, stack: err.stack, path: req.path });
   }
 
-  res.status(statusCode).json({
-    success: false,
-    error: { code, message },
-  });
+  const body = { success: false, error: { code, message } };
+  if (err.clientData) {
+    body.data = err.clientData;
+  }
+
+  res.status(statusCode).json(body);
 }
 
 function notFoundHandler(req, res) {
@@ -36,4 +44,4 @@ function notFoundHandler(req, res) {
   });
 }
 
-module.exports = { errorHandler, notFoundHandler, ApiError };
+module.exports = { errorHandler, notFoundHandler, AppError };
