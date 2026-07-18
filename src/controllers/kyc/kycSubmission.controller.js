@@ -1,5 +1,5 @@
 const { submitKycRequest } = require('../../services/kycService');
-const { ApiError } = require('../../middleware/errorHandler');
+const { AppError } = require('../../middleware/errorHandler');
 
 async function submit(req, res, next) {
   try {
@@ -7,7 +7,7 @@ async function submit(req, res, next) {
     const selfieFile = req.files?.selfie?.[0];
 
     if (!idFile || !selfieFile) {
-      throw new ApiError(400, 'MISSING_FILES', 'Both id_document and selfie files are required.');
+      throw new AppError(400, 'MISSING_FILES', 'Both id_document and selfie files are required.');
     }
 
     const result = await submitKycRequest({
@@ -19,7 +19,7 @@ async function submit(req, res, next) {
     });
 
     if (!result.success) {
-      throw new ApiError(400, result.reason, 'Your KYC submission could not be processed.');
+      throw new AppError(400, result.reason, 'Your KYC submission could not be processed.');
     }
 
     return res

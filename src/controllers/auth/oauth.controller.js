@@ -1,5 +1,6 @@
 const authService = require('../../services/authService');
 const { issueSessionCookies } = require('../../utils/sessionCookies.util');
+const { AppError } = require('../../middleware/errorHandler');
 
 async function googleConsent(req, res, next) {
   try {
@@ -10,7 +11,7 @@ async function googleConsent(req, res, next) {
   }
 }
 
-const OAUTH_ERROR_RESPONSES = {
+const OAUTH_ERRORS = {
   INVALID_STATE: { status: 403, message: 'Invalid or expired OAuth session. Please try again.' },
   GOOGLE_EXCHANGE_FAILED: {
     status: 502,
@@ -56,10 +57,8 @@ async function googleCallback(req, res, next) {
     });
 
     if (result.error) {
-      const info = OAUTH_ERROR_RESPONSES[result.error];
-      return res
-        .status(info.status)
-        .json({ success: false, error: { code: result.error, message: info.message } });
+      const info = OAUTH_ERRORS[result.error];
+      throw new AppError(info.status, result.error, info.message);
     }
 
     if (result.requiresLinkConfirmation) {
@@ -95,7 +94,7 @@ async function googleLinkConfirm(req, res, next) {
 
     if (result.error) {
       const messages = {
-        ...OAUTH_ERROR_RESPONSES,
+        ...OAUTH_ERRORS,
         INVALID_PASSWORD: { status: 401, message: 'Incorrect password.' },
         ALREADY_LINKED_ELSEWHERE: {
           status: 409,
@@ -103,9 +102,7 @@ async function googleLinkConfirm(req, res, next) {
         },
       };
       const info = messages[result.error];
-      return res
-        .status(info.status)
-        .json({ success: false, error: { code: result.error, message: info.message } });
+      throw new AppError(info.status, result.error, info.message);
     }
 
     return finishOAuthLogin(result, res);
@@ -123,13 +120,8 @@ async function googleRegisterConfirm(req, res, next) {
     });
 
     if (result.error) {
-      const info = OAUTH_ERROR_RESPONSES[result.error] || {
-        status: 400,
-        message: 'Registration failed.',
-      };
-      return res
-        .status(info.status)
-        .json({ success: false, error: { code: result.error, message: info.message } });
+      const info = OAUTH_ERRORS[result.error] || { status: 400, message: 'Registration failed.' };
+      throw new AppError(info.status, result.error, info.message);
     }
 
     if (result.requiresGuardianEmail) {
@@ -166,9 +158,7 @@ async function googleGuardianEmail(req, res, next) {
         },
       };
       const info = messages[result.error];
-      return res
-        .status(info.status)
-        .json({ success: false, error: { code: result.error, message: info.message } });
+      throw new AppError(info.status, result.error, info.message);
     }
 
     return res

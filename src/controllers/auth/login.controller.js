@@ -2,8 +2,9 @@ const authService = require('../../services/authService');
 const { issueSessionCookies } = require('../../utils/sessionCookies.util');
 const env = require('../../config/env');
 const { CSRF_COOKIE_NAME } = require('../../middleware/csrfProtection');
+const { AppError } = require('../../middleware/errorHandler');
 
-const LOGIN_ERROR_RESPONSES = {
+const LOGIN_ERRORS = {
   INVALID_CREDENTIALS: { status: 401, message: 'Invalid email or password.' },
   ACCOUNT_LOCKED: {
     status: 423,
@@ -13,12 +14,12 @@ const LOGIN_ERROR_RESPONSES = {
   EMAIL_NOT_VERIFIED: {
     status: 403,
     message: 'Please verify your email first.',
-    nextStep: 'verify_email',
+    clientData: { next_step: 'verify_email' },
   },
   GUARDIAN_PENDING: {
     status: 403,
     message: 'Waiting for guardian approval.',
-    nextStep: 'guardian_pending',
+    clientData: { next_step: 'guardian_pending' },
   },
   ACCOUNT_SUSPENDED: {
     status: 403,
@@ -32,12 +33,8 @@ async function login(req, res, next) {
     const result = await authService.loginUser({ ...req.validatedBody, req });
 
     if (result.error) {
-      const info = LOGIN_ERROR_RESPONSES[result.error];
-      const body = { success: false, error: { code: result.error, message: info.message } };
-      if (info.nextStep) {
-        body.data = { next_step: info.nextStep };
-      }
-      return res.status(info.status).json(body);
+      const info = LOGIN_ERRORS[result.error];
+      throw new AppError(info.status, result.error, info.message, info.clientData);
     }
 
     if (result.mfaRequired) {
@@ -92,7 +89,7 @@ async function logout(req, res, next) {
   }
 }
 
-const REFRESH_ERROR_RESPONSES = {
+const REFRESH_ERRORS = {
   TOKEN_MISSING: { status: 401, message: 'Refresh token is missing.' },
   TOKEN_INVALID: { status: 401, message: 'Refresh token is invalid, expired, or revoked.' },
   SESSION_REVOKED: { status: 403, message: 'Your password was changed. Please log in again.' },
@@ -106,11 +103,8 @@ async function refresh(req, res, next) {
     });
 
     if (result.error) {
-      const info = REFRESH_ERROR_RESPONSES[result.error];
-      return res.status(info.status).json({
-        success: false,
-        error: { code: result.error, message: info.message },
-      });
+      const info = REFRESH_ERRORS[result.error];
+      throw new AppError(info.status, result.error, info.message);
     }
 
     issueSessionCookies(res, result.refreshTokenRaw);
@@ -132,7 +126,7 @@ async function forgotPassword(req, res, next) {
   }
 }
 
-const RESET_PASSWORD_ERROR_RESPONSES = {
+const RESET_PASSWORD_ERRORS = {
   TOKEN_INVALID: 'This reset link is invalid.',
   TOKEN_ALREADY_USED: 'This reset link has already been used.',
   TOKEN_EXPIRED: 'This reset link has expired. Please request a new one.',
@@ -144,10 +138,7 @@ async function resetPassword(req, res, next) {
     const result = await authService.resetPassword({ rawToken: token, newPassword, req });
 
     if (result.error) {
-      return res.status(400).json({
-        success: false,
-        error: { code: result.error, message: RESET_PASSWORD_ERROR_RESPONSES[result.error] },
-      });
+      throw new AppError(400, result.error, RESET_PASSWORD_ERRORS[result.error]);
     }
 
     return res.status(200).json({

@@ -1,6 +1,7 @@
 const QRCode = require('qrcode');
 const authService = require('../../services/authService');
 const { issueSessionCookies } = require('../../utils/sessionCookies.util');
+const { AppError } = require('../../middleware/errorHandler');
 
 /** POST /auth/mfa/totp/setup — requires Bearer JWT. */
 async function setupTotp(req, res, next) {
@@ -8,10 +9,7 @@ async function setupTotp(req, res, next) {
     const result = await authService.setupTotp({ userId: req.user.id, req });
 
     if (result.error) {
-      return res.status(404).json({
-        success: false,
-        error: { code: result.error, message: 'User not found.' },
-      });
+      throw new AppError(404, result.error, 'User not found.');
     }
 
     const qrCodeDataUrl = await QRCode.toDataURL(result.provisioningUri);
@@ -29,7 +27,7 @@ async function setupTotp(req, res, next) {
   }
 }
 
-const TOTP_VERIFY_ERROR_RESPONSES = {
+const TOTP_VERIFY_ERRORS = {
   NO_PENDING_SETUP: { status: 400, message: 'No pending TOTP setup found. Call setup first.' },
   ALREADY_ENABLED: { status: 409, message: 'MFA is already enabled for this account.' },
   INVALID_CODE: { status: 400, message: 'Invalid or expired code.' },
@@ -45,11 +43,8 @@ async function verifyTotp(req, res, next) {
     });
 
     if (result.error) {
-      const info = TOTP_VERIFY_ERROR_RESPONSES[result.error];
-      return res.status(info.status).json({
-        success: false,
-        error: { code: result.error, message: info.message },
-      });
+      const info = TOTP_VERIFY_ERRORS[result.error];
+      throw new AppError(info.status, result.error, info.message);
     }
 
     return res.status(200).json({
@@ -65,7 +60,7 @@ async function verifyTotp(req, res, next) {
   }
 }
 
-const MFA_LOGIN_VERIFY_ERROR_RESPONSES = {
+const MFA_LOGIN_VERIFY_ERRORS = {
   MFA_CHALLENGE_EXPIRED: {
     status: 401,
     message: 'MFA challenge has expired. Please log in again.',
@@ -77,19 +72,16 @@ const MFA_LOGIN_VERIFY_ERROR_RESPONSES = {
 /**
  * POST /auth/mfa/login/verify — completes login after mfa_required=true.
  * DEVIATION: cookie-setting duplication with login.controller.js's login()
- * still stands here (5th occurrence) — flagged for a controller-level
- * cookie-helper pass if this keeps growing; not addressed in this split.
+ * still stands (5th occurrence) — flagged for a controller-level cookie
+ * helper pass, not addressed here.
  */
 async function verifyMfaLogin(req, res, next) {
   try {
     const result = await authService.completeMfaLogin({ ...req.validatedBody, req });
 
     if (result.error) {
-      const info = MFA_LOGIN_VERIFY_ERROR_RESPONSES[result.error];
-      return res.status(info.status).json({
-        success: false,
-        error: { code: result.error, message: info.message },
-      });
+      const info = MFA_LOGIN_VERIFY_ERRORS[result.error];
+      throw new AppError(info.status, result.error, info.message);
     }
 
     issueSessionCookies(res, result.refreshTokenRaw);
