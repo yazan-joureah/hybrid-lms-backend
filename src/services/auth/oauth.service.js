@@ -1,7 +1,6 @@
 /**
  * Google OAuth Login — Bounded Context.
- * Source: UC-AUTH-11, UC-AUTH-12 (always taken — see googleOAuthLogin.js),
- * UC-AUTH-13, MUC-AUTH-14/15.
+ * Source: UC-AUTH-11, UC-AUTH-12, UC-AUTH-13, MUC-AUTH-14/15.
  */
 const User = require('../../models/User');
 const ExternalIdentity = require('../../models/ExternalIdentity');
@@ -57,7 +56,7 @@ async function handleGoogleCallback({ code, state, req }) {
   });
 
   if (existingIdentity) {
-    return completeLoginForLinkedUser(existingIdentity.user_id, req);
+    return completeLoginForLinkedUser({ userId: existingIdentity.user_id, req });
   }
 
   const localUserWithSameEmail = await User.findOne({ email: profile.email });
@@ -89,7 +88,8 @@ async function handleGoogleCallback({ code, state, req }) {
   return { error: null, requiresBirthDate: true, registrationPendingToken };
 }
 
-async function completeLoginForLinkedUser(userId, req) {
+/// Internal helper
+async function completeLoginForLinkedUser({ userId, req }) {
   const user = await User.findById(userId);
   if (!user) {
     return { error: 'TOKEN_INVALID' };
@@ -115,7 +115,7 @@ async function completeLoginForLinkedUser(userId, req) {
     return { error: null, mfaRequired: true, mfaTempToken, mfaMethod: 'TOTP' };
   }
 
-  const { accessToken, refreshTokenRaw } = await createUserSession(user, req);
+  const { accessToken, refreshTokenRaw } = await createUserSession({ user, req });
 
   await auditService.record({
     actorId: user._id,
@@ -184,7 +184,7 @@ async function confirmGoogleLink({ rawToken, password, req }) {
     req,
   });
 
-  return completeLoginForLinkedUser(user._id, req);
+  return completeLoginForLinkedUser({ userId: user._id, req });
 }
 
 async function confirmGoogleRegistration({ rawToken, birthDate, req }) {
@@ -240,7 +240,7 @@ async function confirmGoogleRegistration({ rawToken, birthDate, req }) {
     return { error: null, requiresGuardianEmail: true, guardianPendingToken };
   }
 
-  return completeLoginForLinkedUser(user._id, req);
+  return completeLoginForLinkedUser({ userId: user._id, req });
 }
 
 async function submitGoogleGuardianEmail({ rawToken, guardianEmail, req }) {

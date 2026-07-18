@@ -1,21 +1,13 @@
-/**
- * AUTH controllers — thin layer: parse → call service → shape response.
- * No business logic here (MVCS discipline — see README.md).
- */
 const QRCode = require('qrcode');
-const mfaService = require('../services/auth/mfa.service');
 const authService = require('../services/authService');
-const oauthService = require('../services/auth/oauth.service');
 const { issueSessionCookies } = require('../utils/sessionCookies.util');
 const env = require('../config/env');
 const { CSRF_COOKIE_NAME } = require('../middleware/csrfProtection');
 
 async function register(req, res, next) {
   try {
-    const result = await authService.registerUser(req.validatedBody, req);
+    const result = await authService.registerUser({ ...req.validatedBody, req });
 
-    // Identical response shape whether or not the email already existed —
-    // prevents User Enumeration (MUC-AUTH-04).
     if (result.requiresGuardianApproval) {
       return res.status(201).json({
         success: true,
@@ -37,10 +29,7 @@ async function register(req, res, next) {
 
 /**
  * GET /auth/guardian/approve — ⚠️ TEMPORARY BACKEND-ONLY PLACEHOLDER.
- * The real endpoint is a Frontend Route (HTML consent form) — out of
- * scope for this repo. Exists only so the backend team can verify a
- * token manually via curl/Postman before the frontend exists.
- * TODO: remove once Frontend team (Yazan Habib / Safa) ships the real page.
+ * TODO: remove once Frontend team ships the real page.
  */
 async function guardianApprovePagePlaceholder(req, res) {
   return res.status(200).json({
@@ -122,13 +111,10 @@ const LOGIN_ERROR_RESPONSES = {
   },
 };
 
-/**
- * POST /auth/login — UC-AUTH-03.
- * Source: REST_API_Contract_v1.2 Group 3.
- */
+/** POST /auth/login — UC-AUTH-03. */
 async function login(req, res, next) {
   try {
-    const result = await authService.loginUser(req.validatedBody, req);
+    const result = await authService.loginUser({ ...req.validatedBody, req });
 
     if (result.error) {
       const info = LOGIN_ERROR_RESPONSES[result.error];
@@ -140,7 +126,6 @@ async function login(req, res, next) {
     }
 
     if (result.mfaRequired) {
-      // No cookie, no access_token — the client is NOT authenticated yet.
       return res.status(200).json({
         success: true,
         data: {
@@ -171,12 +156,10 @@ async function login(req, res, next) {
   }
 }
 
-/**
- * POST /auth/logout — requires Bearer JWT (authMiddleware.requireAuth).
- */
+/** POST /auth/logout — requires Bearer JWT. */
 async function logout(req, res, next) {
   try {
-    await authService.logoutUser({ sessionId: req.user.sessionId }, req);
+    await authService.logoutUser({ sessionId: req.user.sessionId, req });
 
     res.clearCookie('refresh_token', {
       httpOnly: true,
@@ -205,10 +188,10 @@ const REFRESH_ERROR_RESPONSES = {
 
 async function refresh(req, res, next) {
   try {
-    const result = await authService.refreshSession(
-      { rawRefreshToken: req.cookies?.refresh_token },
-      req
-    );
+    const result = await authService.refreshSession({
+      rawRefreshToken: req.cookies?.refresh_token,
+      req,
+    });
 
     if (result.error) {
       const info = REFRESH_ERROR_RESPONSES[result.error];
@@ -228,8 +211,7 @@ async function refresh(req, res, next) {
 
 async function forgotPassword(req, res, next) {
   try {
-    await authService.forgotPassword(req.validatedBody, req);
-    // Deliberately identical response whether the email existed or not.
+    await authService.forgotPassword({ ...req.validatedBody, req });
     return res.status(200).json({
       success: true,
       data: { message: 'If this email exists, a reset link has been sent' },
@@ -248,7 +230,7 @@ const RESET_PASSWORD_ERROR_RESPONSES = {
 async function resetPassword(req, res, next) {
   try {
     const { token, new_password: newPassword } = req.validatedBody;
-    const result = await authService.resetPassword({ rawToken: token, newPassword }, req);
+    const result = await authService.resetPassword({ rawToken: token, newPassword, req });
 
     if (result.error) {
       return res.status(400).json({
@@ -265,10 +247,8 @@ async function resetPassword(req, res, next) {
     next(err);
   }
 }
-/**
- * GET /auth/verify-email
- * Source: REST_API_Contract_v1.2 Group 1.
- */
+
+/** GET /auth/verify-email */
 async function verifyEmail(req, res, next) {
   try {
     const rawToken = req.query.token;
@@ -280,7 +260,7 @@ async function verifyEmail(req, res, next) {
       });
     }
 
-    const result = await authService.verifyEmail(rawToken, req);
+    const result = await authService.verifyEmail({ rawToken, req });
 
     if (result.error) {
       const ERROR_MESSAGES = {
@@ -308,13 +288,10 @@ async function verifyEmail(req, res, next) {
   }
 }
 
-/**
- * POST /auth/mfa/totp/setup — requires Bearer JWT (requireAuth).
- * Self-designed contract (no official REST_API_Contract for Groups 5-8).
- */
+/** POST /auth/mfa/totp/setup — requires Bearer JWT. */
 async function setupTotp(req, res, next) {
   try {
-    const result = await mfaService.setupTotp(req.user.id, req);
+    const result = await authService.setupTotp({ userId: req.user.id, req });
 
     if (result.error) {
       return res.status(404).json({
@@ -323,9 +300,6 @@ async function setupTotp(req, res, next) {
       });
     }
 
-    // QR image generation is a presentation concern — kept here in the
-    // thin controller layer, not in mfa.service.js, which only deals in
-    // the underlying otpauth:// URI (business data).
     const qrCodeDataUrl = await QRCode.toDataURL(result.provisioningUri);
 
     return res.status(200).json({
@@ -347,12 +321,14 @@ const TOTP_VERIFY_ERROR_RESPONSES = {
   INVALID_CODE: { status: 400, message: 'Invalid or expired code.' },
 };
 
-/**
- * POST /auth/mfa/totp/verify — requires Bearer JWT (requireAuth).
- */
+/** POST /auth/mfa/totp/verify — requires Bearer JWT. */
 async function verifyTotp(req, res, next) {
   try {
-    const result = await mfaService.confirmTotpSetup(req.user.id, req.validatedBody.code, req);
+    const result = await authService.confirmTotpSetup({
+      userId: req.user.id,
+      code: req.validatedBody.code,
+      req,
+    });
 
     if (result.error) {
       const info = TOTP_VERIFY_ERROR_RESPONSES[result.error];
@@ -386,15 +362,10 @@ const MFA_LOGIN_VERIFY_ERROR_RESPONSES = {
 
 /**
  * POST /auth/mfa/login/verify — completes login after mfa_required=true.
- * Cookie-setting logic is DELIBERATELY duplicated from login()/refresh()/
- * finishOAuthLogin() rather than extracted now — this is the FIRST
- * refactor candidate flagged for the upcoming full-module refactor pass
- * (4th occurrence of the identical 6-line block), not addressed here to
- * keep this fix isolated and low-risk.
  */
 async function verifyMfaLogin(req, res, next) {
   try {
-    const result = await mfaService.completeMfaLogin(req.validatedBody, req);
+    const result = await authService.completeMfaLogin({ ...req.validatedBody, req });
 
     if (result.error) {
       const info = MFA_LOGIN_VERIFY_ERROR_RESPONSES[result.error];
@@ -425,7 +396,7 @@ async function verifyMfaLogin(req, res, next) {
 
 async function googleConsent(req, res, next) {
   try {
-    const url = await oauthService.getGoogleConsentUrl();
+    const url = await authService.getGoogleConsentUrl();
     return res.redirect(url);
   } catch (err) {
     next(err);
@@ -449,7 +420,7 @@ const OAUTH_ERROR_RESPONSES = {
 
 async function googleCallback(req, res, next) {
   try {
-    const result = await oauthService.handleGoogleCallback({
+    const result = await authService.handleGoogleCallback({
       code: req.query.code,
       state: req.query.state,
       req,
@@ -508,7 +479,7 @@ function finishOAuthLogin(result, res) {
 
 async function googleLinkConfirm(req, res, next) {
   try {
-    const result = await oauthService.confirmGoogleLink({
+    const result = await authService.confirmGoogleLink({
       rawToken: req.validatedBody.link_pending_token,
       password: req.validatedBody.password,
       req,
@@ -537,7 +508,7 @@ async function googleLinkConfirm(req, res, next) {
 
 async function googleRegisterConfirm(req, res, next) {
   try {
-    const result = await oauthService.confirmGoogleRegistration({
+    const result = await authService.confirmGoogleRegistration({
       rawToken: req.validatedBody.registration_pending_token,
       birthDate: req.validatedBody.birth_date,
       req,
@@ -569,9 +540,10 @@ async function googleRegisterConfirm(req, res, next) {
     next(err);
   }
 }
+
 async function googleGuardianEmail(req, res, next) {
   try {
-    const result = await oauthService.submitGoogleGuardianEmail({
+    const result = await authService.submitGoogleGuardianEmail({
       rawToken: req.validatedBody.guardian_pending_token,
       guardianEmail: req.validatedBody.guardian_email,
       req,
@@ -599,13 +571,10 @@ async function googleGuardianEmail(req, res, next) {
   }
 }
 
-/**
- * GET /auth/me — returns the current authenticated user's safe profile.
- * Added to close a gap discovered while integrating the Base44 frontend.
- */
+/** GET /auth/me */
 async function getMe(req, res, next) {
   try {
-    const userData = await authService.getUserProfile(req.user.id);
+    const userData = await authService.getUserProfile({ userId: req.user.id });
     return res.status(200).json({
       success: true,
       data: userData,

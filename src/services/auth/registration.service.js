@@ -1,11 +1,6 @@
 /**
  * Registration & Guardian Approval — Bounded Context.
- * Extracted from the monolithic authService.js (642 lines) during the
- * Refactor phase. Pure structural move — ZERO behavioral change. Every
- * function body below is byte-identical to its previous location.
- *
- * Covers: UC-AUTH-01 (Register), UC-AUTH-02 (Guardian Approval),
- * email verification's State Machine (Module_DB_Design_Specification_v1.3).
+ * Covers: UC-AUTH-01, UC-AUTH-02, email verification State Machine.
  */
 const User = require('../../models/User');
 const AuthToken = require('../../models/AuthToken');
@@ -21,36 +16,39 @@ const { ApiError } = require('../../middleware/errorHandler');
 const EMAIL_VERIFICATION_TTL_HOURS = 24;
 const GUARDIAN_APPROVAL_TTL_HOURS = 48;
 
-/**
- * Registers a new user. ALWAYS returns the same shape of success response
- * regardless of whether the email already existed, to prevent User
- * Enumeration (OWASP A07, MUC-AUTH-04).
- */
-async function registerUser(input, req) {
-  // check if user already exsists
-  const existing = await User.findOne({ email: input.email }).lean();
+async function registerUser({
+  full_name: fullName,
+  email,
+  password,
+  birth_date: birthDate,
+  role,
+  privacy_consent_version: privacyConsentVersion,
+  guardian_email: guardianEmail,
+  req,
+}) {
+  const existing = await User.findOne({ email }).lean();
   if (existing) {
     logger.debug('Register attempt for existing email — returning generic success');
     return { alreadyExisted: true, requiresGuardianApproval: false };
   }
 
-  const passwordHash = await hashPassword(input.password);
-  const minor = isMinor(input.birth_date);
+  const passwordHash = await hashPassword(password);
+  const minor = isMinor(birthDate);
 
   const user = await User.create({
-    full_name: input.full_name,
-    email: input.email,
+    full_name: fullName,
+    email,
     password_hash: passwordHash,
-    birth_date: new Date(input.birth_date),
-    role: input.role,
+    birth_date: new Date(birthDate),
+    role,
     status: 'pending_email_verification',
     privacy_consent: {
-      policy_version: input.privacy_consent_version,
+      policy_version: privacyConsentVersion,
       accepted_at: new Date(),
       ip: req.ip,
       user_agent: req.get('user-agent') || 'unknown',
     },
-    terms_accepted_at: input.role === 'Student' ? new Date() : null,
+    terms_accepted_at: role === 'Student' ? new Date() : null,
   });
 
   await auditService.record({
@@ -90,7 +88,7 @@ async function registerUser(input, req) {
 
     await GuardianApproval.create({
       user_id: user._id,
-      guardian_email: input.guardian_email,
+      guardian_email: guardianEmail,
       approval_token_hash: approvalHash,
       student_access_token_hash: studentAccessHash,
       status: 'pending',
@@ -99,12 +97,12 @@ async function registerUser(input, req) {
       student_device_fingerprint: req.get('x-device-fingerprint') || null,
     });
 
-    const approveUrl = `${env.frontUrl}/guardian-approve?token=${approvalRaw}`;
+    const approveUrl = `${env.frontUrl}/auth/guardian/approve?token=${approvalRaw}`;
     const manageUrl = `${env.frontUrl}/auth/guardian/manage?token=${studentAccessRaw}`;
 
     try {
       await Promise.all([
-        emailService.sendGuardianApprovalEmail(input.guardian_email, approveUrl, user.full_name),
+        emailService.sendGuardianApprovalEmail(guardianEmail, approveUrl, user.full_name),
         emailService.sendGuardianWaitingEmail(user.email, manageUrl),
       ]);
     } catch (err) {
@@ -127,12 +125,8 @@ async function registerUser(input, req) {
   return { alreadyExisted: false, requiresGuardianApproval, userId: user._id };
 }
 
-/**
- * Completes email verification (GET /auth/verify-email).
- * State machine (CLOSED DECISION — Module_DB_Design_Specification_v1.3):
- *   status = active ⟺ email_verified_at ≠ null AND (adult OR GuardianApproval.approved_at ≠ null)
- */
-async function verifyEmail(rawToken, req) {
+// GET /auth/verify-email.
+async function verifyEmail({ rawToken, req }) {
   const tokenHash = sha256(rawToken);
 
   const authToken = await AuthToken.findOne({
@@ -188,11 +182,7 @@ async function verifyEmail(rawToken, req) {
   };
 }
 
-/**
- * Handles POST /auth/guardian/approve — the guardian's decision.
- * Fraud-detection note (MUC-AUTH-09, CLOSED DECISION): a matching
- * IP/fingerprint between guardian and student FLAGS, never BLOCKS.
- */
+/// POST /auth/guardian/approve. MUC-AUTH-09: matching IP/fingerprint FLAGS, never BLOCKS.
 async function processGuardianApproval({
   rawToken,
   decision,
@@ -277,18 +267,13 @@ async function processGuardianApproval({
   return { error: null, status: 'guardian_pending', decision };
 }
 
-/**
- * Service function to fetch the current user's profile.
- * Used by GET /auth/me.
- * Throws ApiError if user does not exist.
- */
-async function getUserProfile(userId) {
+//GET /auth/me.
+async function getUserProfile({ userId }) {
   const user = await User.findById(userId).select(
     'full_name email role status kyc_status mfa_enabled birth_date created_at'
   );
 
   if (!user) {
-    // Same 401 shape as an invalid token, no information leak
     throw new ApiError(401, 'TOKEN_INVALID', 'User no longer exists');
   }
 

@@ -1,9 +1,5 @@
 /**
  * Session & Token Lifecycle — Bounded Context.
- * Extracted from the monolithic authService.js (642 lines) during the
- * Refactor phase. Pure structural move — ZERO behavioral change. Every
- * function body below is byte-identical to its previous location.
- *
  * Covers: UC-AUTH-03 (Login), UC-AUTH-04 (Lock Account), UC-AUTH-07
  * (Session Management: Logout + Refresh + Token Rotation), FR-03b.
  */
@@ -17,16 +13,11 @@ const { signAccessToken, signMfaTempToken } = require('../../utils/jwt');
 const auditService = require('../auditService');
 const env = require('../../config/env');
 
-const MAX_FAILED_LOGIN_ATTEMPTS = 5; // matches UC-AUTH-04 exactly
-const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — REST_API_Contract_v1.2 §1
+const MAX_FAILED_LOGIN_ATTEMPTS = 5;
+const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-/**
- * UC-AUTH-04 — Lock Account after Failures.
- * Auto-unlock (extension [a2]) is handled at read-time in loginUser(),
- * not via a Cron Job — cheaper and always consistent with the instant
- * the user actually tries again.
- */
-async function handleFailedLogin(user, req) {
+//UC-AUTH-04 — Lock Account after Failures. Auto-unlock handled at read-time in loginUser().
+async function handleFailedLogin({ user, req }) {
   user.failed_login_count += 1;
 
   if (user.failed_login_count >= MAX_FAILED_LOGIN_ATTEMPTS) {
@@ -46,6 +37,7 @@ async function handleFailedLogin(user, req) {
   await user.save();
 }
 
+//Single-value input (user document only)
 function computeRedirectTo(user) {
   if (user.role === 'Student') return '/dashboard';
   if (user.role === 'Instructor') {
@@ -53,15 +45,11 @@ function computeRedirectTo(user) {
       ? '/instructor/setup'
       : '/instructor/dashboard';
   }
-  return '/admin/dashboard'; // Admin / SuperAdmin
+  return '/admin/dashboard';
 }
 
-/**
- * Shared session-issuance logic — extracted so both password-based login
- * (loginUser) and Google OAuth login (oauth.service.js) mint sessions
- * identically, with zero duplicated JWT/Session/RefreshToken code.
- */
-async function createUserSession(user, req) {
+// Shared session-issuance — used by password login, MFA-completed login, and Google OAuth login.
+async function createUserSession({ user, req }) {
   const session = await Session.create({
     user_id: user._id,
     device_fingerprint: req.get('x-device-fingerprint') || 'unknown',
@@ -86,16 +74,14 @@ async function createUserSession(user, req) {
   return { accessToken, refreshTokenRaw, session };
 }
 
-/**
- * POST /auth/login — UC-AUTH-03 + SF-AUTH-04.
- */
-async function loginUser(input, req) {
-  const user = await User.findOne({ email: input.email });
+// POST /auth/login — UC-AUTH-03 + SF-AUTH-04.
+async function loginUser({ email, password, req }) {
+  const user = await User.findOne({ email });
 
   if (!user || !user.password_hash) {
     await LoginAttempt.create({
       user_id: null,
-      email_entered: input.email,
+      email_entered: email,
       attempt_type: 'LOGIN',
       success: false,
       ip_address: req.ip,
@@ -115,11 +101,11 @@ async function loginUser(input, req) {
     return { error: 'ACCOUNT_LOCKED' };
   }
 
-  const passwordValid = await verifyPassword(input.password, user.password_hash);
+  const passwordValid = await verifyPassword(password, user.password_hash);
 
   await LoginAttempt.create({
     user_id: user._id,
-    email_entered: input.email,
+    email_entered: email,
     attempt_type: 'LOGIN',
     success: passwordValid,
     ip_address: req.ip,
@@ -127,7 +113,7 @@ async function loginUser(input, req) {
   });
 
   if (!passwordValid) {
-    await handleFailedLogin(user, req);
+    await handleFailedLogin({ user, req });
     return { error: 'INVALID_CREDENTIALS' };
   }
 
@@ -167,7 +153,7 @@ async function loginUser(input, req) {
     };
   }
 
-  const { accessToken, refreshTokenRaw } = await createUserSession(user, req);
+  const { accessToken, refreshTokenRaw } = await createUserSession({ user, req });
 
   await auditService.record({
     actorId: user._id,
@@ -192,13 +178,8 @@ async function loginUser(input, req) {
   };
 }
 
-/**
- * POST /auth/logout — UC-AUTH-07.
- * Operates on sessionId (from the verified Access Token's `sid` claim),
- * not on the raw refresh token cookie — robust even if the cookie is
- * already missing/corrupted client-side. Idempotent by design.
- */
-async function logoutUser({ sessionId }, req) {
+/** POST /auth/logout — UC-AUTH-07. Idempotent by design. */
+async function logoutUser({ sessionId, req }) {
   const session = await Session.findById(sessionId);
 
   if (session && session.status === 'active') {
@@ -223,12 +204,8 @@ async function logoutUser({ sessionId }, req) {
   return { error: null };
 }
 
-/**
- * POST /auth/refresh — UC-AUTH-07.
- * Token Rotation (mandatory): every successful refresh issues a BRAND NEW
- * opaque token and immediately revokes the one just presented.
- */
-async function refreshSession({ rawRefreshToken }, req) {
+// POST /auth/refresh — UC-AUTH-07. Token Rotation is mandatory.
+async function refreshSession({ rawRefreshToken, req }) {
   if (!rawRefreshToken) {
     return { error: 'TOKEN_MISSING' };
   }
@@ -245,7 +222,6 @@ async function refreshSession({ rawRefreshToken }, req) {
     return { error: 'TOKEN_INVALID' };
   }
 
-  // FR-03b enforcement point.
   if (existingToken.token_version !== user.token_version) {
     return { error: 'SESSION_REVOKED' };
   }
