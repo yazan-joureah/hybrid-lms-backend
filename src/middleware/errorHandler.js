@@ -20,7 +20,19 @@ class AppError extends Error {
   }
 }
 
+const MULTER_ERROR_MESSAGES = {
+  LIMIT_FILE_SIZE: 'The uploaded file exceeds the maximum allowed size.',
+  LIMIT_FILE_COUNT: 'Too many files uploaded in a single request.',
+  LIMIT_UNEXPECTED_FILE: 'Unexpected file field in the upload request.',
+};
+
 function errorHandler(err, req, res, _next) {
+  // Normalize Multer's third-party error shape into our AppError contract
+  if (err.name === 'MulterError') {
+    const message = MULTER_ERROR_MESSAGES[err.code] || 'File upload failed.';
+    err = new AppError(400, err.code, message);
+  }
+
   const statusCode = err.statusCode || 500;
   const code = err.code || 'INTERNAL_ERROR';
   const message = statusCode === 500 ? 'An unexpected error occurred' : err.message;
