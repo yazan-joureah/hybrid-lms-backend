@@ -45,7 +45,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await mongoose.connection.close();
-  if (redisClient.isOpen) await redisClient.quit();
+  await redisClient.quit();
 });
 
 // Helper to create users with specific states and a valid session
