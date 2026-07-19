@@ -2,24 +2,33 @@
 const express = require('express');
 const router = express.Router();
 
-const courseController = require('../controllers/courseController');
+const courseController = require('../controllers/course/course.controller');
 const { requireAuth } = require('../middleware/authMiddleware');
 const { requireRole } = require('../middleware/requireRole');
 const { rateLimit } = require('../middleware/rateLimiter');
 const { validateBody } = require('../middleware/validate');
-const { courseCreateSchema, courseUpdateSchema } = require('../validators/courseSchemas'); // Assuming Joi/Zod validator schema
+const requireVerifiedIdentity = require('../middleware/requireVerifiedIdentity.middleware');
+const { createMemoryUpload } = require('../middleware/upload.util');
+const {
+  courseCreateSchema,
+  courseUpdateSchema,
+  unitCreateSchema,
+  contentCreateSchema,
+} = require('../validators/courseSchemas');
 
-// POST /api/v1/courses - Instructor course creation matching UC-COURSE-05
+const COURSE_CONTENT_MAX_BYTES = 50 * 1024 * 1024;
+const uploadCourseContent = createMemoryUpload(COURSE_CONTENT_MAX_BYTES, 1);
+
 router.post(
   '/',
   requireAuth,
   requireRole(['Instructor']),
+  requireVerifiedIdentity,
   rateLimit('course-create', (req) => req.user.id),
   validateBody(courseCreateSchema),
   courseController.create
 );
 
-// GET /api/v1/courses/instructor/my-courses - Private instructor listing
 router.get(
   '/instructor/my-courses',
   requireAuth,
@@ -27,21 +36,48 @@ router.get(
   courseController.getMyCourses
 );
 
-// POST /api/v1/courses - Instructor course creation
-router.post(
-  '/',
-  requireAuth,
-  requireRole(['Instructor']),
-  validateBody(courseCreateSchema),
-  courseController.create
-);
-
-// PUT /api/v1/courses/:courseId - Instructor course update
 router.put(
   '/:courseId',
   requireAuth,
   requireRole(['Instructor']),
-  validateBody(courseUpdateSchema), // Validates types and max lengths
+  requireVerifiedIdentity,
+  validateBody(courseUpdateSchema),
   courseController.update
 );
+
+router.post(
+  '/:courseId/submit-review',
+  requireAuth,
+  requireRole(['Instructor']),
+  requireVerifiedIdentity,
+  courseController.submitForReview
+);
+
+router.post(
+  '/:courseId/cancel-review',
+  requireAuth,
+  requireRole(['Instructor']),
+  requireVerifiedIdentity,
+  courseController.cancelReview
+);
+
+router.post(
+  '/:courseId/units',
+  requireAuth,
+  requireRole(['Instructor']),
+  requireVerifiedIdentity,
+  validateBody(unitCreateSchema),
+  courseController.createUnit
+);
+
+router.post(
+  '/:courseId/units/:unitId/content',
+  requireAuth,
+  requireRole(['Instructor']),
+  requireVerifiedIdentity,
+  uploadCourseContent.single('file'),
+  validateBody(contentCreateSchema),
+  courseController.createContent
+);
+
 module.exports = router;

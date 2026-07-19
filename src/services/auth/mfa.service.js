@@ -1,8 +1,6 @@
 /**
  * MFA (TOTP) — Bounded Context.
- * Source: UC-AUTH-09 (Setup MFA via TOTP). REST contract self-designed
- * (Groups 5-8 have no official REST_API_Contract document — see prior
- * design discussion): POST /auth/mfa/totp/setup, POST /auth/mfa/totp/verify.
+ * Source: UC-AUTH-09 (Setup MFA), UC-AUTH-05 (Enforce MFA during Login).
  */
 const User = require('../../models/User');
 const MFAConfiguration = require('../../models/MFAConfiguration');
@@ -13,23 +11,15 @@ const {
   verifyTotpCode,
 } = require('../../utils/totp');
 const { hashPassword, generateOpaqueToken } = require('../../utils/crypto');
+const { verifyMfaTempToken, JwtError } = require('../../utils/jwt');
+const { createUserSession, computeRedirectTo } = require('./session.service');
 const auditService = require('../auditService');
 
-const BACKUP_CODE_COUNT = 10; // Industry convention (Google, GitHub) — UC-AUTH-09 doesn't pin an exact number
-const BACKUP_CODE_BYTES = 6; // 48 bits of entropy per code — exceeds Google's own 8-digit (~26.6-bit) backup codes
+const BACKUP_CODE_COUNT = 10;
+const BACKUP_CODE_BYTES = 6;
 
-/**
- * POST /auth/mfa/totp/setup — UC-AUTH-09 steps 1-4.
- * Does NOT enable MFA yet — only stores a PENDING encrypted secret and
- * returns the QR provisioning URI. MFA becomes active only after
- * confirmTotpSetup() proves the user actually scanned it correctly
- * (closes the "locked out immediately" failure mode discussed earlier).
- *
- * Idempotent-by-overwrite: calling this again before confirming (e.g. the
- * user failed to scan and wants a fresh QR) simply replaces the pending
- * secret — no orphaned half-configured state accumulates.
- */
-async function setupTotp(userId, req) {
+/** POST /auth/mfa/totp/setup — UC-AUTH-09 steps 1-4. Does NOT enable MFA yet. */
+async function setupTotp({ userId, req }) {
   const user = await User.findById(userId);
   if (!user) {
     return { error: 'USER_NOT_FOUND' };
@@ -62,21 +52,11 @@ async function setupTotp(userId, req) {
     req,
   });
 
-  // rawSecret is returned ONLY in this single response (manual-entry
-  // fallback alongside the QR code) — never persisted, never logged.
   return { error: null, provisioningUri, rawSecret };
 }
 
-/**
- * POST /auth/mfa/totp/verify — UC-AUTH-09 steps 5-8.
- * Confirms the first TOTP code, activates MFA on BOTH MFAConfiguration
- * AND User.mfa_enabled — this second write is the critical integration
- * point: loginUser() (session.service.js) branches into the MFA flow by
- * reading User.mfa_enabled specifically, not MFAConfiguration.enabled.
- * Forgetting this second write would mean MFA appears "set up" but is
- * NEVER actually enforced at login — a silent, dangerous gap.
- */
-async function confirmTotpSetup(userId, code, req) {
+/** POST /auth/mfa/totp/verify — UC-AUTH-09 steps 5-8. Activates MFA on User AND MFAConfiguration. */
+async function confirmTotpSetup({ userId, code, req }) {
   const mfaConfig = await MFAConfiguration.findOne({ user_id: userId });
 
   if (!mfaConfig || !mfaConfig.secret_encrypted) {
@@ -101,10 +81,7 @@ async function confirmTotpSetup(userId, code, req) {
   const backupCodeDocs = [];
   for (let i = 0; i < BACKUP_CODE_COUNT; i += 1) {
     const { raw } = generateOpaqueToken(BACKUP_CODE_BYTES);
-    // eslint-disable-next-line no-await-in-loop -- Argon2id hashing is
-    // intentionally sequential here; 10 iterations during a one-time
-    // setup action is negligible cost versus the complexity of
-    // parallelizing it.
+    // eslint-disable-next-line no-await-in-loop -- sequential Argon2id, negligible one-time cost
     const codeHash = await hashPassword(raw);
     rawBackupCodes.push(raw);
     backupCodeDocs.push({
@@ -126,9 +103,73 @@ async function confirmTotpSetup(userId, code, req) {
     req,
   });
 
-  // Raw backup codes are returned ONCE, here, and never again — matches
-  // UC-AUTH-09 step 7 ("تُعرَض مرة واحدة فقط") and DP-08.
   return { error: null, backupCodes: rawBackupCodes };
 }
 
-module.exports = { setupTotp, confirmTotpSetup };
+/**
+ * POST /auth/mfa/login/verify — completes UC-AUTH-05's MFA challenge
+ * issued by loginUser().
+ */
+async function completeMfaLogin({ mfaTempToken, code, req }) {
+  let decoded;
+  try {
+    decoded = verifyMfaTempToken(mfaTempToken);
+  } catch (err) {
+    if (err instanceof JwtError) {
+      return { error: err.code === 'EXPIRED' ? 'MFA_CHALLENGE_EXPIRED' : 'MFA_CHALLENGE_INVALID' };
+    }
+    throw err;
+  }
+
+  const user = await User.findById(decoded.sub);
+  if (!user || !user.mfa_enabled) {
+    return { error: 'MFA_CHALLENGE_INVALID' };
+  }
+
+  const mfaConfig = await MFAConfiguration.findOne({ user_id: user._id });
+  if (!mfaConfig || !mfaConfig.enabled) {
+    return { error: 'MFA_CHALLENGE_INVALID' };
+  }
+
+  const isValid = await verifyTotpCode(mfaConfig.secret_encrypted, code);
+  if (!isValid) {
+    await auditService.record({
+      actorId: user._id,
+      actorRole: user.role,
+      action: 'MFA_LOGIN_CODE_REJECTED',
+      resourceType: 'user',
+      resourceId: user._id,
+      req,
+    });
+    return { error: 'INVALID_CODE' };
+  }
+
+  const { accessToken, refreshTokenRaw, session } = await createUserSession({ user, req });
+  // createUserSession always sets mfa_verified=false (correct for the
+  // no-MFA path) — corrected here since this call site DID verify MFA.
+  session.mfa_verified = true;
+  await session.save();
+
+  await auditService.record({
+    actorId: user._id,
+    actorRole: user.role,
+    action: 'LOGIN_SUCCESS_VIA_MFA',
+    resourceType: 'user',
+    resourceId: user._id,
+    req,
+  });
+
+  return {
+    error: null,
+    accessToken,
+    refreshTokenRaw,
+    user: {
+      role: user.role,
+      mfaEnabled: user.mfa_enabled,
+      kycStatus: user.kyc_status,
+      redirectTo: computeRedirectTo(user),
+    },
+  };
+}
+
+module.exports = { setupTotp, confirmTotpSetup, completeMfaLogin };

@@ -9,7 +9,7 @@ const courseReviewRequestSchema = new Schema(
     reviewer_id: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     status: {
       type: String,
-      enum: ['pending_review', 'approved', 'rejected', 'needs_revision'],
+      enum: ['pending_review', 'approved', 'rejected', 'needs_revision', 'cancelled'],
       required: true,
     },
     changes_snapshot: { type: Schema.Types.Mixed, required: true },

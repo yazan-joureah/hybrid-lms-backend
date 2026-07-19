@@ -178,10 +178,11 @@ describe('Account lockout escalation (UC-AUTH-04) — service-level, bypasses HT
 
     let lastResult;
     for (let i = 0; i < 5; i += 1) {
-      lastResult = await authService.loginUser(
-        { email: 'login.test@example.com', password: 'wrong-password-attempt' },
-        fakeReq
-      );
+      lastResult = await authService.loginUser({
+        email: 'login.test@example.com',
+        password: 'wrong-password-attempt',
+        req: fakeReq,
+      });
     }
 
     expect(lastResult.error).toBe('INVALID_CREDENTIALS'); // 5th failure still reports as invalid creds...
@@ -190,10 +191,11 @@ describe('Account lockout escalation (UC-AUTH-04) — service-level, bypasses HT
     expect(user.lock_until).not.toBeNull();
 
     // A 6th attempt — even with the CORRECT password — must now be rejected as locked.
-    const sixthAttempt = await authService.loginUser(
-      { email: 'login.test@example.com', password: PLAIN_PASSWORD },
-      fakeReq
-    );
+    const sixthAttempt = await authService.loginUser({
+      email: 'login.test@example.com',
+      password: PLAIN_PASSWORD,
+      req: fakeReq,
+    });
     expect(sixthAttempt.error).toBe('ACCOUNT_LOCKED');
   });
 });

@@ -15,6 +15,7 @@ const {
   forgotPasswordSchema,
   resetPasswordSchema,
   totpVerifySchema,
+  mfaLoginVerifySchema,
   googleGuardianEmailSchema,
 } = require('../validators/authSchemas');
 const { requireAuth } = require('../middleware/authMiddleware');
@@ -85,6 +86,13 @@ router.post(
   rateLimit('mfa-verify', (req) => req.user.id),
   validateBody(totpVerifySchema),
   authController.verifyTotp
+);
+
+router.post(
+  '/mfa/login/verify',
+  rateLimit('mfa-login-verify', (req) => req.body?.mfaTempToken || 'anonymous'),
+  validateBody(mfaLoginVerifySchema),
+  authController.verifyMfaLogin
 );
 
 const {

@@ -86,6 +86,11 @@ const totpVerifySchema = z.object({
   code: z.string().regex(/^\d{6}$/, 'Code must be exactly 6 digits'),
 });
 
+const mfaLoginVerifySchema = z.object({
+  mfaTempToken: z.string().min(1),
+  code: z.string().regex(/^\d{6}$/, 'Code must be exactly 6 digits'),
+});
+
 const googleLinkConfirmSchema = z.object({
   link_pending_token: z.string().min(1),
   password: z.string().min(1),
@@ -101,7 +106,6 @@ const googleGuardianEmailSchema = z.object({
   guardian_pending_token: z.string().min(1),
   guardian_email: z.string().trim().toLowerCase().email(),
 });
-// أضِفها لـ module.exports
 
 module.exports = {
   registerSchema,
@@ -111,6 +115,7 @@ module.exports = {
   forgotPasswordSchema,
   resetPasswordSchema,
   totpVerifySchema,
+  mfaLoginVerifySchema,
   googleLinkConfirmSchema,
   googleRegisterConfirmSchema,
   googleGuardianEmailSchema,

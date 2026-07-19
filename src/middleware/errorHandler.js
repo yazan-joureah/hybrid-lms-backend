@@ -1,20 +1,38 @@
 /**
  * Centralized error handler.
- * Returns the standard API error envelope defined in REST_API_Contract_v1.2:
- *   { success: false, error: { code, message } }
- * Never leaks stack traces or internal details to the client (OWASP A09).
+ * Returns the standard API error envelope: { success: false, error: { code, message } }
+ * Never leaks stack traces or internal details (OWASP A09).
  */
 const logger = require('../utils/logger');
 
-class ApiError extends Error {
-  constructor(statusCode, code, message) {
+class AppError extends Error {
+  /**
+   * @param {number} statusCode
+   * @param {string} code - machine-readable error code (e.g. 'INVALID_CREDENTIALS')
+   * @param {string} message - safe, user-facing message (never internal details)
+   * @param {object|null} clientData - extra fields merged into response.data (e.g. { next_step: 'verify_email' })
+   */
+  constructor(statusCode, code, message, clientData = null) {
     super(message);
     this.statusCode = statusCode;
     this.code = code;
+    this.clientData = clientData;
   }
 }
 
+const MULTER_ERROR_MESSAGES = {
+  LIMIT_FILE_SIZE: 'The uploaded file exceeds the maximum allowed size.',
+  LIMIT_FILE_COUNT: 'Too many files uploaded in a single request.',
+  LIMIT_UNEXPECTED_FILE: 'Unexpected file field in the upload request.',
+};
+
 function errorHandler(err, req, res, _next) {
+  // Normalize Multer's third-party error shape into our AppError contract
+  if (err.name === 'MulterError') {
+    const message = MULTER_ERROR_MESSAGES[err.code] || 'File upload failed.';
+    err = new AppError(400, err.code, message);
+  }
+
   const statusCode = err.statusCode || 500;
   const code = err.code || 'INTERNAL_ERROR';
   const message = statusCode === 500 ? 'An unexpected error occurred' : err.message;
@@ -23,10 +41,12 @@ function errorHandler(err, req, res, _next) {
     logger.error('Unhandled error', { error: err.message, stack: err.stack, path: req.path });
   }
 
-  res.status(statusCode).json({
-    success: false,
-    error: { code, message },
-  });
+  const body = { success: false, error: { code, message } };
+  if (err.clientData) {
+    body.data = err.clientData;
+  }
+
+  res.status(statusCode).json(body);
 }
 
 function notFoundHandler(req, res) {
@@ -36,4 +56,4 @@ function notFoundHandler(req, res) {
   });
 }
 
-module.exports = { errorHandler, notFoundHandler, ApiError };
+module.exports = { errorHandler, notFoundHandler, AppError };

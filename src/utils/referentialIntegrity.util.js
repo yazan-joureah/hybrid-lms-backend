@@ -5,10 +5,6 @@
 
 const mongoose = require('mongoose');
 
-/**
- * @param {mongoose.Schema} schema
- * @param {{path: string, ref: string, required?: boolean}[]} refFields
- */
 function applyReferentialIntegrity(schema, refFields) {
   schema.pre('save', async function preSaveCheck(next) {
     for (const field of refFields) {
@@ -18,21 +14,45 @@ function applyReferentialIntegrity(schema, refFields) {
         if (field.required) {
           return next(new Error(`REFERENTIAL_INTEGRITY: ${field.path} is required`));
         }
-        continue; // optional and unset — nothing to check
+        continue;
       }
 
-      // Skip re-checking a reference that hasn't changed since the last
-      // save (avoids an extra DB round trip on every unrelated update).
       if (!this.isNew && !this.isModified(field.path)) continue;
 
-      // eslint-disable-next-line no-await-in-loop -- sequential is fine, refFields is always tiny (1-2 entries)
-      const exists = await mongoose.model(field.ref).exists({ _id: value });
-      if (!exists) {
-        return next(
-          new Error(
-            `REFERENTIAL_INTEGRITY: ${field.path} references a non-existent ${field.ref} (${value})`
-          )
-        );
+      // Determine if the field is an array
+      const schemaPath = schema.paths[field.path];
+      const isArray = schemaPath && schemaPath.instance === 'Array';
+
+      if (isArray) {
+        if (!Array.isArray(value)) {
+          return next(new Error(`REFERENTIAL_INTEGRITY: ${field.path} must be an array`));
+        }
+        // Check each element
+        for (const item of value) {
+          if (item == null) {
+            return next(
+              new Error(`REFERENTIAL_INTEGRITY: ${field.path} contains null/undefined reference`)
+            );
+          }
+          const exists = await mongoose.model(field.ref).exists({ _id: item });
+          if (!exists) {
+            return next(
+              new Error(
+                `REFERENTIAL_INTEGRITY: ${field.path} references a non-existent ${field.ref} (${item})`
+              )
+            );
+          }
+        }
+      } else {
+        // Single reference
+        const exists = await mongoose.model(field.ref).exists({ _id: value });
+        if (!exists) {
+          return next(
+            new Error(
+              `REFERENTIAL_INTEGRITY: ${field.path} references a non-existent ${field.ref} (${value})`
+            )
+          );
+        }
       }
     }
     return next();

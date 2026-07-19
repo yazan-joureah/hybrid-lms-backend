@@ -5,7 +5,7 @@
  * logging the precise Zod issues server-side for debugging.
  */
 const logger = require('../utils/logger');
-const { ApiError } = require('./errorHandler');
+const { AppError } = require('./errorHandler');
 
 function validateBody(schema) {
   return (req, res, next) => {
@@ -14,7 +14,7 @@ function validateBody(schema) {
       logger.debug('Validation failed', { path: req.path, issues: result.error.issues });
       const firstIssue = result.error.issues[0];
       return next(
-        new ApiError(400, 'VALIDATION_ERROR', firstIssue?.message || 'Invalid request body')
+        new AppError(400, 'VALIDATION_ERROR', firstIssue?.message || 'Invalid request body')
       );
     }
     req.validatedBody = result.data;
