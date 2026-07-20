@@ -12,6 +12,7 @@ const healthRoutes = require('./routes/healthRoutes');
 const authRoutes = require('./routes/authRoutes');
 const kycRoutes = require('./routes/kycRoutes');
 const courseRoutes = require('./routes/courseRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 const env = require('./config/env');
 
@@ -56,6 +57,7 @@ app.use('/api/v1', healthRoutes);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/kyc', kycRoutes);
 app.use('/api/v1/courses', courseRoutes);
+app.use('/api/v1/admin', adminRoutes);
 
 // ── 404 + Error handling (must be last) ──────────────────────────────────
 app.use(notFoundHandler);

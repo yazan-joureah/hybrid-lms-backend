@@ -47,9 +47,21 @@ const contentCreateSchema = z.object({
   text: z.string().trim().min(1, 'Text must not be empty').optional(),
 });
 
+// reason required only for 'reject' (free text) — simplest validation possible
+const courseReviewSchema = z
+  .object({
+    decision: z.enum(['publish', 'reject', 'needs_revision']),
+    reason: z.string().trim().min(1).optional(),
+  })
+  .refine((data) => data.decision !== 'reject' || !!data.reason, {
+    message: 'reason is required when decision is reject',
+    path: ['reason'],
+  });
+
 module.exports = {
   courseCreateSchema,
   courseUpdateSchema,
   unitCreateSchema,
   contentCreateSchema,
+  courseReviewSchema,
 };

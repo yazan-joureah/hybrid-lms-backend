@@ -14,7 +14,8 @@
     "lint:fix": "eslint src tests --fix",
     "format": "prettier --write \"src/**/*.js\" \"tests/**/*.js\"",
     "prepare": "husky",
-    "seed:test-user": "node scripts/seedTestUser.js"
+    "seed:prod-superadmin": "node scripts/seedProdSuperAdmin.js",
+    "seed:dev-users": "node scripts/seedDevUsers.js"
   },
   "engines": {
     "node": ">=22.0.0"
