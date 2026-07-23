@@ -6,7 +6,16 @@ const { AppError } = require('../../middleware/errorHandler');
 const { toObjectId } = require('../../utils/objectId.util');
 
 /**
- * UC-COURSE-01: lists published courses with optional category/search
+ * SECURITY: escapes regex special characters in user-supplied search terms
+ * before use in $regex — prevents both ReDoS (a maliciously crafted pattern
+ * hanging the regex engine) and unintended pattern injection.
+ */
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * lists published courses with optional category/search
  * filters.
  */
 async function browseCourses({ queryParams = {} }) {
@@ -15,11 +24,14 @@ async function browseCourses({ queryParams = {} }) {
   const skip = (page - 1) * limit;
 
   const query = { status: 'published' };
-  if (queryParams.category) {
-    query.category = queryParams.category;
+
+  if (typeof queryParams.category === 'string' && queryParams.category.trim() !== '') {
+    query.category = { $eq: queryParams.category.trim() };
   }
-  if (queryParams.search) {
-    query.title = { $regex: queryParams.search, $options: 'i' };
+
+  if (typeof queryParams.search === 'string' && queryParams.search.trim() !== '') {
+    const escapedSearch = escapeRegex(queryParams.search.trim());
+    query.title = { $regex: escapedSearch, $options: 'i' };
   }
 
   const [courses, totalRecords] = await Promise.all([
@@ -46,7 +58,7 @@ async function browseCourses({ queryParams = {} }) {
 }
 
 /**
- * UC-COURSE-01 step 5: fetches a single course's public details.
+ * fetches a single course's public details.
  * SECURITY: returns 404 (not 403) for any non-published course to avoid
  * confirming its existence to an unauthenticated/unauthorized user.
  */

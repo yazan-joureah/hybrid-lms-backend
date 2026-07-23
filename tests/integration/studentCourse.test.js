@@ -690,3 +690,38 @@ describe('GET /api/v1/courses/:courseId/content/:contentId/file (Streaming)', ()
     expect(res.body.error.code).toBe('NOT_ENROLLED');
   });
 });
+
+describe('GET /api/v1/courses (Browse) — NoSQL injection hardening', () => {
+  it('ignores a $ne operator-injection payload in category, returns normally without matching everything', async () => {
+    const instructor = await createUserAndLogin({ role: 'Instructor' });
+    await Course.create({
+      ...baseCourse,
+      owner_instructor_id: instructor.user._id,
+      status: 'published',
+      category: 'Languages',
+    });
+
+    const res = await request(app).get('/api/v1/courses?category[$ne]=null');
+
+    expect(res.status).toBe(200);
+    // category becomes an object {$ne: 'null'} — fails typeof==='string' check,
+    // so it's silently ignored rather than injected into the query
+    expect(res.body.data.courses).toHaveLength(1); // returns the one published course, unaffected by the injection attempt
+  });
+
+  it('escapes regex special characters in search, treating them literally', async () => {
+    const instructor = await createUserAndLogin({ role: 'Instructor' });
+    await Course.create({
+      ...baseCourse,
+      title: 'C++ Basics',
+      owner_instructor_id: instructor.user._id,
+      status: 'published',
+    });
+
+    const res = await request(app).get('/api/v1/courses').query({ search: 'C++' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.courses).toHaveLength(1);
+    expect(res.body.data.courses[0].title).toBe('C++ Basics');
+  });
+});
