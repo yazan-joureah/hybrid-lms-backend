@@ -6,6 +6,7 @@ const CourseContent = require('../../models/CourseContent');
 const CourseReviewRequest = require('../../models/CourseReviewRequest');
 const { AppError } = require('../../middleware/errorHandler');
 const auditService = require('../auditService');
+const { toObjectId } = require('../../utils/objectId.util');
 
 /** lists all courses currently awaiting review. */
 async function listPendingCourses() {
@@ -54,7 +55,10 @@ async function assertContentCompleteForPublish(course) {
 
 /** records the Admin's publish/reject/needs_revision decision. */
 async function reviewCourse({ courseId, adminId, decision, reason, req }) {
-  const course = await Course.findById(courseId);
+  const safeCourseId = toObjectId(courseId, 'courseId');
+  const safeAdminId = toObjectId(adminId, 'adminId');
+
+  const course = await Course.findById(safeCourseId);
   if (!course) {
     throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
   }
@@ -63,7 +67,7 @@ async function reviewCourse({ courseId, adminId, decision, reason, req }) {
   }
 
   const reviewRequest = await CourseReviewRequest.findOne({
-    course_id: courseId,
+    course_id: safeCourseId,
     status: 'pending_review',
   });
 
@@ -94,18 +98,18 @@ async function reviewCourse({ courseId, adminId, decision, reason, req }) {
   if (reviewRequest) {
     const statusMap = { publish: 'approved', reject: 'rejected', needs_revision: 'needs_revision' };
     reviewRequest.status = statusMap[decision];
-    reviewRequest.reviewer_id = adminId;
+    reviewRequest.reviewer_id = safeAdminId;
     reviewRequest.rejection_reason = reason || null;
     reviewRequest.reviewed_at = new Date();
     await reviewRequest.save();
   }
 
   await auditService.record({
-    actorId: adminId,
+    actorId: safeAdminId,
     actorRole: 'Admin',
     action: `COURSE_REVIEW_${decision.toUpperCase()}`,
     resourceType: 'Course',
-    resourceId: courseId,
+    resourceId: safeCourseId,
     metadata: { decision, reason: reason || null },
     req,
   });

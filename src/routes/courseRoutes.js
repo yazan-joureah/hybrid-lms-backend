@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 
-const courseController = require('../controllers/course/course.controller');
+const courseController = require('../controllers/courseController');
 const { requireAuth } = require('../middleware/authMiddleware');
 const { requireRole } = require('../middleware/requireRole');
 const { rateLimit } = require('../middleware/rateLimiter');
@@ -14,6 +14,7 @@ const {
   courseUpdateSchema,
   unitCreateSchema,
   contentCreateSchema,
+  progressSchema,
 } = require('../validators/courseSchemas');
 
 const COURSE_CONTENT_MAX_BYTES = 50 * 1024 * 1024;
@@ -78,6 +79,50 @@ router.post(
   uploadCourseContent.single('file'),
   validateBody(contentCreateSchema),
   courseController.createContent
+);
+
+// --- Public / Student browsing ---
+router.get('/', courseController.browse);
+router.get('/:courseId', courseController.getDetails);
+
+// --- Instructor manage view ---
+router.get(
+  '/:courseId/manage',
+  requireAuth,
+  requireRole(['Instructor']),
+  courseController.getManage
+);
+
+// --- Student enrollment ---
+router.post('/:courseId/enroll', requireAuth, requireRole(['Student']), courseController.enroll);
+router.get(
+  '/enrollments/my-courses',
+  requireAuth,
+  requireRole(['Student']),
+  courseController.getMyEnrollments
+);
+
+// --- Student progress ---
+router.post(
+  '/:courseId/progress',
+  requireAuth,
+  requireRole(['Student']),
+  validateBody(progressSchema),
+  courseController.record
+);
+
+// --- Student content access ---
+router.get(
+  '/:courseId/content',
+  requireAuth,
+  requireRole(['Student']),
+  courseController.getContent
+);
+router.get(
+  '/:courseId/content/:contentId/file',
+  requireAuth,
+  requireRole(['Student']),
+  courseController.downloadFile
 );
 
 module.exports = router;

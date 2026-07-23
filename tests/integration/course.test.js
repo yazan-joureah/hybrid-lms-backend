@@ -461,6 +461,8 @@ describe('Review-state machine: published course edits trigger re-review', () =>
       owner_instructor_id: user._id,
       status: 'published',
       published_at: new Date(),
+      completion_threshold: 0.7,
+      content_complete: true,
     });
 
     const res = await request(app)
@@ -468,6 +470,9 @@ describe('Review-state machine: published course edits trigger re-review', () =>
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ price: 49.99, course_type: 'paid' });
 
+    if (res.status !== 200) {
+      console.log(JSON.stringify(res.body, null, 2));
+    }
     expect(res.status).toBe(200);
     expect(res.body.data.course.status).toBe('pending_review');
 
@@ -483,13 +488,17 @@ describe('Review-state machine: published course edits trigger re-review', () =>
       owner_instructor_id: user._id,
       status: 'published',
       published_at: new Date(),
+      completion_threshold: 0.7,
+      content_complete: true,
     });
 
     const res = await request(app)
       .post(`/api/v1/courses/${course._id}/units`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ title: 'New Unit After Publish' });
-
+    if (res.status !== 201) {
+      console.log(JSON.stringify(res.body, null, 2));
+    }
     expect(res.status).toBe(201);
     const updatedCourse = await Course.findById(course._id);
     expect(updatedCourse.status).toBe('pending_review');
