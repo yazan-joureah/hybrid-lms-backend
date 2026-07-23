@@ -6,17 +6,19 @@ const CourseReviewRequest = require('../../models/CourseReviewRequest');
 const auditService = require('../auditService');
 const { AppError } = require('../../middleware/errorHandler');
 const { assertCourseEditable, triggerReviewOnPublishedEdit } = require('./reviewState.service');
+const { toObjectId } = require('../../utils/objectId.util');
 
 //Creates a new course in 'draft' status.
 async function createCourse({ instructorId, courseData, req }) {
-  const instructor = await User.findById(instructorId);
+  const safeInstructorId = toObjectId(instructorId, 'instructorId');
+  const instructor = await User.findById(safeInstructorId);
   if (!instructor) {
     throw new AppError(404, 'INSTRUCTOR_NOT_FOUND', 'Instructor account does not exist.');
   }
 
   const newCourse = new Course({
     ...courseData,
-    owner_instructor_id: instructorId,
+    owner_instructor_id: safeInstructorId,
     status: 'draft',
     content_complete: false,
     published_at: null,
@@ -24,7 +26,7 @@ async function createCourse({ instructorId, courseData, req }) {
   await newCourse.save();
 
   await auditService.record({
-    actorId: instructorId,
+    actorId: safeInstructorId,
     actorRole: instructor.role,
     action: 'COURSE_CREATED',
     resourceType: 'Course',
@@ -38,11 +40,13 @@ async function createCourse({ instructorId, courseData, req }) {
 
 // fetches all courses owned by the given instructor.
 async function getInstructorCourses({ instructorId, queryParams = {} }) {
+  const safeInstructorId = toObjectId(instructorId, 'instructorId');
+
   const page = parseInt(queryParams.page, 10) || 1;
   const limit = parseInt(queryParams.limit, 10) || 10;
   const skip = (page - 1) * limit;
 
-  const query = { owner_instructor_id: instructorId };
+  const query = { owner_instructor_id: safeInstructorId };
 
   const [courses, totalRecords] = await Promise.all([
     Course.find(query).sort({ updatedAt: -1 }).skip(skip).limit(limit).lean(),
@@ -68,18 +72,21 @@ async function getInstructorCourses({ instructorId, queryParams = {} }) {
  * published course.
  */
 async function updateCourse({ courseId, instructorId, updateData, req }) {
-  const course = await Course.findById(courseId);
+  const safeCourseId = toObjectId(courseId, 'courseId');
+  const safeInstructorId = toObjectId(instructorId, 'instructorId');
+
+  const course = await Course.findById(safeCourseId);
   if (!course) {
     throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
   }
 
-  if (course.owner_instructor_id.toString() !== instructorId) {
+  if (course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
     await auditService.record({
-      actorId: instructorId,
+      actorId: safeInstructorId,
       actorRole: 'Instructor',
       action: 'UNAUTHORIZED_COURSE_ACCESS_ATTEMPT',
       resourceType: 'Course',
-      resourceId: courseId,
+      resourceId: safeCourseId,
       metadata: { target_owner: course.owner_instructor_id },
       req,
     });
@@ -104,7 +111,7 @@ async function updateCourse({ courseId, instructorId, updateData, req }) {
   if (sensitiveChangeDetected) {
     reviewRequest = await triggerReviewOnPublishedEdit({
       course,
-      instructorId,
+      instructorId: safeInstructorId,
       changeType: 'FIELDS_UPDATED',
       changesSnapshot,
       req,
@@ -115,11 +122,11 @@ async function updateCourse({ courseId, instructorId, updateData, req }) {
   await course.save();
 
   await auditService.record({
-    actorId: instructorId,
+    actorId: safeInstructorId,
     actorRole: 'Instructor',
     action: 'COURSE_UPDATED',
     resourceType: 'Course',
-    resourceId: courseId,
+    resourceId: safeCourseId,
     metadata: {
       status_changed_to: course.status,
       sensitive_change: sensitiveChangeDetected,
@@ -138,18 +145,21 @@ async function updateCourse({ courseId, instructorId, updateData, req }) {
  * exist — an empty course cannot be submitted.
  */
 async function submitCourseForReview({ courseId, instructorId, req }) {
-  const course = await Course.findById(courseId);
+  const safeCourseId = toObjectId(courseId, 'courseId');
+  const safeInstructorId = toObjectId(instructorId, 'instructorId');
+
+  const course = await Course.findById(safeCourseId);
   if (!course) {
     throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
   }
 
-  if (course.owner_instructor_id.toString() !== instructorId) {
+  if (course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
     await auditService.record({
-      actorId: instructorId,
+      actorId: safeInstructorId,
       actorRole: 'Instructor',
       action: 'UNAUTHORIZED_SUBMIT_REVIEW_ATTEMPT',
       resourceType: 'Course',
-      resourceId: courseId,
+      resourceId: safeCourseId,
       metadata: { target_owner: course.owner_instructor_id },
       req,
     });
@@ -164,7 +174,7 @@ async function submitCourseForReview({ courseId, instructorId, req }) {
   }
 
   // course must have content to be submitted
-  const contentCount = await CourseContent.countDocuments({ course_id: courseId });
+  const contentCount = await CourseContent.countDocuments({ course_id: safeCourseId });
   if (contentCount === 0) {
     throw new AppError(
       400,
@@ -176,7 +186,7 @@ async function submitCourseForReview({ courseId, instructorId, req }) {
   const snapshot = course.toObject();
   const reviewRequest = new CourseReviewRequest({
     course_id: course._id,
-    requested_by: instructorId,
+    requested_by: safeInstructorId,
     status: 'pending_review',
     changes_snapshot: snapshot,
   });
@@ -187,7 +197,7 @@ async function submitCourseForReview({ courseId, instructorId, req }) {
   await course.save();
 
   await auditService.record({
-    actorId: instructorId,
+    actorId: safeInstructorId,
     actorRole: 'Instructor',
     action: 'COURSE_SUBMITTED_FOR_REVIEW',
     resourceType: 'CourseReviewRequest',

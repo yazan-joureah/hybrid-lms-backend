@@ -3,6 +3,7 @@ const Course = require('../../models/Course');
 const CourseUnit = require('../../models/CourseUnit');
 const CourseContent = require('../../models/CourseContent');
 const { AppError } = require('../../middleware/errorHandler');
+const { toObjectId } = require('../../utils/objectId.util');
 
 /**
  * UC-COURSE-01: lists published courses with optional category/search
@@ -50,7 +51,9 @@ async function browseCourses({ queryParams = {} }) {
  * confirming its existence to an unauthenticated/unauthorized user.
  */
 async function getCourseDetails({ courseId }) {
-  const course = await Course.findOne({ _id: courseId, status: 'published' })
+  const safeCourseId = toObjectId(courseId, 'courseId');
+
+  const course = await Course.findOne({ _id: safeCourseId, status: 'published' })
     .select('-rejection_reason -suspended_by')
     .lean();
 
@@ -67,16 +70,19 @@ async function getCourseDetails({ courseId }) {
  * while building. Ownership-gated, NOT status-gated.
  */
 async function getCourseForManage({ courseId, instructorId }) {
-  const course = await Course.findById(courseId).lean();
+  const safeCourseId = toObjectId(courseId, 'courseId');
+  const safeInstructorId = toObjectId(instructorId, 'instructorId');
+
+  const course = await Course.findById(safeCourseId).lean();
   if (!course) {
     throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
   }
 
-  if (course.owner_instructor_id.toString() !== instructorId) {
+  if (course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
     throw new AppError(403, 'FORBIDDEN', 'You do not have permission to view this course.');
   }
 
-  const units = await CourseUnit.find({ course_id: courseId }).sort({ order: 1 }).lean();
+  const units = await CourseUnit.find({ course_id: safeCourseId }).sort({ order: 1 }).lean();
   const unitIds = units.map((u) => u._id);
   const contentCounts = await CourseContent.aggregate([
     { $match: { unit_id: { $in: unitIds } } },

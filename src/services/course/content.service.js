@@ -7,6 +7,7 @@ const auditService = require('../auditService');
 const { validateUploadedFile } = require('../../utils/fileValidation.util');
 const fileStorage = require('../fileStorage.service');
 const { assertCourseEditable, triggerReviewOnPublishedEdit } = require('./reviewState.service');
+const { toObjectId } = require('../../utils/objectId.util');
 
 // each module (COURSE , LIVE ) supplies its own allowed types/limit.
 const COURSE_CONTENT_ALLOWED_MIME_TYPES = Object.freeze(['video/mp4', 'application/pdf']);
@@ -20,18 +21,22 @@ const FILE_BACKED_TYPES = ['video', 'document'];
  * validated file upload; link/text require content_data instead.
  */
 async function addContent({ courseId, unitId, instructorId, contentType, file, contentData, req }) {
-  const course = await Course.findById(courseId);
+  const safeCourseId = toObjectId(courseId, 'courseId');
+  const safeUnitId = toObjectId(unitId, 'unitId');
+  const safeInstructorId = toObjectId(instructorId, 'instructorId');
+
+  const course = await Course.findById(safeCourseId);
   if (!course) {
     throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
   }
 
-  if (course.owner_instructor_id.toString() !== instructorId) {
+  if (course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
     await auditService.record({
-      actorId: instructorId,
+      actorId: safeInstructorId,
       actorRole: 'Instructor',
       action: 'UNAUTHORIZED_COURSE_ACCESS_ATTEMPT',
       resourceType: 'Course',
-      resourceId: courseId,
+      resourceId: safeCourseId,
       metadata: { target_owner: course.owner_instructor_id, attempted_action: 'ADD_CONTENT' },
       req,
     });
@@ -40,8 +45,8 @@ async function addContent({ courseId, unitId, instructorId, contentType, file, c
 
   assertCourseEditable(course);
 
-  const unit = await CourseUnit.findById(unitId);
-  if (!unit || unit.course_id.toString() !== courseId) {
+  const unit = await CourseUnit.findById(safeUnitId);
+  if (!unit || !unit.course_id.equals(safeCourseId)) {
     throw new AppError(404, 'UNIT_NOT_FOUND', 'Unit not found for this course.');
   }
 
@@ -70,10 +75,10 @@ async function addContent({ courseId, unitId, instructorId, contentType, file, c
       filename: file.originalname,
       mimeType: validation.detectedMime,
       sizeBytes: file.buffer.length,
-      userId: instructorId,
+      userId: safeInstructorId,
       actorRole: 'Instructor',
       req,
-      metadata: { course_id: courseId, unit_id: unitId },
+      metadata: { course_id: safeCourseId, unit_id: safeUnitId },
     });
 
     contentFields = {
@@ -105,12 +110,12 @@ async function addContent({ courseId, unitId, instructorId, contentType, file, c
   }
 
   // order is server-computed per unit, never trusted from the client
-  const existingCount = await CourseContent.countDocuments({ unit_id: unitId });
+  const existingCount = await CourseContent.countDocuments({ unit_id: safeUnitId });
 
   const content = new CourseContent({
-    course_id: courseId,
-    unit_id: unitId,
-    owner_instructor_id: instructorId,
+    course_id: safeCourseId,
+    unit_id: safeUnitId,
+    owner_instructor_id: safeInstructorId,
     content_type: contentType,
     order: existingCount + 1,
     ...contentFields,
@@ -121,7 +126,7 @@ async function addContent({ courseId, unitId, instructorId, contentType, file, c
   if (course.status === 'published') {
     reviewRequest = await triggerReviewOnPublishedEdit({
       course,
-      instructorId,
+      safeInstructorId,
       changeType: 'CONTENT_ADDED',
       changesSnapshot: { content_id: content._id.toString(), content_type: contentType },
       req,
@@ -130,14 +135,14 @@ async function addContent({ courseId, unitId, instructorId, contentType, file, c
   }
 
   await auditService.record({
-    actorId: instructorId,
+    actorId: safeInstructorId,
     actorRole: 'Instructor',
     action: 'COURSE_CONTENT_ADDED',
     resourceType: 'CourseContent',
     resourceId: content._id.toString(),
     metadata: {
-      course_id: courseId,
-      unit_id: unitId,
+      course_id: safeCourseId,
+      unit_id: safeUnitId,
       content_type: contentType,
       review_request_id: reviewRequest?._id?.toString() || null,
     },

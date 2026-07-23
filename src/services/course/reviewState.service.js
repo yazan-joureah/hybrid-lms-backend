@@ -3,6 +3,7 @@ const Course = require('../../models/Course');
 const CourseReviewRequest = require('../../models/CourseReviewRequest');
 const { AppError } = require('../../middleware/errorHandler');
 const auditService = require('../auditService');
+const { toObjectId } = require('../../utils/objectId.util');
 
 const BLOCKED_STATUSES = ['suspended', 'archived'];
 
@@ -41,16 +42,18 @@ async function triggerReviewOnPublishedEdit({
 
   course.status = 'pending_review';
 
+  const safeInstructorId = toObjectId(instructorId, 'instructorId');
+
   const reviewRequest = new CourseReviewRequest({
     course_id: course._id,
-    requested_by: instructorId,
+    requested_by: safeInstructorId,
     status: 'pending_review',
     changes_snapshot: { change_type: changeType, ...changesSnapshot },
   });
   await reviewRequest.save();
 
   await auditService.record({
-    actorId: instructorId,
+    actorId: safeInstructorId,
     actorRole: 'Instructor',
     action: 'COURSE_REVIEW_REQUESTED',
     resourceType: 'CourseReviewRequest',
@@ -64,11 +67,14 @@ async function triggerReviewOnPublishedEdit({
 
 /** Cancels an active pending review request and reverts the course to draft. */
 async function cancelReviewRequest({ courseId, instructorId, req }) {
-  const course = await Course.findById(courseId);
+  const safeCourseId = toObjectId(courseId, 'courseId');
+  const safeInstructorId = toObjectId(instructorId, 'instructorId');
+
+  const course = await Course.findById(safeCourseId);
   if (!course) {
     throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
   }
-  if (course.owner_instructor_id.toString() !== instructorId) {
+  if (course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
     throw new AppError(403, 'FORBIDDEN', 'You do not have permission to modify this course.');
   }
   if (course.status !== 'pending_review') {
@@ -76,7 +82,7 @@ async function cancelReviewRequest({ courseId, instructorId, req }) {
   }
 
   const activeRequest = await CourseReviewRequest.findOne({
-    course_id: courseId,
+    course_id: safeCourseId,
     status: 'pending_review',
   });
   if (activeRequest) {
@@ -88,11 +94,11 @@ async function cancelReviewRequest({ courseId, instructorId, req }) {
   await course.save();
 
   await auditService.record({
-    actorId: instructorId,
+    actorId: safeInstructorId,
     actorRole: 'Instructor',
     action: 'COURSE_REVIEW_CANCELLED',
     resourceType: 'Course',
-    resourceId: courseId,
+    resourceId: safeCourseId,
     metadata: { review_request_id: activeRequest?._id?.toString() || null },
     req,
   });

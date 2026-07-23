@@ -3,18 +3,22 @@ const Course = require('../../models/Course');
 const Enrollment = require('../../models/Enrollment');
 const { AppError } = require('../../middleware/errorHandler');
 const auditService = require('../auditService');
+const { toObjectId } = require('../../utils/objectId.util');
 
 const BLOCKING_ENROLLMENT_STATUSES = ['pending_payment', 'active', 'completed'];
 
 async function checkEnrollmentEligibility({ studentId, courseId }) {
-  const course = await Course.findById(courseId);
+  const safeStudentId = toObjectId(studentId, 'studentId');
+  const safeCourseId = toObjectId(courseId, 'courseId');
+
+  const course = await Course.findById(safeCourseId);
   if (!course || course.status !== 'published') {
     throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
   }
 
   const existing = await Enrollment.findOne({
-    course_id: courseId,
-    student_id: studentId,
+    course_id: safeCourseId,
+    student_id: safeStudentId,
     status: { $in: BLOCKING_ENROLLMENT_STATUSES },
   });
   if (existing) {
@@ -25,7 +29,7 @@ async function checkEnrollmentEligibility({ studentId, courseId }) {
   // enrollment in that course — no partial-progress credit.
   if (course.prerequisite_course_ids?.length > 0) {
     const completedCount = await Enrollment.countDocuments({
-      student_id: studentId,
+      student_id: safeStudentId,
       course_id: { $in: course.prerequisite_course_ids },
       status: 'completed',
     });
@@ -41,7 +45,7 @@ async function checkEnrollmentEligibility({ studentId, courseId }) {
   // Synchronous course capacity check
   if (course.is_synchronous && course.max_students != null) {
     const activeCount = await Enrollment.countDocuments({
-      course_id: courseId,
+      course_id: safeCourseId,
       status: { $in: ['pending_payment', 'active'] },
     });
     if (activeCount >= course.max_students) {
@@ -65,9 +69,12 @@ async function enrollInCourse({ studentId, courseId, req }) {
 
   const isFree = course.course_type === 'free';
 
+  const safeStudentId = toObjectId(studentId, 'studentId');
+  const safeCourseId = toObjectId(courseId, 'courseId');
+
   const enrollment = new Enrollment({
-    course_id: courseId,
-    student_id: studentId,
+    course_id: safeCourseId,
+    student_id: safeStudentId,
     status: isFree ? 'active' : 'pending_payment',
     confirmed_by_student: true,
     activated_at: isFree ? new Date() : null,
@@ -75,12 +82,16 @@ async function enrollInCourse({ studentId, courseId, req }) {
   await enrollment.save();
 
   await auditService.record({
-    actorId: studentId,
+    actorId: safeStudentId,
     actorRole: 'Student',
     action: 'COURSE_ENROLLED',
     resourceType: 'Enrollment',
     resourceId: enrollment._id.toString(),
-    metadata: { course_id: courseId, course_type: course.course_type, status: enrollment.status },
+    metadata: {
+      course_id: safeCourseId,
+      course_type: course.course_type,
+      status: enrollment.status,
+    },
     req,
   });
 
@@ -97,11 +108,12 @@ async function enrollInCourse({ studentId, courseId, req }) {
 
 /** Lists all of the student's own enrollments (any status). */
 async function listMyEnrollments({ studentId, queryParams = {} }) {
+  const safeStudentId = toObjectId(studentId, 'studentId');
   const page = parseInt(queryParams.page, 10) || 1;
   const limit = parseInt(queryParams.limit, 10) || 10;
   const skip = (page - 1) * limit;
 
-  const query = { student_id: studentId };
+  const query = { student_id: safeStudentId };
 
   const [enrollments, totalRecords] = await Promise.all([
     Enrollment.find(query)

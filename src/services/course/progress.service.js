@@ -5,40 +5,35 @@ const CourseProgressEvent = require('../../models/CourseProgressEvent');
 const Enrollment = require('../../models/Enrollment');
 const { AppError } = require('../../middleware/errorHandler');
 const auditService = require('../auditService');
+const { toObjectId } = require('../../utils/objectId.util');
 
-/**
- * records a single content-completion event and returns the
- * recomputed course progress percentage.
- * SECURITY: the client sends ONLY a content_id — no percentage, no
- * completion count. The percentage below is always derived server-side
- * from actually-recorded events.
- */
 async function recordProgress({ studentId, courseId, contentId, req }) {
+  const safeStudentId = toObjectId(studentId, 'studentId');
+  const safeCourseId = toObjectId(courseId, 'courseId');
+  const safeContentId = toObjectId(contentId, 'contentId');
+
   const enrollment = await Enrollment.findOne({
-    course_id: courseId,
-    student_id: studentId,
+    course_id: safeCourseId,
+    student_id: safeStudentId,
     status: { $in: ['active', 'completed'] },
   });
   if (!enrollment) {
     throw new AppError(403, 'NOT_ENROLLED', 'You are not actively enrolled in this course.');
   }
 
-  const content = await CourseContent.findOne({ _id: contentId, course_id: courseId });
+  const content = await CourseContent.findOne({ _id: safeContentId, course_id: safeCourseId });
   if (!content) {
     throw new AppError(404, 'CONTENT_NOT_FOUND', 'Content item not found in this course.');
   }
 
-  // SECURITY/DEVIATION: deterministic idempotency key (studentId:contentId)
-  // relies on the DB-level unique index as the real guarantee against
-  // duplicate/racing submissions
-  const idempotencyKey = `${studentId}:${contentId}`;
+  const idempotencyKey = `${safeStudentId.toString()}:${safeContentId.toString()}`;
 
   try {
     await CourseProgressEvent.create({
-      course_id: courseId,
-      student_id: studentId,
+      course_id: safeCourseId,
+      student_id: safeStudentId,
       unit_id: content.unit_id,
-      content_id: contentId,
+      content_id: safeContentId,
       event_type: content.content_type === 'video' ? 'video_completed' : 'lesson_completed',
       idempotency_key: idempotencyKey,
       source: 'server',
@@ -49,16 +44,15 @@ async function recordProgress({ studentId, courseId, contentId, req }) {
     }
   }
 
-  // Server-side recomputation
-  const totalContentCount = await CourseContent.countDocuments({ course_id: courseId });
+  const totalContentCount = await CourseContent.countDocuments({ course_id: safeCourseId });
   const distinctCompleted = await CourseProgressEvent.distinct('content_id', {
-    course_id: courseId,
-    student_id: studentId,
+    course_id: safeCourseId,
+    student_id: safeStudentId,
   });
   const completedCount = distinctCompleted.length;
   const progressPercentage = totalContentCount > 0 ? completedCount / totalContentCount : 0;
 
-  const course = await Course.findById(courseId).select('completion_threshold').lean();
+  const course = await Course.findById(safeCourseId).select('completion_threshold').lean();
   let justCompleted = false;
   if (progressPercentage >= (course?.completion_threshold ?? 1) && enrollment.status === 'active') {
     enrollment.status = 'completed';
@@ -68,13 +62,13 @@ async function recordProgress({ studentId, courseId, contentId, req }) {
   }
 
   await auditService.record({
-    actorId: studentId,
+    actorId: safeStudentId,
     actorRole: 'Student',
     action: 'COURSE_PROGRESS_RECORDED',
     resourceType: 'CourseProgressEvent',
-    resourceId: contentId,
+    resourceId: safeContentId,
     metadata: {
-      course_id: courseId,
+      course_id: safeCourseId,
       progress_percentage: progressPercentage,
       course_completed: justCompleted,
     },
