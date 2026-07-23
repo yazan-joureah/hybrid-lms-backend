@@ -74,4 +74,36 @@ async function deleteFile({ fileId, userId, actorRole, req }) {
   return { success: true };
 }
 
-module.exports = { uploadFile, deleteFile };
+/**
+ * Opens a readable stream for a GridFS file by ID, for piping directly
+ * into an HTTP response.
+ *
+ * @param {object} params
+ * @param {string} params.fileId - GridFS file ID (string)
+ * @returns {Promise<{ stream: import('stream').Readable, contentType: string, filename: string }>}
+ */
+async function getDownloadStream({ fileId }) {
+  const db = mongoose.connection.db;
+  if (!db) {
+    throw new Error('Database connection not established');
+  }
+
+  const bucket = new mongoose.mongo.GridFSBucket(db, { bucketName: GRIDFS_BUCKET_NAME });
+  const objectId = new mongoose.Types.ObjectId(fileId);
+
+  // Confirms the file actually exists before returning a stream — avoids
+  // a confusing generic stream-error later if the ID is stale/invalid.
+  const files = await bucket.find({ _id: objectId }).toArray();
+  if (files.length === 0) {
+    throw new Error('FILE_NOT_FOUND_IN_GRIDFS');
+  }
+
+  const stream = bucket.openDownloadStream(objectId);
+  return {
+    stream,
+    contentType: files[0].contentType,
+    filename: files[0].filename,
+  };
+}
+
+module.exports = { uploadFile, deleteFile, getDownloadStream };

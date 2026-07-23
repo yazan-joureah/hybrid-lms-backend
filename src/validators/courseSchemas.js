@@ -58,10 +58,15 @@ const courseReviewSchema = z
     path: ['reason'],
   });
 
+const progressSchema = z.object({
+  content_id: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid ObjectId format'),
+});
+
 module.exports = {
   courseCreateSchema,
   courseUpdateSchema,
   unitCreateSchema,
   contentCreateSchema,
   courseReviewSchema,
+  progressSchema,
 };
