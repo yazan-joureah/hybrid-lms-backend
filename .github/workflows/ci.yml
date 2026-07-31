@@ -63,7 +63,8 @@ jobs:
           REDIS_URL: redis://localhost:6379
           JWT_ACCESS_SECRET: test_secret_ci_only_never_use_in_prod
           ENCRYPTION_MASTER_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
 
       - name: Dependency vulnerability audit
         run: npm audit --audit-level=high

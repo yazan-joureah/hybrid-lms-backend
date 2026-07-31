@@ -149,6 +149,14 @@ async function sendGoogleAccountLinkedNotice(to) {
   });
 }
 
+async function sendInvoiceEmail(to, { invoiceNumber, courseTitle, amount, currency }) {
+  return sendMail({
+    to,
+    subject: 'Your Hybrid LMS Invoice',
+    html: `<p>Thank you for your purchase.</p><p>Invoice: ${invoiceNumber}<br>Course: ${courseTitle}<br>Amount: ${amount} ${currency.toUpperCase()}</p>`,
+  });
+}
+
 module.exports = {
   sendVerificationEmail,
   sendGuardianApprovalEmail,
@@ -157,4 +165,5 @@ module.exports = {
   sendPasswordResetEmail,
   createMimeMessage,
   sendGoogleAccountLinkedNotice,
+  sendInvoiceEmail,
 };
