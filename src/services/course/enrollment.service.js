@@ -138,4 +138,50 @@ async function listMyEnrollments({ studentId, queryParams = {} }) {
   };
 }
 
-module.exports = { checkEnrollmentEligibility, enrollInCourse, listMyEnrollments };
+/**
+ * here: this is a system-to-system call triggered by a verified webhook,
+ * not a user-facing HTTP request.
+ */
+async function activatePendingEnrollment({ enrollmentId }) {
+  const enrollment = await Enrollment.findById(enrollmentId);
+  if (!enrollment) {
+    throw new AppError(404, 'ENROLLMENT_NOT_FOUND', 'Enrollment not found.');
+  }
+  if (enrollment.status !== 'pending_payment') {
+    return { success: true, data: { enrollment, alreadyActive: true } };
+  }
+
+  enrollment.status = 'active';
+  enrollment.activated_at = new Date();
+  await enrollment.save();
+
+  return { success: true, data: { enrollment, alreadyActive: false } };
+}
+
+/**
+ * Called by PAY (UC-PAY-07) when a refund is approved — cancels the
+ * enrollment. System-triggered by a verified admin decision downstream,
+ * no ownership/session check here (mirrors activatePendingEnrollment).
+ */
+async function cancelEnrollmentForRefund({ enrollmentId }) {
+  const enrollment = await Enrollment.findById(enrollmentId);
+  if (!enrollment) {
+    throw new AppError(404, 'ENROLLMENT_NOT_FOUND', 'Enrollment not found.');
+  }
+  if (enrollment.status === 'cancelled') {
+    return { success: true, data: { enrollment, alreadyCancelled: true } };
+  }
+
+  enrollment.status = 'cancelled';
+  await enrollment.save();
+
+  return { success: true, data: { enrollment, alreadyCancelled: false } };
+}
+
+module.exports = {
+  checkEnrollmentEligibility,
+  enrollInCourse,
+  listMyEnrollments,
+  activatePendingEnrollment,
+  cancelEnrollmentForRefund,
+};

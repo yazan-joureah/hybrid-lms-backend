@@ -7,19 +7,19 @@
   "extends": [
     "eslint:recommended",
     "plugin:security/recommended-legacy",
-    "plugin:node/recommended"
+    "plugin:n/recommended"
   ],
   "plugins": [
     "security",
-    "node"
+    "n"
   ],
   "parserOptions": {
     "ecmaVersion": 2022,
     "sourceType": "script"
   },
   "rules": {
-    "node/no-unpublished-require": "off",
-    "node/no-missing-require": "off",
+    "n/no-unpublished-require": "off",
+    "n/no-missing-require": "off",
     "security/detect-object-injection": "warn",
     "no-console": [
       "warn",
