@@ -37,4 +37,6 @@ router.post(
   quizController.publish
 );
 
+router.post('/:quizId/start', requireAuth, requireRole(['Student']), quizController.start);
+
 module.exports = router;
