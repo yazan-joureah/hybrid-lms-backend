@@ -1,54 +1,148 @@
-/* ==========================================================================
-   src/routes/liveRoutes.js
-   ========================================================================== */
-
+/**
+ * src/routes/liveRoutes.js
+ * وحدة الجلسات المباشرة (LIVE) — UC-LIVE-01 حتى UC-LIVE-08
+ * يُركَّب في app.js على: /api/v1/live
+ *
+ * ملاحظة: وحدة الحضور (ATT) لها مسارات منفصلة تماماً في attendanceRoutes.js
+ * (/api/v1/attendance) — حسب فصل الاهتمامات المطلوب.
+ */
 const express = require('express');
-const router = express.Router();
-const _mongoose = require('mongoose');
-
-// استيراد Controller و Middleware الأساسي
-const { joinSession } = require('../controllers/live.controller');
 const { requireAuth } = require('../middleware/authMiddleware');
-const User = require('../models/User');
+const { requireRole } = require('../middleware/requireRole');
+const requireVerifiedIdentity = require('../middleware/requireVerifiedIdentity.middleware');
+const { validateBody } = require('../middleware/validate');
+const { rateLimit } = require('../middleware/rateLimiter');
 
-// Middleware للتحقق من دور الطالب (يدعم String و ObjectId)
-const requireStudentRole = async (req, res, next) => {
-  try {
-    if (!req.user || !req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. Only students can perform this action.',
-      });
-    }
+const liveController = require('../controllers/live.controller');
+const {
+  createSessionSchema,
+  updateSessionSchema,
+  cancelSessionSchema,
+  chatMessageSchema,
+  screenShareSchema,
+  attachRecordingSchema,
+} = require('../validators/liveSchemas');
 
-    // 1. البحث باستخدام الموديل الافتراضي (Mongoose تحوله لـ ObjectId تلقائياً)
-    let user = await User.findById(req.user.id);
+const router = express.Router();
 
-    // 2. إذا لم يجده، نبحث بالـ String المباشر (في حال تخزينه كـ String في Mongo Express)
-    if (!user) {
-      user = await User.findOne({ _id: String(req.user.id) });
-    }
+// كل مسارات هذه الوحدة تتطلب مصادقة JWT أولاً
+router.use(requireAuth);
 
-    // 3. التحقق من وجود المستخدم وأن دوره الطالب
-    if (user && user.role && user.role.toLowerCase() === 'student') {
-      req.user.role = user.role;
-      return next();
-    }
+/* ───────────────────────── 1) إدارة وحجز الجلسات ───────────────────────── */
 
-    return res.status(403).json({
-      success: false,
-      message: 'Access denied. Only students can perform this action.',
-    });
-  } catch (error) {
-    console.error('Error in requireStudentRole:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Server error during authorization check.',
-    });
-  }
-};
+// UC-LIVE-01 — Create/Schedule Session
+router.post(
+  '/sessions',
+  requireRole(['Instructor']),
+  requireVerifiedIdentity, // نفس مستوى التحقق المطلوب لإنشاء كورس (SF-AUTH-03)
+  validateBody(createSessionSchema),
+  liveController.createSession
+);
 
-// مسار الانضمام للجلسة المباشرة (UC-LIVE-01)
-router.post('/sessions/:sessionId/join', requireAuth, requireStudentRole, joinSession);
+// UC-LIVE-02 — Edit Session
+router.put(
+  '/sessions/:sessionId',
+  requireRole(['Instructor']),
+  validateBody(updateSessionSchema),
+  liveController.updateSession
+);
+
+// UC-LIVE-02 — Cancel Session
+router.post(
+  '/sessions/:sessionId/cancel',
+  requireRole(['Instructor']),
+  validateBody(cancelSessionSchema),
+  liveController.cancelSession
+);
+
+// UC-LIVE-03 — View Live Schedule (طالب أو محاضر)
+router.get('/sessions', requireRole(['Student', 'Instructor']), liveController.listSessions);
+
+/* ─────────────────────── 2) الانضمام والمصادقة ─────────────────────── */
+
+// UC-LIVE-04 — Join Live Session
+router.post(
+  '/sessions/:sessionId/join',
+  requireRole(['Student']),
+  rateLimit('live_join', (req) => req.user.id), // يمنع محاولات تخمين/قصف الانضمام
+  liveController.joinSession
+);
+
+// UC-ATT-01 (دعم) — Leave — يُنهي تتبع الحضور صراحةً
+router.post('/sessions/:sessionId/leave', requireRole(['Student']), liveController.leaveSession);
+
+// UC-LIVE-05 — Lobby Control (المحاضر فقط)
+router.get('/sessions/:sessionId/lobby', requireRole(['Instructor']), liveController.listLobby);
+router.post(
+  '/sessions/:sessionId/lobby/admit-all',
+  requireRole(['Instructor']),
+  liveController.admitAllFromLobby
+);
+router.post(
+  '/sessions/:sessionId/lobby/:studentId/admit',
+  requireRole(['Instructor']),
+  liveController.admitFromLobby
+);
+router.post(
+  '/sessions/:sessionId/lobby/:studentId/deny',
+  requireRole(['Instructor']),
+  liveController.denyFromLobby
+);
+
+/* ────────────── 3) إدارة الحضور والمشاركة أثناء البث ────────────── */
+
+// UC-LIVE-06 — In-Stream Chat & Q&A (طالب أو محاضر)
+router.post(
+  '/sessions/:sessionId/chat',
+  requireRole(['Student', 'Instructor']),
+  validateBody(chatMessageSchema),
+  liveController.sendMessage
+);
+router.get(
+  '/sessions/:sessionId/chat',
+  requireRole(['Student', 'Instructor']),
+  liveController.getMessages
+);
+
+// UC-LIVE-07 — Moderation & Controls (المحاضر فقط لأوامر الكتم/الطرد)
+router.post(
+  '/sessions/:sessionId/moderation/mute/:studentId',
+  requireRole(['Instructor']),
+  liveController.mute
+);
+router.post(
+  '/sessions/:sessionId/moderation/unmute/:studentId',
+  requireRole(['Instructor']),
+  liveController.unmute
+);
+router.post(
+  '/sessions/:sessionId/moderation/mute-all',
+  requireRole(['Instructor']),
+  liveController.muteAll
+);
+router.post(
+  '/sessions/:sessionId/moderation/remove/:studentId',
+  requireRole(['Instructor']),
+  liveController.remove
+);
+
+// UC-LIVE-07 — Screen Sharing (بدء المحاضر / إيقاف من بدأها)
+router.post(
+  '/sessions/:sessionId/screen-share',
+  requireRole(['Student', 'Instructor']),
+  validateBody(screenShareSchema),
+  liveController.screenShare
+);
+
+/* ─────────────────── 4) ما بعد البث والأرشفة ─────────────────── */
+
+// UC-LIVE-08 — End & Process Recording
+router.post('/sessions/:sessionId/end', requireRole(['Instructor']), liveController.endSession);
+router.post(
+  '/sessions/:sessionId/recording',
+  requireRole(['Instructor']),
+  validateBody(attachRecordingSchema),
+  liveController.attachRecording
+);
 
 module.exports = router;

@@ -14,13 +14,12 @@ const kycRoutes = require('./routes/kycRoutes');
 const courseRoutes = require('./routes/courseRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const liveRoutes = require('./routes/liveRoutes');
+const attendanceRoutes = require('./routes/attendanceRoutes');
 
 const env = require('./config/env');
 
 const app = express();
 
-// تسجيل المسار
-app.use('/api/v1/live', liveRoutes);
 // ── Security headers (Helmet — explicit CSP per project security policy) ──
 app.use(
   helmet({
@@ -61,8 +60,8 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/kyc', kycRoutes);
 app.use('/api/v1/courses', courseRoutes);
 app.use('/api/v1/admin', adminRoutes);
-// تسجيل المسار
 app.use('/api/v1/live', liveRoutes);
+app.use('/api/v1/attendance', attendanceRoutes);
 // ── 404 + Error handling (must be last) ──────────────────────────────────
 app.use(notFoundHandler);
 app.use(errorHandler);
