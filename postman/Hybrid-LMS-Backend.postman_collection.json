@@ -35,6 +35,34 @@
     {
       "key": "baseUrl",
       "value": "http://localhost:3000/api/v1"
+    },
+    {
+      "key": "instructorAccessToken",
+      "value": ""
+    },
+    {
+      "key": "studentAccessToken",
+      "value": ""
+    },
+    {
+      "key": "anotherStudentAccessToken",
+      "value": ""
+    },
+    {
+      "key": "demoCourseId",
+      "value": ""
+    },
+    {
+      "key": "liveSessionId",
+      "value": ""
+    },
+    {
+      "key": "studentUserId",
+      "value": ""
+    },
+    {
+      "key": "joinToken",
+      "value": ""
     }
   ],
   "item": [
@@ -2684,6 +2712,1039 @@
           }
         }
       ]
+    },
+    {
+      "name": "Live Sessions & Attendance (LIVE + ATT)",
+      "item": [
+        {
+          "name": "0) Setup (run once)",
+          "item": [
+            {
+              "name": "README — run these two commands first in your terminal",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/health",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "health"
+                  ]
+                },
+                "description": "قبل تشغيل أي طلب في هذا المجلد:\n\n1. npm run seed:dev-users   → ينشئ instructor@dev.local و student@dev.local\n2. npm run seed:live-demo   → ينشئ كورساً وتسجيلاً فعلياً، ويطبع instructorAccessToken و studentAccessToken و demoCourseId في الطرفية\n\nالصقي القيم الثلاث المطبوعة في متغيرات هذه المجموعة (Collection Variables): instructorAccessToken, studentAccessToken, demoCourseId.\n\nالتوكنات صالحة 15 دقيقة فقط — أعيدي تشغيل seed:live-demo عند انتهائها."
+              }
+            }
+          ],
+          "description": "خطوات تجهيز البيانات والتوكنات قبل اختبار وحدتي LIVE وATT."
+        },
+        {
+          "name": "1) Pre-Session Management",
+          "item": [
+            {
+              "name": "UC-LIVE-01 — Create/Schedule Session",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions"
+                  ]
+                },
+                "description": "غيّري startTime/endTime لتكونا في المستقبل القريب (دقيقة أو دقيقتين من الآن) قبل تشغيل هذا الطلب فعلياً، كي تنجح اختبارات UC-LIVE-04 لاحقاً ضمن نفس الجلسة.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"courseId\": \"{{demoCourseId}}\",\n  \"title\": \"Week 1 — Introduction\",\n  \"meetingLink\": \"https://meet.jit.si/hybrid-lms-demo-room\",\n  \"startTime\": \"2026-08-10T10:00:00.000Z\",\n  \"endTime\": \"2026-08-10T11:00:00.000Z\",\n  \"lobbyEnabled\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "pm.collectionVariables.set('liveSessionId', body.data.session._id);",
+                      "pm.test('sessionId captured', () => pm.expect(pm.collectionVariables.get('liveSessionId')).to.be.a('string'));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "UC-LIVE-02 — Edit Session",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Week 1 — Introduction (Updated)\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "UC-LIVE-02 — Cancel Session",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/cancel",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "cancel"
+                  ]
+                },
+                "description": "شغّلي هذا الطلب على جلسة تجريبية منفصلة كي لا تُلغي الجلسة المستخدمة في بقية الاختبارات.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Instructor is unavailable — testing cancel flow\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "UC-LIVE-03 — View Live Schedule (Student)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-LIVE-03 — View Live Schedule (Instructor)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions"
+                  ]
+                },
+                "description": ""
+              }
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "2) Join & Access Control",
+          "item": [
+            {
+              "name": "UC-LIVE-04 — Join Live Session (Student)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/join",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "join"
+                  ]
+                },
+                "description": "يجب أن يكون الوقت الحالي ضمن [startTime, endTime] للجلسة، وإلا يرجع 400 SESSION_NOT_STARTED / SESSION_ENDED — راجعي ملاحظة الطلب السابق."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (!body.data.waiting) {",
+                      "  pm.collectionVariables.set('joinToken', body.data.joinToken);",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "UC-LIVE-05 — List Lobby Requests (Instructor)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/lobby",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "lobby"
+                  ]
+                },
+                "description": "مفيد فقط إذا أُنشئت الجلسة بـ lobbyEnabled=true."
+              }
+            },
+            {
+              "name": "UC-LIVE-05 — Admit One Participant",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/lobby/{{studentUserId}}/admit",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "lobby",
+                    "{{studentUserId}}",
+                    "admit"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-LIVE-05 — Admit All Participants",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/lobby/admit-all",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "lobby",
+                    "admit-all"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-LIVE-05 — Deny Participant",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/lobby/{{studentUserId}}/deny",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "lobby",
+                    "{{studentUserId}}",
+                    "deny"
+                  ]
+                },
+                "description": ""
+              }
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "3) In-Session Interactions",
+          "item": [
+            {
+              "name": "UC-LIVE-06 — Send Chat Message",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/chat",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "chat"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"messageType\": \"text\",\n  \"text\": \"هل يمكنكم سماعي بوضوح؟\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "UC-LIVE-06 — Raise Hand",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/chat",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "chat"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"messageType\": \"raise_hand\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "UC-LIVE-06 — Get Chat History",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/chat",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "chat"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-LIVE-07 — Mute Participant",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/moderation/mute/{{studentUserId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "moderation",
+                    "mute",
+                    "{{studentUserId}}"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-LIVE-07 — Unmute Participant",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/moderation/unmute/{{studentUserId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "moderation",
+                    "unmute",
+                    "{{studentUserId}}"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-LIVE-07 — Mute All",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/moderation/mute-all",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "moderation",
+                    "mute-all"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-LIVE-07 — Start Screen Share (Instructor)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/screen-share",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "screen-share"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"isSharing\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "UC-LIVE-07 — Stop Screen Share (Instructor)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/screen-share",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "screen-share"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"isSharing\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "UC-LIVE-07 — Remove Participant",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/moderation/remove/{{studentUserId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "moderation",
+                    "remove",
+                    "{{studentUserId}}"
+                  ]
+                },
+                "description": "مدمِّر — يُبقيه آخر طلب في هذا المجلد كي لا يعطّل الطلبات السابقة."
+              }
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "4) Post-Session & Analytics",
+          "item": [
+            {
+              "name": "UC-ATT-01 (support) — Leave Session",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/leave",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "leave"
+                  ]
+                },
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "pm.test('durationSeconds is a number', () => pm.expect(body.data.durationSeconds).to.be.a('number'));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "UC-LIVE-08 — End Session",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/end",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "end"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-LIVE-08 — Attach Recording URL",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/recording",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "recording"
+                  ]
+                },
+                "description": "شغّليه فقط بعد End Session (400 SESSION_NOT_ENDED إن لم تُنهَ الجلسة أولاً).",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"recordingUrl\": \"https://storage.example.com/recordings/session-demo.mp4\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "UC-ATT-02 — Session Attendance Report (JSON)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/attendance/sessions/{{liveSessionId}}/report",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "attendance",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "report"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-ATT-02 — Session Attendance Export (CSV download)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/attendance/sessions/{{liveSessionId}}/export.csv",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "attendance",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "export.csv"
+                  ]
+                },
+                "description": "استجابة CSV مباشرة — استخدمي زر 'Save Response > Save to a file' في Postman."
+              }
+            },
+            {
+              "name": "UC-ATT-02 — Course Attendance Summary",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/attendance/courses/{{demoCourseId}}/summary",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "attendance",
+                    "courses",
+                    "{{demoCourseId}}",
+                    "summary"
+                  ]
+                },
+                "description": ""
+              }
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "5) Key Failure Cases",
+          "item": [
+            {
+              "name": "Join — before session start time → 400 SESSION_NOT_STARTED",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/join",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "join"
+                  ]
+                },
+                "description": "أنشئي جلسة بـ startTime في المستقبل البعيد لتجربة هذه الحالة تحديداً."
+              }
+            },
+            {
+              "name": "Join — student not enrolled → 403 NOT_ENROLLED",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{anotherStudentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/join",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "join"
+                  ]
+                },
+                "description": "استخدمي توكن طالب آخر غير مسجَّل بالكورس (سجّليه يدوياً أو عبر Register)."
+              }
+            },
+            {
+              "name": "Create Session — Student role → 403 FORBIDDEN",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"courseId\": \"{{demoCourseId}}\",\n  \"title\": \"Should be rejected\",\n  \"meetingLink\": \"https://meet.jit.si/x\",\n  \"startTime\": \"2026-08-10T10:00:00.000Z\",\n  \"endTime\": \"2026-08-10T11:00:00.000Z\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Create Session — overlapping time → 409 SESSION_TIME_CONFLICT",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions"
+                  ]
+                },
+                "description": "شغّلي هذا مباشرة بعد إنشاء الجلسة الأولى بنفس التوقيت تماماً.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"courseId\": \"{{demoCourseId}}\",\n  \"title\": \"Overlapping session\",\n  \"meetingLink\": \"https://meet.jit.si/x\",\n  \"startTime\": \"2026-08-10T10:00:00.000Z\",\n  \"endTime\": \"2026-08-10T11:00:00.000Z\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "description": ""
+        }
+      ],
+      "description": "UC-LIVE-01..08 + UC-ATT-01..02 — راجعي مجلد '0) Setup' أولاً. متغيرات المجموعة الجديدة المطلوبة: instructorAccessToken, studentAccessToken, demoCourseId, liveSessionId (تُملأ تلقائياً), studentUserId, joinToken (تُملأ تلقائياً), anotherStudentAccessToken (اختياري، لحالات الفشل)."
     }
   ]
 }

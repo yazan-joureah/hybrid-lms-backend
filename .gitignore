@@ -1,6 +1,8 @@
-node_modules/
+﻿node_modules/
 .env
 coverage/
 *.log
 dist/
 .DS_Store
+.vscode/
+tokens.txt
