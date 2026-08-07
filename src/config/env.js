@@ -67,4 +67,14 @@ module.exports = {
     clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
     redirectUri: process.env.GOOGLE_OAUTH_REDIRECT_URI,
   },
+
+  stripe: {
+    secretKey: required('STRIPE_SECRET_KEY'),
+    webhookSecret: required('STRIPE_WEBHOOK_SECRET'),
+  },
+
+  payment: {
+    currency: 'usd',
+    refundWindowBusinessDays: 10,
+  },
 };

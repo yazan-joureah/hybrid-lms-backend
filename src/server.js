@@ -39,5 +39,5 @@ async function start() {
 start().catch((err) => {
   logger.error('Fatal startup error', { error: err.message });
   // eslint-disable-next-line no-process-exit -- intentional: cannot serve traffic without DB/Redis
-  process.exit(1);
+  process.exitCode = 1;
 });
