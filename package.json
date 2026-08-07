@@ -15,7 +15,8 @@
     "format": "prettier --write \"src/**/*.js\" \"tests/**/*.js\"",
     "prepare": "husky",
     "seed:prod-superadmin": "node scripts/seedProdSuperAdmin.js",
-    "seed:dev-users": "node scripts/seedDevUsers.js"
+    "seed:dev-users": "node scripts/seedDevUsers.js",
+    "seed:live-demo": "node scripts/seedLiveDemoData.js"
   },
   "engines": {
     "node": ">=22.0.0"
@@ -39,6 +40,7 @@
     "mongoose": "^8.5.0",
     "multer": "^2.2.0",
     "qrcode": "^1.5.4",
+    "socket.io": "^4.7.5",
     "winston": "^3.13.0",
     "zod": "^3.23.8"
   },
