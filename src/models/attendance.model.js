@@ -1,12 +1,9 @@
 const mongoose = require('mongoose');
 
 /**
- * ATT — سجل الحضور (هيكل أولي Preliminary Skeleton)
- * يُنشَأ تلقائياً بواسطة UC-ATT-04 عند انضمام الطالب فعلياً عبر UC-LIVE-01.
- *
- * DEVIATION: هذا نموذج مبدئي فقط لدعم UC-LIVE-01 (الذي يتضمن UC-ATT-04).
- * منطق الإنهاء الكامل (partial/absent حسب مدة الاتصال، مطابقة CSV عبر SF-ATT-02،
- * كود الحضور عبر SF-ATT-01) يُضاف لاحقاً عند بناء وحدة ATT بالكامل بعد اكتمال LIVE.
+ * ATT — سجل الحضور
+ * يُنشَأ تلقائياً بواسطة UC-ATT-01 عند انضمام الطالب فعلياً عبر UC-LIVE-04،
+ * ويُحدَّث عند مغادرته (leaveTime + durationSeconds) لدعم UC-ATT-02 (التقارير).
  */
 const attendanceSchema = new mongoose.Schema(
   {
@@ -26,6 +23,7 @@ const attendanceSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Course',
       required: true,
+      index: true,
     },
     joinedAt: {
       type: Date,
@@ -35,8 +33,13 @@ const attendanceSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
-    // preliminary: أُنشئ عند الانضمام فقط ولم يُحسم بعد بناءً على مدة الاتصال (خطوة 4 في UC-ATT-04)
-    // present / partial / absent: قيم نهائية تُحدَّد لاحقاً بمنطق وحدة ATT الكامل
+    // مدة البقاء الفعلية بالثواني — تُحسَب عند تسجيل المغادرة (UC-ATT-01 خطوة 4)
+    durationSeconds: {
+      type: Number,
+      default: 0,
+    },
+    // preliminary: أُنشئ عند الانضمام ولم تُحسم المغادرة بعد
+    // present: نسبة حضور كافية | partial: حضور جزئي | absent: لم يحضر فعلياً
     status: {
       type: String,
       enum: ['preliminary', 'present', 'partial', 'absent'],
@@ -51,7 +54,8 @@ const attendanceSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Idempotent by design: سجل حضور واحد فقط لكل طالب لكل جلسة (يمنع التكرار عند إعادة محاولة الانضمام)
+// Idempotent by design: سجل حضور واحد فقط لكل طالب لكل جلسة
 attendanceSchema.index({ sessionId: 1, studentId: 1 }, { unique: true });
+attendanceSchema.index({ courseId: 1, studentId: 1 });
 
 module.exports = mongoose.model('Attendance', attendanceSchema);
