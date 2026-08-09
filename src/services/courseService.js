@@ -7,6 +7,7 @@ const publicCourseService = require('./course/publicCourse.service');
 const enrollmentService = require('./course/enrollment.service');
 const progressService = require('./course/progress.service');
 const studentContentService = require('./course/studentContent.service');
+const courseImageService = require('./course/courseImage.service');
 
 module.exports = {
   ...courseCoreService,
@@ -18,4 +19,5 @@ module.exports = {
   ...enrollmentService,
   ...progressService,
   ...studentContentService,
+  ...courseImageService,
 };

@@ -22,6 +22,7 @@ const courseSchema = new Schema(
       required: true,
     },
     course_type: { type: String, enum: ['free', 'paid'], required: true },
+    cover_image_storage_path: { type: String, default: null },
     price: { type: Number, required: true, default: 0 },
     status: {
       type: String,

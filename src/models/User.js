@@ -65,7 +65,7 @@ const userSchema = new Schema(
     },
 
     email_verified_at: { type: Date, default: null },
-
+    profile_picture_storage_path: { type: String, default: null },
     kyc_status: {
       type: String,
       enum: ['not_submitted', 'review_pending', 'verified', 'rejected', 'age_flagged'],

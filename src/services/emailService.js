@@ -102,11 +102,11 @@ async function sendMail({ to, subject, html }) {
   }
 }
 
-async function sendVerificationEmail(to, verifyUrl) {
+async function sendVerificationEmail(to, code) {
   return sendMail({
     to,
     subject: 'Verify your Hybrid LMS account',
-    html: `<p>Welcome! Please verify your email by visiting:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>This link expires in 24 hours.</p>`,
+    html: `<p>Welcome! Use this code to verify your email:</p><p style="font-size:28px;font-weight:bold;letter-spacing:4px;">${code}</p><p>This code expires in 15 minutes.</p>`,
   });
 }
 
@@ -134,13 +134,14 @@ async function sendGuardianDeclinedNotice(to) {
   });
 }
 
-async function sendPasswordResetEmail(to, resetUrl) {
+async function sendPasswordResetEmail(to, code) {
   return sendMail({
     to,
     subject: 'Reset your Hybrid LMS password',
-    html: `<p>We received a request to reset your password.</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>This link expires in 15 minutes and can only be used once. If you didn't request this, you can safely ignore this email.</p>`,
+    html: `<p>Use this code to reset your password:</p><p style="font-size:28px;font-weight:bold;letter-spacing:4px;">${code}</p><p>This code expires in 15 minutes and can only be used once. If you didn't request this, you can safely ignore this email.</p>`,
   });
 }
+
 async function sendGoogleAccountLinkedNotice(to) {
   return sendMail({
     to,

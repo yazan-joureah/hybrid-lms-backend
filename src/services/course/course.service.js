@@ -1,7 +1,9 @@
 // src/services/course/course.service.js
 const Course = require('../../models/Course');
 const User = require('../../models/User');
+const CourseUnit = require('../../models/CourseUnit');
 const CourseContent = require('../../models/CourseContent');
+const fileStorage = require('../fileStorage.service');
 const CourseReviewRequest = require('../../models/CourseReviewRequest');
 const auditService = require('../auditService');
 const { AppError } = require('../../middleware/errorHandler');
@@ -209,4 +211,63 @@ async function submitCourseForReview({ courseId, instructorId, req }) {
   return { success: true, data: { reviewRequest } };
 }
 
-module.exports = { createCourse, getInstructorCourses, updateCourse, submitCourseForReview };
+/**
+ * Deletes a course entirely — DRAFT/REJECTED status only (confirmed
+ * decision). Published courses with real enrollments need archival
+ * handling, not deletion — out of scope for now, deliberately.
+ */
+async function deleteCourse({ courseId, instructorId, req }) {
+  const course = await Course.findById(courseId);
+  if (!course) {
+    throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
+  }
+  if (course.owner_instructor_id.toString() !== instructorId) {
+    throw new AppError(403, 'FORBIDDEN', 'You do not have permission to delete this course.');
+  }
+  if (!['draft', 'rejected'].includes(course.status)) {
+    throw new AppError(
+      409,
+      'COURSE_NOT_DELETABLE',
+      'Only draft or rejected courses can be deleted.'
+    );
+  }
+
+  const units = await CourseUnit.find({ course_id: courseId });
+  const unitIds = units.map((u) => u._id);
+  const contents = await CourseContent.find({ unit_id: { $in: unitIds } });
+
+  for (const content of contents) {
+    if (content.storage_path) {
+      // eslint-disable-next-line no-await-in-loop
+      const fileId = content.storage_path.split('/').pop();
+      // eslint-disable-next-line no-await-in-loop
+      await fileStorage
+        .deleteFile({ fileId, userId: instructorId, actorRole: 'Instructor', req })
+        .catch(() => {});
+    }
+  }
+
+  await CourseContent.deleteMany({ unit_id: { $in: unitIds } });
+  await CourseUnit.deleteMany({ course_id: courseId });
+  await course.deleteOne();
+
+  await auditService.record({
+    actorId: instructorId,
+    actorRole: 'Instructor',
+    action: 'COURSE_DELETED',
+    resourceType: 'Course',
+    resourceId: courseId,
+    metadata: { deleted_units: units.length, deleted_content: contents.length },
+    req,
+  });
+
+  return { success: true, data: { deleted: true } };
+}
+
+module.exports = {
+  createCourse,
+  getInstructorCourses,
+  updateCourse,
+  submitCourseForReview,
+  deleteCourse,
+};

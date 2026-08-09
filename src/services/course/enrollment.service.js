@@ -178,10 +178,83 @@ async function cancelEnrollmentForRefund({ enrollmentId }) {
   return { success: true, data: { enrollment, alreadyCancelled: false } };
 }
 
+/** UC-COURSE-03: pre-enrollment confirmation details,separate from the actual enroll action. */
+async function getEnrollmentPreview({ courseId }) {
+  const course = await Course.findOne({ _id: courseId, status: 'published' })
+    .select('title description price course_type is_synchronous max_students')
+    .lean();
+  if (!course) {
+    throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
+  }
+
+  let seatsRemaining = null;
+  if (course.is_synchronous && course.max_students != null) {
+    const activeCount = await Enrollment.countDocuments({
+      course_id: courseId,
+      status: { $in: ['pending_payment', 'active'] },
+    });
+    seatsRemaining = Math.max(course.max_students - activeCount, 0);
+  }
+
+  return {
+    success: true,
+    data: {
+      course,
+      seats_remaining: seatsRemaining,
+      refund_policy_summary: 'Refunds available within 10 business days of payment.',
+    },
+  };
+}
+
+/** Instructor-facing roster for a course they own. */
+async function getCourseStudents({ instructorId, courseId, queryParams = {} }) {
+  const course = await Course.findById(courseId).select('owner_instructor_id').lean();
+  if (!course) {
+    throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
+  }
+  if (course.owner_instructor_id.toString() !== instructorId) {
+    throw new AppError(
+      403,
+      'FORBIDDEN',
+      "You do not have permission to view this course's students."
+    );
+  }
+
+  const page = parseInt(queryParams.page, 10) || 1;
+  const limit = parseInt(queryParams.limit, 10) || 20;
+  const skip = (page - 1) * limit;
+
+  const query = { course_id: courseId, status: { $in: ['active', 'completed'] } }; // pending_payment excluded — not real students yet
+
+  const [enrollments, totalRecords] = await Promise.all([
+    Enrollment.find(query)
+      .populate('student_id', 'full_name email')
+      .sort({ enrolled_at: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Enrollment.countDocuments(query),
+  ]);
+
+  return {
+    success: true,
+    data: {
+      students: enrollments,
+      meta: {
+        total_records: totalRecords,
+        current_page: page,
+        total_pages: Math.ceil(totalRecords / limit),
+      },
+    },
+  };
+}
+
 module.exports = {
   checkEnrollmentEligibility,
   enrollInCourse,
   listMyEnrollments,
   activatePendingEnrollment,
   cancelEnrollmentForRefund,
+  getEnrollmentPreview,
+  getCourseStudents,
 };

@@ -81,6 +81,35 @@ async function getCourseDetails({ courseId }) {
  * outline (units + content counts), so the instructor can manage it
  * while building. Ownership-gated, NOT status-gated.
  */
+// async function getCourseForManage({ courseId, instructorId }) {
+//   const safeCourseId = toObjectId(courseId, 'courseId');
+//   const safeInstructorId = toObjectId(instructorId, 'instructorId');
+
+//   const course = await Course.findById(safeCourseId).lean();
+//   if (!course) {
+//     throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
+//   }
+
+//   if (course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
+//     throw new AppError(403, 'FORBIDDEN', 'You do not have permission to view this course.');
+//   }
+
+//   const units = await CourseUnit.find({ course_id: safeCourseId }).sort({ order: 1 }).lean();
+//   const unitIds = units.map((u) => u._id);
+//   const contentCounts = await CourseContent.aggregate([
+//     { $match: { unit_id: { $in: unitIds } } },
+//     { $group: { _id: '$unit_id', count: { $sum: 1 } } },
+//   ]);
+//   const countByUnit = new Map(contentCounts.map((c) => [c._id.toString(), c.count]));
+
+//   const unitsWithCounts = units.map((u) => ({
+//     ...u,
+//     content_count: countByUnit.get(u._id.toString()) || 0,
+//   }));
+
+//   return { success: true, data: { course, units: unitsWithCounts } };
+// }
+
 async function getCourseForManage({ courseId, instructorId }) {
   const safeCourseId = toObjectId(courseId, 'courseId');
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
@@ -94,20 +123,43 @@ async function getCourseForManage({ courseId, instructorId }) {
     throw new AppError(403, 'FORBIDDEN', 'You do not have permission to view this course.');
   }
 
+  // Fetch units
   const units = await CourseUnit.find({ course_id: safeCourseId }).sort({ order: 1 }).lean();
+
   const unitIds = units.map((u) => u._id);
-  const contentCounts = await CourseContent.aggregate([
-    { $match: { unit_id: { $in: unitIds } } },
-    { $group: { _id: '$unit_id', count: { $sum: 1 } } },
-  ]);
-  const countByUnit = new Map(contentCounts.map((c) => [c._id.toString(), c.count]));
 
-  const unitsWithCounts = units.map((u) => ({
-    ...u,
-    content_count: countByUnit.get(u._id.toString()) || 0,
-  }));
+  // Fetch all content items for these units
+  const contents = await CourseContent.find({ unit_id: { $in: unitIds } })
+    .sort({ order: 1 })
+    .lean();
 
-  return { success: true, data: { course, units: unitsWithCounts } };
+  // Group content by unit_id
+  const contentByUnit = contents.reduce((acc, c) => {
+    const key = c.unit_id.toString();
+    if (!acc[key]) acc[key] = [];
+    acc[key].push({
+      _id: c._id,
+      content_type: c.content_type,
+      order: c.order,
+      content_data: c.content_data,
+      storage_path: c.storage_path,
+      mime_type: c.mime_type,
+      size_bytes: c.size_bytes,
+    });
+    return acc;
+  }, {});
+
+  // Build units with both content array and count
+  const unitsWithContent = units.map((u) => {
+    const unitContent = contentByUnit[u._id.toString()] || [];
+    return {
+      ...u,
+      content: unitContent,
+      content_count: unitContent.length,
+    };
+  });
+
+  return { success: true, data: { course, units: unitsWithContent } };
 }
 
 module.exports = { browseCourses, getCourseDetails, getCourseForManage };

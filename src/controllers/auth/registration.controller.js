@@ -9,57 +9,53 @@ async function register(req, res, next) {
       return res.status(201).json({
         success: true,
         data: {
-          message: 'Verification email sent. Guardian approval also required.',
+          message: 'Verification code sent. Guardian approval also required.',
           requires_guardian_approval: true,
         },
       });
     }
 
-    return res.status(201).json({ success: true, data: { message: 'Verification email sent' } });
+    return res.status(201).json({ success: true, data: { message: 'Verification code sent' } });
   } catch (err) {
     next(err);
   }
 }
 
-const VERIFY_EMAIL_ERRORS = {
-  TOKEN_INVALID: 'This verification link is invalid.',
-  TOKEN_ALREADY_USED: 'This verification link has already been used.',
-  TOKEN_EXPIRED: 'This verification link has expired. Please request a new one.',
-};
-
-/** GET /auth/verify-email */
 async function verifyEmail(req, res, next) {
   try {
-    const rawToken = req.query.token;
-
-    if (!rawToken || typeof rawToken !== 'string') {
-      throw new AppError(400, 'TOKEN_INVALID', 'Verification token is missing or invalid.');
-    }
-
-    const result = await authService.verifyEmail({ rawToken, req });
+    const { email, code } = req.validatedBody;
+    const result = await authService.verifyEmail({ email, code, req });
 
     if (result.error) {
-      throw new AppError(400, result.error, VERIFY_EMAIL_ERRORS[result.error]);
+      const statusMap = { INVALID_CODE: 400, CODE_EXPIRED: 400, TOO_MANY_ATTEMPTS: 429 };
+      return res.status(statusMap[result.error] || 400).json({
+        success: false,
+        error: { code: result.error, message: 'Verification failed.' },
+      });
     }
 
-    const message =
-      result.status === 'active'
-        ? 'Email verified. You can now log in.'
-        : 'Email verified. Waiting for guardian approval.';
+    return res
+      .status(200)
+      .json({ success: true, data: { status: result.status, next_step: result.nextStep } });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function resendVerification(req, res, next) {
+  try {
+    const { email } = req.validatedBody;
+    await authService.resendVerification({ email, req });
 
     return res.status(200).json({
       success: true,
-      data: { message, next_step: result.nextStep, status: result.status },
+      data: { message: 'If an account exists and is not yet verified, a new code has been sent.' },
     });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 }
 
-/**
- * GET /auth/guardian/approve — ⚠️ TEMPORARY BACKEND-ONLY PLACEHOLDER.
- * TODO: remove once Frontend team ships the real page.
- */
 async function guardianApprovePagePlaceholder(req, res) {
   return res.status(200).json({
     success: true,
@@ -70,12 +66,6 @@ async function guardianApprovePagePlaceholder(req, res) {
     },
   });
 }
-
-const GUARDIAN_APPROVE_ERRORS = {
-  TOKEN_INVALID: 'This approval link is invalid.',
-  TOKEN_ALREADY_USED: 'This approval link has already been used.',
-  TOKEN_EXPIRED: 'This approval link has expired. The account has been removed per policy.',
-};
 
 async function guardianApprove(req, res, next) {
   try {
@@ -95,7 +85,7 @@ async function guardianApprove(req, res, next) {
     });
 
     if (result.error) {
-      throw new AppError(400, result.error, GUARDIAN_APPROVE_ERRORS[result.error]);
+      throw new AppError(400, result.error, 'Guardian approval failed');
     }
 
     const MESSAGES = {
@@ -115,14 +105,10 @@ async function guardianApprove(req, res, next) {
   }
 }
 
-/** GET /auth/me */
-async function getMe(req, res, next) {
-  try {
-    const userData = await authService.getUserProfile({ userId: req.user.id });
-    return res.status(200).json({ success: true, data: userData });
-  } catch (err) {
-    next(err);
-  }
-}
-
-module.exports = { register, verifyEmail, guardianApprovePagePlaceholder, guardianApprove, getMe };
+module.exports = {
+  register,
+  verifyEmail,
+  resendVerification,
+  guardianApprovePagePlaceholder,
+  guardianApprove,
+};

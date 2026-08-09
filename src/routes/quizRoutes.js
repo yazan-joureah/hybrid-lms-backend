@@ -10,6 +10,7 @@ const { rateLimit } = require('../middleware/rateLimiter');
 const { validateBody } = require('../middleware/validate');
 const { quizCreateSchema, quizUpdateSchema } = require('../validators/quizSchemas');
 
+// --- Instructor: create/manage ---
 router.post(
   '/',
   requireAuth,
@@ -18,6 +19,22 @@ router.post(
   rateLimit('quiz-create', (req) => req.user.id),
   validateBody(quizCreateSchema),
   quizController.create
+);
+
+router.get(
+  '/',
+  requireAuth,
+  requireRole(['Instructor']),
+  requireVerifiedIdentity,
+  quizController.list
+);
+
+router.get(
+  '/:quizId',
+  requireAuth,
+  requireRole(['Instructor']),
+  requireVerifiedIdentity,
+  quizController.getOne
 );
 
 router.put(
@@ -29,12 +46,28 @@ router.put(
   quizController.update
 );
 
+router.delete(
+  '/:quizId',
+  requireAuth,
+  requireRole(['Instructor']),
+  requireVerifiedIdentity,
+  quizController.remove
+);
+
 router.post(
   '/:quizId/publish',
   requireAuth,
   requireRole(['Instructor']),
   requireVerifiedIdentity,
   quizController.publish
+);
+
+// --- Student: browse + take ---
+router.get(
+  '/course/:courseId/available',
+  requireAuth,
+  requireRole(['Student']),
+  quizController.listAvailable
 );
 
 router.post('/:quizId/start', requireAuth, requireRole(['Student']), quizController.start);

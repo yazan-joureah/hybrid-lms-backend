@@ -27,7 +27,7 @@ const LOGIN_ERRORS = {
   },
 };
 
-/** POST /auth/login — UC-AUTH-03. */
+// POST /auth/login.
 async function login(req, res, next) {
   try {
     const result = await authService.loginUser({ ...req.validatedBody, req });
@@ -68,7 +68,7 @@ async function login(req, res, next) {
   }
 }
 
-/** POST /auth/logout — requires Bearer JWT. */
+// POST /auth/logout
 async function logout(req, res, next) {
   try {
     await authService.logoutUser({ sessionId: req.user.sessionId, req });
@@ -126,19 +126,20 @@ async function forgotPassword(req, res, next) {
   }
 }
 
-const RESET_PASSWORD_ERRORS = {
-  TOKEN_INVALID: 'This reset link is invalid.',
-  TOKEN_ALREADY_USED: 'This reset link has already been used.',
-  TOKEN_EXPIRED: 'This reset link has expired. Please request a new one.',
-};
-
+// POST /resert-password
 async function resetPassword(req, res, next) {
   try {
-    const { token, new_password: newPassword } = req.validatedBody;
-    const result = await authService.resetPassword({ rawToken: token, newPassword, req });
+    const { email, code, new_password: newPassword } = req.validatedBody;
+    const result = await authService.resetPassword({ email, code, newPassword, req });
 
     if (result.error) {
-      throw new AppError(400, result.error, RESET_PASSWORD_ERRORS[result.error]);
+      const statusMap = { INVALID_CODE: 400, CODE_EXPIRED: 400, TOO_MANY_ATTEMPTS: 429 };
+      console.log(result.error);
+      const status = statusMap[result.error] || 400;
+      return res.status(status).json({
+        success: false,
+        error: { code: result.error, message: 'Reset failed.' },
+      });
     }
 
     return res.status(200).json({

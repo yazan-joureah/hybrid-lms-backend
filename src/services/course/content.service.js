@@ -149,7 +149,80 @@ async function addContent({ courseId, unitId, instructorId, contentType, file, c
     req,
   });
 
-  return { success: true, data: { content } };
+  const unitContent = await CourseContent.find({ unit_id: unitId }).sort({ order: 1 }).lean();
+
+  return { success: true, data: { content, unit_content: unitContent } };
 }
 
-module.exports = { addContent };
+async function deleteContent({ courseId, unitId, contentId, instructorId, req }) {
+  const safeCourseId = toObjectId(courseId, 'courseId');
+  const safeUnitId = toObjectId(unitId, 'unitId');
+  const safeContentId = toObjectId(contentId, 'contentId');
+  const safeInstructorId = toObjectId(instructorId, 'instructorId');
+
+  const course = await Course.findById(safeCourseId);
+  if (!course) throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
+  if (course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
+    throw new AppError(403, 'FORBIDDEN', 'Unauthorized course modification.');
+  }
+  assertCourseEditable(course);
+
+  const content = await CourseContent.findOneAndDelete({
+    _id: safeContentId,
+    unit_id: safeUnitId,
+    course_id: safeCourseId,
+  });
+  if (!content) throw new AppError(404, 'CONTENT_NOT_FOUND', 'Content item not found.');
+
+  await auditService.record({
+    actorId: safeInstructorId,
+    actorRole: 'Instructor',
+    action: 'CONTENT_DELETED',
+    resourceType: 'CourseContent',
+    resourceId: safeContentId.toString(),
+    metadata: { unit_id: safeUnitId },
+    req,
+  });
+
+  return { success: true, data: { message: 'Content item deleted successfully.' } };
+}
+
+async function reorderContent({ courseId, unitId, instructorId, contentOrders, req }) {
+  // contentOrders: Array of { content_id: string, order: number }
+  const safeCourseId = toObjectId(courseId, 'courseId');
+  const safeUnitId = toObjectId(unitId, 'unitId');
+  const safeInstructorId = toObjectId(instructorId, 'instructorId');
+
+  const course = await Course.findById(safeCourseId);
+  if (!course) throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
+  if (course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
+    throw new AppError(403, 'FORBIDDEN', 'Unauthorized course modification.');
+  }
+  assertCourseEditable(course);
+
+  const bulkOps = contentOrders.map(({ content_id, order }) => ({
+    updateOne: {
+      filter: {
+        _id: toObjectId(content_id, 'content_id'),
+        unit_id: safeUnitId,
+        course_id: safeCourseId,
+      },
+      update: { order },
+    },
+  }));
+
+  await CourseContent.bulkWrite(bulkOps);
+
+  await auditService.record({
+    actorId: safeInstructorId,
+    actorRole: 'Instructor',
+    action: 'CONTENT_REORDERED',
+    resourceType: 'CourseUnit',
+    resourceId: safeUnitId.toString(),
+    req,
+  });
+
+  return { success: true, data: { message: 'Content items reordered successfully.' } };
+}
+
+module.exports = { addContent, reorderContent, deleteContent };

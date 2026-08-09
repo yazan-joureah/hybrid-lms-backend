@@ -62,6 +62,32 @@ const progressSchema = z.object({
   content_id: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid ObjectId format'),
 });
 
+const updateUnitSchema = z
+  .object({
+    title: z.string().trim().min(1, 'Title is required').max(200).optional(),
+    desc: z.string().trim().optional(),
+  })
+  .refine((data) => data.title !== undefined || data.desc !== undefined, {
+    message: 'At least one field (title or desc) must be provided',
+  });
+
+const reorderUnitsSchema = z.object({
+  ordered_unit_ids: z.array(z.string().regex(/^[0-9a-fA-F]{24}$/)).min(1),
+});
+
+const updateContentSchema = z.object({
+  url: z.string().trim().url('Invalid URL format').optional(),
+  text: z.string().trim().min(1).optional(),
+});
+
+const reorderContentSchema = z.object({
+  ordered_content_ids: z.array(z.string().regex(/^[0-9a-fA-F]{24}$/)).min(1),
+});
+
+const courseStatusSchema = z.object({
+  status: z.enum(['suspended', 'archived']),
+});
+
 module.exports = {
   courseCreateSchema,
   courseUpdateSchema,
@@ -69,4 +95,9 @@ module.exports = {
   contentCreateSchema,
   courseReviewSchema,
   progressSchema,
+  updateUnitSchema,
+  reorderUnitsSchema,
+  updateContentSchema,
+  reorderContentSchema,
+  courseStatusSchema,
 };

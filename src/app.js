@@ -12,6 +12,7 @@ const courseRoutes = require('./routes/courseRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const payRoutes = require('./routes/payRoutes');
 const quizRoutes = require('./routes/quizRoutes');
+const userRoutes = require('./routes/userRoutes');
 
 const env = require('./config/env');
 
@@ -25,7 +26,7 @@ app.use(
   })
 );
 
-const allowedOrigins = [env.appUrl, 'http://localhost:5500'];
+const allowedOrigins = [env.appUrl, 'http://localhost:5173'];
 if (env.nodeEnv !== 'production' && process.env.DEMO_FRONTEND_ORIGIN) {
   allowedOrigins.push(process.env.DEMO_FRONTEND_ORIGIN);
 }
@@ -52,6 +53,7 @@ app.use('/api/v1/courses', courseRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/pay', payRoutes);
 app.use('/api/v1/quizzes', quizRoutes);
+app.use('/api/v1/users', userRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

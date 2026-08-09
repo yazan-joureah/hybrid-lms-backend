@@ -7,6 +7,7 @@ const mongoose = require('mongoose');
 const app = require('../../src/app');
 const User = require('../../src/models/User');
 const Course = require('../../src/models/Course');
+const Enrollment = require('../../src/models/Enrollment');
 const CourseUnit = require('../../src/models/CourseUnit');
 const CourseContent = require('../../src/models/CourseContent');
 const Session = require('../../src/models/Session');
@@ -443,5 +444,223 @@ describe('POST /api/v1/admin/courses/:courseId/review — requireRole enforcemen
 
     const unchanged = await Course.findById(course._id);
     expect(unchanged.status).toBe('pending_review');
+  });
+});
+
+describe('GET /api/v1/admin/courses/:courseId/preview', () => {
+  it('returns full structure with units + content metadata, no storage_path exposed', async () => {
+    const admin = await createUserAndLogin({
+      role: 'Admin',
+      kyc_status: 'not_submitted',
+      mfa_enabled: true,
+    });
+    const instructor = await createUserAndLogin({ role: 'Instructor' });
+    const course = await Course.create({
+      ...baseCoursePayload,
+      is_synchronous: false,
+      owner_instructor_id: instructor.user._id,
+      status: 'pending_review',
+    });
+    const unit = await CourseUnit.create({ course_id: course._id, title: 'Unit 1', order: 1 });
+    await CourseContent.create({
+      course_id: course._id,
+      unit_id: unit._id,
+      owner_instructor_id: instructor.user._id,
+      content_type: 'video',
+      storage_path: 'gridfs://course_files/507f1f77bcf86cd799439011',
+      mime_type: 'video/mp4',
+      size_bytes: 5000,
+      magic_bytes_match: true,
+      order: 1,
+    });
+
+    const res = await request(app)
+      .get(`/api/v1/admin/courses/${course._id}/preview`)
+      .set('Authorization', `Bearer ${admin.accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.units[0].content[0].mime_type).toBe('video/mp4');
+    expect(res.body.data.units[0].content[0].storage_path).toBeUndefined(); // never exposed
+  });
+
+  it('works for ANY course status, not just pending_review', async () => {
+    const admin = await createUserAndLogin({
+      role: 'Admin',
+      kyc_status: 'not_submitted',
+      mfa_enabled: true,
+    });
+    const instructor = await createUserAndLogin({ role: 'Instructor' });
+    const draftCourse = await Course.create({
+      ...baseCoursePayload,
+      is_synchronous: false,
+      owner_instructor_id: instructor.user._id,
+      status: 'draft',
+    });
+
+    const res = await request(app)
+      .get(`/api/v1/admin/courses/${draftCourse._id}/preview`)
+      .set('Authorization', `Bearer ${admin.accessToken}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects Instructor access with 403', async () => {
+    const instructor = await createUserAndLogin({ role: 'Instructor' });
+    const course = await Course.create({
+      ...baseCoursePayload,
+      is_synchronous: false,
+      owner_instructor_id: instructor.user._id,
+      status: 'draft',
+    });
+
+    const res = await request(app)
+      .get(`/api/v1/admin/courses/${course._id}/preview`)
+      .set('Authorization', `Bearer ${instructor.accessToken}`);
+
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('PATCH /api/v1/admin/courses/:courseId/status', () => {
+  it('suspends a published course, sets suspended_by', async () => {
+    const admin = await createUserAndLogin({
+      role: 'Admin',
+      kyc_status: 'not_submitted',
+      mfa_enabled: true,
+    });
+    const instructor = await createUserAndLogin({ role: 'Instructor' });
+    const course = await Course.create({
+      ...baseCoursePayload,
+      is_synchronous: false,
+      owner_instructor_id: instructor.user._id,
+      status: 'published',
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/admin/courses/${course._id}/status`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ status: 'suspended' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.course.status).toBe('suspended');
+    expect(res.body.data.course.suspended_by).toBe(admin.user._id.toString());
+  });
+
+  it('archives a course', async () => {
+    const admin = await createUserAndLogin({
+      role: 'Admin',
+      kyc_status: 'not_submitted',
+      mfa_enabled: true,
+    });
+    const instructor = await createUserAndLogin({ role: 'Instructor' });
+    const course = await Course.create({
+      ...baseCoursePayload,
+      is_synchronous: false,
+      owner_instructor_id: instructor.user._id,
+      status: 'published',
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/admin/courses/${course._id}/status`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ status: 'archived' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.course.status).toBe('archived');
+  });
+
+  it('rejects further changes to an already-archived course with 409', async () => {
+    const admin = await createUserAndLogin({
+      role: 'Admin',
+      kyc_status: 'not_submitted',
+      mfa_enabled: true,
+    });
+    const instructor = await createUserAndLogin({ role: 'Instructor' });
+    const course = await Course.create({
+      ...baseCoursePayload,
+      is_synchronous: false,
+      owner_instructor_id: instructor.user._id,
+      status: 'archived',
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/admin/courses/${course._id}/status`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ status: 'suspended' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('COURSE_ARCHIVED');
+  });
+
+  it('rejects an invalid status value at the Zod layer', async () => {
+    const admin = await createUserAndLogin({
+      role: 'Admin',
+      kyc_status: 'not_submitted',
+      mfa_enabled: true,
+    });
+    const instructor = await createUserAndLogin({ role: 'Instructor' });
+    const course = await Course.create({
+      ...baseCoursePayload,
+      is_synchronous: false,
+      owner_instructor_id: instructor.user._id,
+      status: 'published',
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/admin/courses/${course._id}/status`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ status: 'published' }); // not settable via this endpoint
+
+    expect(res.status).toBe(400);
+  });
+
+  it('confirms a suspended course still allows access for ALREADY-enrolled students (simplest-path decision)', async () => {
+    const admin = await createUserAndLogin({
+      role: 'Admin',
+      kyc_status: 'not_submitted',
+      mfa_enabled: true,
+    });
+    const instructor = await createUserAndLogin({ role: 'Instructor' });
+    const student = await createUserAndLogin({ role: 'Student' });
+    const course = await Course.create({
+      ...baseCoursePayload,
+      is_synchronous: false,
+      owner_instructor_id: instructor.user._id,
+      status: 'published',
+    });
+    await Enrollment.create({
+      course_id: course._id,
+      student_id: student.user._id,
+      status: 'active',
+      confirmed_by_student: true,
+    });
+
+    await request(app)
+      .patch(`/api/v1/admin/courses/${course._id}/status`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ status: 'suspended' });
+
+    const res = await request(app)
+      .get(`/api/v1/courses/${course._id}/content`)
+      .set('Authorization', `Bearer ${student.accessToken}`);
+
+    expect(res.status).toBe(200); // still accessible — enrollment status gates access, not course status
+  });
+
+  it('rejects Instructor access with 403', async () => {
+    const instructor = await createUserAndLogin({ role: 'Instructor' });
+    const course = await Course.create({
+      ...baseCoursePayload,
+      is_synchronous: false,
+      owner_instructor_id: instructor.user._id,
+      status: 'published',
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/admin/courses/${course._id}/status`)
+      .set('Authorization', `Bearer ${instructor.accessToken}`)
+      .send({ status: 'suspended' });
+
+    expect(res.status).toBe(403);
   });
 });

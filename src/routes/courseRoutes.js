@@ -15,11 +15,17 @@ const {
   unitCreateSchema,
   contentCreateSchema,
   progressSchema,
+  updateUnitSchema,
+  reorderUnitsSchema,
+  updateContentSchema,
+  reorderContentSchema,
 } = require('../validators/courseSchemas');
 
 const COURSE_CONTENT_MAX_BYTES = 50 * 1024 * 1024;
 const uploadCourseContent = createMemoryUpload(COURSE_CONTENT_MAX_BYTES, 1);
+const uploadImage = createMemoryUpload(5 * 1024 * 1024, 1);
 
+// --- Course creation / core management ---
 router.post(
   '/',
   requireAuth,
@@ -46,6 +52,25 @@ router.put(
   courseController.update
 );
 
+router.delete(
+  '/:courseId',
+  requireAuth,
+  requireRole(['Instructor']),
+  requireVerifiedIdentity,
+  courseController.deleteCourse
+);
+
+router.patch(
+  '/:courseId/cover-image',
+  requireAuth,
+  requireRole(['Instructor']),
+  requireVerifiedIdentity,
+  uploadImage.single('image'),
+  courseController.setCover
+);
+
+router.get('/:courseId/cover-image', courseController.streamCover);
+
 router.post(
   '/:courseId/submit-review',
   requireAuth,
@@ -53,7 +78,6 @@ router.post(
   requireVerifiedIdentity,
   courseController.submitForReview
 );
-
 router.post(
   '/:courseId/cancel-review',
   requireAuth,
@@ -62,6 +86,7 @@ router.post(
   courseController.cancelReview
 );
 
+// --- Unit management ---
 router.post(
   '/:courseId/units',
   requireAuth,
@@ -71,6 +96,41 @@ router.post(
   courseController.createUnit
 );
 
+router.get(
+  '/:courseId/units/:unitId',
+  requireAuth,
+  requireRole(['Instructor']),
+  requireVerifiedIdentity,
+  courseController.getUnitDetails
+);
+
+router.put(
+  '/:courseId/units/:unitId',
+  requireAuth,
+  requireRole(['Instructor']),
+  requireVerifiedIdentity,
+  validateBody(updateUnitSchema),
+  courseController.updateUnit
+);
+
+router.delete(
+  '/:courseId/units/:unitId',
+  requireAuth,
+  requireRole(['Instructor']),
+  requireVerifiedIdentity,
+  courseController.deleteUnit
+);
+
+router.patch(
+  '/:courseId/units/reorder',
+  requireAuth,
+  requireRole(['Instructor']),
+  requireVerifiedIdentity,
+  validateBody(reorderUnitsSchema),
+  courseController.reorderUnits
+);
+
+// --- Content management ---
 router.post(
   '/:courseId/units/:unitId/content',
   requireAuth,
@@ -81,17 +141,59 @@ router.post(
   courseController.createContent
 );
 
-// --- Public / Student browsing ---
-router.get('/', courseController.browse);
-router.get('/:courseId', courseController.getDetails);
+router.put(
+  '/:courseId/units/:unitId/content/:contentId',
+  requireAuth,
+  requireRole(['Instructor']),
+  requireVerifiedIdentity,
+  uploadCourseContent.single('file'),
+  validateBody(updateContentSchema),
+  courseController.updateContent
+);
 
-// --- Instructor manage view ---
+router.delete(
+  '/:courseId/units/:unitId/content/:contentId',
+  requireAuth,
+  requireRole(['Instructor']),
+  requireVerifiedIdentity,
+  courseController.deleteContent
+);
+
+router.patch(
+  '/:courseId/units/:unitId/content/reorder',
+  requireAuth,
+  requireRole(['Instructor']),
+  requireVerifiedIdentity,
+  validateBody(reorderContentSchema),
+  courseController.reorderContent
+);
+
+// --- Instructor: roster & manage view ---
 router.get(
   '/:courseId/manage',
   requireAuth,
   requireRole(['Instructor']),
   courseController.getManage
 );
+router.get(
+  '/:courseId/students',
+  requireAuth,
+  requireRole(['Instructor']),
+  courseController.getCourseStudents
+);
+
+// --- Student: unit access ---
+router.get(
+  '/:courseId/units/:unitId/student-view',
+  requireAuth,
+  requireRole(['Student']),
+  courseController.getUnitDetailsForStudent
+);
+
+// --- Public / Student browsing (no auth) ---
+router.get('/', courseController.browse);
+router.get('/:courseId', courseController.getDetails);
+router.get('/:courseId/enrollment-preview', courseController.getEnrollmentPreview);
 
 // --- Student enrollment ---
 router.post('/:courseId/enroll', requireAuth, requireRole(['Student']), courseController.enroll);
@@ -110,8 +212,15 @@ router.post(
   validateBody(progressSchema),
   courseController.record
 );
+router.get(
+  '/:courseId/progress-summary',
+  requireAuth,
+  requireRole(['Student']),
+  courseController.getProgressSummary
+);
 
 // --- Student content access ---
+// Use the same courseController because it includes studentContentController methods
 router.get(
   '/:courseId/content',
   requireAuth,
@@ -121,7 +230,7 @@ router.get(
 router.get(
   '/:courseId/content/:contentId/file',
   requireAuth,
-  requireRole(['Student']),
+  requireRole(['Student', 'Instructor', 'Admin']),
   courseController.downloadFile
 );
 

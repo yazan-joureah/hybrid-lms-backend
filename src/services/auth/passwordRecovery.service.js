@@ -5,25 +5,25 @@
 const User = require('../../models/User');
 const AuthToken = require('../../models/AuthToken');
 const RefreshToken = require('../../models/RefreshToken');
-const { hashPassword, generateOpaqueToken, sha256 } = require('../../utils/crypto');
+const { hashPassword, generateNumericOtp, sha256 } = require('../../utils/crypto'); // CHANGED
 const emailService = require('../emailService');
 const auditService = require('../auditService');
-const env = require('../../config/env');
 const logger = require('../../utils/logger');
+const crypto = require('crypto');
 
-const FORGOT_PASSWORD_TOKEN_TTL_MS = 15 * 60 * 1000;
+const FORGOT_PASSWORD_TOKEN_TTL_MS = 15 * 60 * 1000; // unchanged — already 15 min
+const MAX_OTP_ATTEMPTS = 5;
 
 /** POST /auth/forgot-password. Same success signal regardless of email existence. */
 async function forgotPassword({ email, req }) {
   const user = await User.findOne({ email });
-
   if (!user) {
     return { error: null };
   }
 
   await AuthToken.deleteMany({ user_id: user._id, token_type: 'PASSWORD_RESET', used_at: null });
 
-  const { raw, hash } = generateOpaqueToken();
+  const { raw: code, hash } = generateNumericOtp();
   await AuthToken.create({
     user_id: user._id,
     token_hash: hash,
@@ -31,10 +31,8 @@ async function forgotPassword({ email, req }) {
     expires_at: new Date(Date.now() + FORGOT_PASSWORD_TOKEN_TTL_MS),
   });
 
-  const resetUrl = `${env.appUrl}/auth/reset-password?token=${raw}`;
-
   try {
-    await emailService.sendPasswordResetEmail(user.email, resetUrl);
+    await emailService.sendPasswordResetEmail(user.email, code);
   } catch (err) {
     logger.error('Password reset email failed to send', { userId: user._id, error: err.message });
   }
@@ -52,26 +50,41 @@ async function forgotPassword({ email, req }) {
 }
 
 /** POST /auth/reset-password. token_version increment invalidates every prior RefreshToken (FR-03b). */
-async function resetPassword({ rawToken, newPassword, req }) {
-  const tokenHash = sha256(rawToken);
+async function resetPassword({ email, code, newPassword, req }) {
+  // CHANGED signature
+  const user = await User.findOne({ email });
+  if (!user) {
+    return { error: 'INVALID_CODE' };
+  }
+
+  const codeHash = sha256(code);
   const authToken = await AuthToken.findOne({
-    token_hash: tokenHash,
+    user_id: user._id,
     token_type: 'PASSWORD_RESET',
-  });
+    used_at: null,
+  }).sort({ created_at: -1 });
 
   if (!authToken) {
-    return { error: 'TOKEN_INVALID' };
-  }
-  if (authToken.used_at) {
-    return { error: 'TOKEN_ALREADY_USED' };
+    return { error: 'INVALID_CODE' };
   }
   if (authToken.expires_at < new Date()) {
-    return { error: 'TOKEN_EXPIRED' };
+    return { error: 'CODE_EXPIRED' };
+  }
+  if (authToken.attempt_count >= MAX_OTP_ATTEMPTS) {
+    return { error: 'TOO_MANY_ATTEMPTS' };
   }
 
-  const user = await User.findById(authToken.user_id);
-  if (!user) {
-    return { error: 'TOKEN_INVALID' };
+  const isValid =
+    codeHash.length === authToken.token_hash.length &&
+    crypto.timingSafeEqual(Buffer.from(codeHash), Buffer.from(authToken.token_hash));
+
+  if (!isValid) {
+    authToken.attempt_count += 1;
+    if (authToken.attempt_count >= MAX_OTP_ATTEMPTS) {
+      authToken.used_at = new Date();
+    }
+    await authToken.save();
+    return { error: authToken.used_at ? 'TOO_MANY_ATTEMPTS' : 'INVALID_CODE' };
   }
 
   authToken.used_at = new Date();
@@ -79,11 +92,9 @@ async function resetPassword({ rawToken, newPassword, req }) {
 
   user.password_hash = await hashPassword(newPassword);
   user.token_version += 1;
-
   user.failed_login_count = 0;
   user.status = user.status === 'temporary_locked' ? 'active' : user.status;
   user.lock_until = null;
-
   await user.save();
 
   await RefreshToken.updateMany(

@@ -148,6 +148,19 @@ function decryptForUser(encryptedBuffer, userId) {
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 }
 
+/**
+ * Generates a 6-digit numeric OTP (email verification / password reset).
+ * Uses crypto.randomInt (CSPRNG, NIST SP 800-90A) — NOT Math.random() —
+ * same discipline as randomizer.service.js's Fisher-Yates shuffle.
+ * Distinct from TOTP (totp.js): this is a single-use, server-generated,
+ * hash-stored code — not derived from a shared secret.
+ */
+function generateNumericOtp() {
+  const raw = nodeCrypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
+  const hash = sha256(raw);
+  return { raw, hash };
+}
+
 module.exports = {
   hashPassword,
   verifyPassword,
@@ -158,4 +171,5 @@ module.exports = {
   deriveUserKey,
   encryptForUser,
   decryptForUser,
+  generateNumericOtp,
 };

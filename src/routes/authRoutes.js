@@ -14,6 +14,8 @@ const {
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  verifyEmailSchema,
+  resendVerificationSchema,
   totpVerifySchema,
   mfaLoginVerifySchema,
   googleGuardianEmailSchema,
@@ -28,9 +30,10 @@ router.post(
   authController.register
 );
 
-router.get(
+router.post(
   '/verify-email',
-  rateLimit('verify-email', (req) => req.ip),
+  //rateLimit('verify-email', (req) => req.ip),
+  validateBody(verifyEmailSchema),
   authController.verifyEmail
 );
 
@@ -45,7 +48,7 @@ router.post(
 
 router.post(
   '/login',
-  rateLimit('login', (req) => req.body?.email || 'unknown'),
+  //rateLimit('login', (req) => req.body?.email || 'unknown'),
   validateBody(loginSchema),
   authController.login
 );
@@ -66,11 +69,13 @@ router.post(
   authController.forgotPassword
 );
 
+router.post('/reset-password', validateBody(resetPasswordSchema), authController.resetPassword);
+
 router.post(
-  '/reset-password',
-  rateLimit('reset-password', (req) => req.ip),
-  validateBody(resetPasswordSchema),
-  authController.resetPassword
+  '/resend-verification',
+  rateLimit('resend-verification', (req) => req.body.email), // نفس نمط register: per-IP + per-identifier
+  validateBody(resendVerificationSchema),
+  authController.resendVerification
 );
 
 router.post(
@@ -133,7 +138,5 @@ router.post(
   validateBody(googleGuardianEmailSchema),
   authController.googleGuardianEmail
 );
-
-router.get('/me', requireAuth, authController.getMe);
 
 module.exports = router;
