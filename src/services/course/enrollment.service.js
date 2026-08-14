@@ -178,34 +178,6 @@ async function cancelEnrollmentForRefund({ enrollmentId }) {
   return { success: true, data: { enrollment, alreadyCancelled: false } };
 }
 
-/** UC-COURSE-03: pre-enrollment confirmation details,separate from the actual enroll action. */
-async function getEnrollmentPreview({ courseId }) {
-  const course = await Course.findOne({ _id: courseId, status: 'published' })
-    .select('title description price course_type is_synchronous max_students')
-    .lean();
-  if (!course) {
-    throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
-  }
-
-  let seatsRemaining = null;
-  if (course.is_synchronous && course.max_students != null) {
-    const activeCount = await Enrollment.countDocuments({
-      course_id: courseId,
-      status: { $in: ['pending_payment', 'active'] },
-    });
-    seatsRemaining = Math.max(course.max_students - activeCount, 0);
-  }
-
-  return {
-    success: true,
-    data: {
-      course,
-      seats_remaining: seatsRemaining,
-      refund_policy_summary: 'Refunds available within 10 business days of payment.',
-    },
-  };
-}
-
 /** Instructor-facing roster for a course they own. */
 async function getCourseStudents({ instructorId, courseId, queryParams = {} }) {
   const course = await Course.findById(courseId).select('owner_instructor_id').lean();
@@ -255,6 +227,5 @@ module.exports = {
   listMyEnrollments,
   activatePendingEnrollment,
   cancelEnrollmentForRefund,
-  getEnrollmentPreview,
   getCourseStudents,
 };

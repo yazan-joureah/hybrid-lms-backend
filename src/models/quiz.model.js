@@ -45,8 +45,8 @@ const quizSchema = new Schema(
     title: { type: String, required: true, trim: true, maxlength: 200 },
     description: { type: String, default: '' },
 
-    start_time: { type: Date, required: true },
-    end_time: { type: Date, required: true },
+    start_time: { type: Date, default: null },
+    end_time: { type: Date, default: null },
     duration_minutes: { type: Number, required: true, min: 1 },
     passing_score_percent: { type: Number, required: true, min: 0, max: 100 },
     max_attempts: { type: Number, required: true, min: 1, default: 1 },
@@ -71,14 +71,16 @@ const quizSchema = new Schema(
 );
 
 quizSchema.pre('validate', function (next) {
-  if (this.end_time && this.start_time && this.end_time <= this.start_time) {
+  if (this.start_time && this.end_time && this.end_time <= this.start_time) {
     return next(new Error('end_time must be after start_time.'));
   }
-  if (this.quiz_type == 'quiz' && !this.unit_id) {
-    return next(new Error('Unit_id is required when quiz_type is "quiz"'));
+  if (this.quiz_type === 'quiz' && !this.unit_id) {
+    return next(new Error('unit_id is required when quiz_type is "quiz".'));
   }
-  if (this.quiz_type == 'exam' && this.unit_id) {
-    return next(new Error('unit_id must not be set when quiz_type is "exam" (Course final exam)'));
+  if (this.quiz_type === 'exam' && this.unit_id) {
+    return next(
+      new Error('unit_id must not be set when quiz_type is "exam" (course-wide final exam).')
+    );
   }
   if (this.allow_back_navigation === undefined) {
     this.allow_back_navigation = this.quiz_type === 'quiz';

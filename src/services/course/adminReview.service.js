@@ -111,92 +111,6 @@ async function reviewCourse({ courseId, adminId, decision, reason, req }) {
   return { success: true, data: { course } };
 }
 
-/**
- * Admin-facing full course structure preview: units + content metadata,
-
- */
-async function getCoursePreviewForAdmin({ courseId }) {
-  const safeCourseId = toObjectId(courseId, 'courseId');
-  const course = await Course.findById(safeCourseId).lean();
-  if (!course) {
-    throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
-  }
-
-  const units = await CourseUnit.find({ course_id: safeCourseId }).sort({ order: 1 }).lean();
-  const unitIds = units.map((u) => u._id);
-  const contents = await CourseContent.find({ unit_id: { $in: unitIds } })
-    .sort({ order: 1 })
-    .lean();
-
-  const contentsByUnit = new Map();
-  contents.forEach((c) => {
-    const key = c.unit_id.toString();
-    if (!contentsByUnit.has(key)) contentsByUnit.set(key, []);
-    contentsByUnit.get(key).push({
-      _id: c._id,
-      content_type: c.content_type,
-      order: c.order,
-      content_data: c.content_data || null,
-      mime_type: c.mime_type || null,
-      size_bytes: c.size_bytes || null,
-    });
-  });
-
-  const outline = units.map((u) => ({
-    _id: u._id,
-    title: u.title,
-    order: u.order,
-    content: contentsByUnit.get(u._id.toString()) || [],
-  }));
-
-  return { success: true, data: { course, units: outline } };
-}
-
-/**
- * Admin-specific wrapper: Fetches a single unit for admin review/moderation.
- * No ownership check - admins can access any course in any status.
- */
-async function getUnitDetailsForAdmin({ courseId, unitId }) {
-  // Import core function from unit.service
-  const { _getUnitDetailsCore } = require('./unit.service');
-
-  // Fetch core data (no status filter - admins can view all)
-  const { course, unit, content } = await _getUnitDetailsCore({
-    courseId,
-    unitId,
-    courseQuery: {}, // No restrictions - admins can access any status
-  });
-
-  // Format content with full metadata for admin review
-  const formattedContent = content.map((c) => ({
-    _id: c._id,
-    content_type: c.content_type,
-    order: c.order,
-    content_data: c.content_data || null,
-    storage_path: c.storage_path || null,
-    mime_type: c.mime_type || null,
-    size_bytes: c.size_bytes || null,
-    createdAt: c.createdAt,
-    updatedAt: c.updatedAt,
-  }));
-
-  return {
-    success: true,
-    data: {
-      unit: {
-        ...unit,
-        content: formattedContent,
-        content_count: formattedContent.length,
-      },
-      course: {
-        _id: course._id,
-        title: course.title,
-        status: course.status,
-      },
-    },
-  };
-}
-
 const SETTABLE_ADMIN_STATUSES = ['suspended', 'archived'];
 
 /**
@@ -245,7 +159,5 @@ async function setCourseStatus({ adminId, courseId, status, req }) {
 module.exports = {
   listPendingCourses,
   reviewCourse,
-  getCoursePreviewForAdmin,
-  getUnitDetailsForAdmin,
   setCourseStatus,
 };

@@ -1,8 +1,4 @@
-const {
-  browseCourses,
-  getCourseDetails,
-  getCourseForManage,
-} = require('../../services/courseService');
+const { browseCourses, getCourseForUser } = require('../../services/courseService');
 
 /** UC-COURSE-01: public course browsing. */
 async function browse(req, res, next) {
@@ -14,27 +10,18 @@ async function browse(req, res, next) {
   }
 }
 
-/** UC-COURSE-01 step 5: public course details, 404 if not published. */
-async function getDetails(req, res, next) {
+/** Unified role-aware course read (Guest, Student, Instructor, Admin) */
+async function getCourse(req, res, next) {
   try {
+    const userId = req.user?.id;
+    const role = req.verifiedRole || req.user?.role;
     const { courseId } = req.params;
-    const result = await getCourseDetails({ courseId });
+
+    const result = await getCourseForUser({ userId, role, courseId });
     return res.status(200).json({ success: true, data: result.data });
   } catch (err) {
     return next(err);
   }
 }
 
-/** Instructor view of own course regardless of status. */
-async function getManage(req, res, next) {
-  try {
-    const instructorId = req.user.id;
-    const { courseId } = req.params;
-    const result = await getCourseForManage({ courseId, instructorId });
-    return res.status(200).json({ success: true, data: result.data });
-  } catch (err) {
-    return next(err);
-  }
-}
-
-module.exports = { browse, getDetails, getManage };
+module.exports = { browse, getCourse };

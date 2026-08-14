@@ -1,3 +1,4 @@
+// src/controllers/quizController.js
 const quizController = require('./quiz/quiz.controller');
 const quizSessionController = require('./quiz/quizSession.controller');
 const quizQueryController = require('./quiz/quizQuery.controller');

@@ -264,10 +264,36 @@ async function deleteCourse({ courseId, instructorId, req }) {
   return { success: true, data: { deleted: true } };
 }
 
+async function getCourseForUser({ userId, role, courseId }) {
+  const safeCourseId = toObjectId(courseId, 'courseId');
+
+  if (role === 'Instructor' || ['Admin', 'SuperAdmin'].includes(role)) {
+    const course = await Course.findById(safeCourseId).lean();
+    if (!course) throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
+
+    if (
+      role === 'Instructor' &&
+      course.owner_instructor_id.toString() !== toObjectId(userId, 'userId').toString()
+    ) {
+      throw new AppError(403, 'FORBIDDEN', 'You do not have permission to view this course.');
+    }
+    return { success: true, data: { course } };
+  }
+
+  // Guest or Student: published only, 404 otherwise (UC-COURSE-01 [a5] pattern)
+  const course = await Course.findOne({ _id: safeCourseId, status: 'published' })
+    .select('-rejection_reason -suspended_by')
+    .lean();
+  if (!course) throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
+
+  return { success: true, data: { course } };
+}
+
 module.exports = {
   createCourse,
   getInstructorCourses,
   updateCourse,
   submitCourseForReview,
   deleteCourse,
+  getCourseForUser,
 };

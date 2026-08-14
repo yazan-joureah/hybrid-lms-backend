@@ -30,26 +30,12 @@ router.post(
   adminController.reviewCourseHandler
 );
 
-router.get(
-  '/courses/:courseId/preview',
-  requireAuth,
-  requireRole(['Admin', 'SuperAdmin']),
-  adminController.getCoursePreview
-);
-
 router.patch(
   '/courses/:courseId/status',
   requireAuth,
   requireRole(['Admin', 'SuperAdmin']),
   validateBody(courseStatusSchema),
   adminController.setCourseStatusHandler
-);
-
-router.get(
-  '/courses/:courseId/units/:unitId',
-  requireAuth,
-  requireRole(['Admin', 'SuperAdmin']),
-  adminController.getUnitDetailsForAdmin
 );
 
 // --- KYC moderation ---

@@ -2,8 +2,6 @@
 const {
   listPendingCourses,
   reviewCourse,
-  getCoursePreviewForAdmin,
-  getUnitDetailsForAdmin: getUnitDetailsForAdminService,
   setCourseStatus,
 } = require('../../services/courseService');
 
@@ -36,17 +34,6 @@ async function reviewCourseHandler(req, res, next) {
   }
 }
 
-/** Full course structure preview for Admin (units + content metadata, no file binaries). */
-async function getCoursePreview(req, res, next) {
-  try {
-    const { courseId } = req.params;
-    const result = await getCoursePreviewForAdmin({ courseId });
-    return res.status(200).json({ success: true, data: result.data });
-  } catch (err) {
-    return next(err);
-  }
-}
-
 /** Admin sets course status to suspended or archived. */
 async function setCourseStatusHandler(req, res, next) {
   try {
@@ -66,26 +53,8 @@ async function setCourseStatusHandler(req, res, next) {
   }
 }
 
-/** Fetches a single unit with all content for admin review. */
-async function getUnitDetailsForAdmin(req, res, next) {
-  try {
-    const { courseId, unitId } = req.params;
-
-    const result = await getUnitDetailsForAdminService({ courseId, unitId });
-
-    return res.status(200).json({
-      success: true,
-      data: result.data,
-    });
-  } catch (err) {
-    return next(err);
-  }
-}
-
 module.exports = {
   getPendingCourses,
   reviewCourseHandler,
-  getCoursePreview,
-  getUnitDetailsForAdmin,
   setCourseStatusHandler,
 };

@@ -28,8 +28,8 @@ const quizBaseObjectSchema = z.object({
   quiz_type: z.enum(['quiz', 'exam']),
   title: z.string().trim().min(1, 'Title is required').max(200),
   description: z.string().trim().optional(),
-  start_time: z.coerce.date(),
-  end_time: z.coerce.date(),
+  start_time: z.coerce.date().nullable().optional(),
+  end_time: z.coerce.date().nullable().optional(),
   duration_minutes: z.number().int().positive(),
   passing_score_percent: z.number().min(0).max(100),
   max_attempts: z.number().int().positive().optional(),
@@ -38,7 +38,7 @@ const quizBaseObjectSchema = z.object({
 });
 
 const quizCreateSchema = quizBaseObjectSchema
-  .refine((data) => data.end_time > data.start_time, {
+  .refine((data) => !data.start_time || !data.end_time || data.end_time > data.start_time, {
     message: 'end_time must be after start_time',
     path: ['end_time'],
   })
@@ -53,13 +53,10 @@ const quizCreateSchema = quizBaseObjectSchema
 
 const quizUpdateSchema = quizBaseObjectSchema
   .partial()
-  .refine(
-    (data) =>
-      data.start_time === undefined ||
-      data.end_time === undefined ||
-      data.end_time > data.start_time,
-    { message: 'end_time must be after start_time', path: ['end_time'] }
-  )
+  .refine((data) => !data.start_time || !data.end_time || data.end_time > data.start_time, {
+    message: 'end_time must be after start_time',
+    path: ['end_time'],
+  })
   .refine((data) => data.quiz_type === undefined || data.quiz_type !== 'quiz' || !!data.unit_id, {
     message: 'unit_id is required when quiz_type is "quiz"',
     path: ['unit_id'],

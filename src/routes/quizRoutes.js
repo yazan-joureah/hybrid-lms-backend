@@ -8,7 +8,11 @@ const { requireRole } = require('../middleware/requireRole');
 const requireVerifiedIdentity = require('../middleware/requireVerifiedIdentity.middleware');
 const { rateLimit } = require('../middleware/rateLimiter');
 const { validateBody } = require('../middleware/validate');
-const { quizCreateSchema, quizUpdateSchema } = require('../validators/quizSchemas');
+const {
+  quizCreateSchema,
+  quizUpdateSchema,
+  submitAnswerSchema,
+} = require('../validators/quizSchemas');
 
 // --- Instructor: create/manage ---
 router.post(
@@ -71,5 +75,21 @@ router.get(
 );
 
 router.post('/:quizId/start', requireAuth, requireRole(['Student']), quizController.start);
+router.post(
+  '/attempts/:attemptId/answers',
+  requireAuth,
+  requireRole(['Student']),
+  validateBody(submitAnswerSchema),
+  quizController.saveAnswer
+);
+
+router.post(
+  '/attempts/:attemptId/submit',
+  requireAuth,
+  requireRole(['Student']),
+  quizController.submit
+);
+
+router.get('/attempts/:attemptId', requireAuth, requireRole(['Student']), quizController.resume);
 
 module.exports = router;

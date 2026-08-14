@@ -6,7 +6,7 @@ const { toObjectId } = require('../../utils/objectId.util');
 async function getUserProfile({ userId }) {
   const safeUserId = toObjectId(userId, 'userId');
   const user = await User.findById(safeUserId).select(
-    'full_name email role status kyc_status mfa_enabled birth_date created_at'
+    'full_name email role status kyc_status mfa_enabled birth_date created_at profile_picture_storage_path'
   );
 
   if (!user) {
@@ -23,6 +23,7 @@ async function getUserProfile({ userId }) {
     mfa_enabled: user.mfa_enabled,
     birth_date: user.birth_date,
     created_at: user.created_at,
+    profile_picture_storage_path: user.profile_picture_storage_path,
   };
 }
 module.exports = { getUserProfile };

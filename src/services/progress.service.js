@@ -1,11 +1,11 @@
 // src/services/course/progress.service.js
-const Course = require('../../models/Course');
-const CourseContent = require('../../models/CourseContent');
-const CourseProgressEvent = require('../../models/CourseProgressEvent');
-const Enrollment = require('../../models/Enrollment');
-const { AppError } = require('../../middleware/errorHandler');
-const auditService = require('../auditService');
-const { toObjectId } = require('../../utils/objectId.util');
+const Course = require('../models/Course');
+const CourseContent = require('../models/CourseContent');
+const CourseProgressEvent = require('../models/CourseProgressEvent');
+const Enrollment = require('../models/Enrollment');
+const { AppError } = require('../middleware/errorHandler');
+const auditService = require('./auditService');
+const { toObjectId } = require('../utils/objectId.util');
 
 async function recordProgress({ studentId, courseId, contentId, req }) {
   const safeStudentId = toObjectId(studentId, 'studentId');
@@ -87,4 +87,35 @@ async function recordProgress({ studentId, courseId, contentId, req }) {
   };
 }
 
-module.exports = { recordProgress };
+async function getProgressSummary({ studentId, courseId }) {
+  const enrollment = await Enrollment.findOne({
+    course_id: courseId,
+    student_id: studentId,
+    status: { $in: ['active', 'completed'] },
+  });
+  if (!enrollment) {
+    throw new AppError(403, 'NOT_ENROLLED', 'You are not enrolled in this course.');
+  }
+
+  const [totalCount, completedContentIds, course] = await Promise.all([
+    CourseContent.countDocuments({ course_id: courseId }),
+    CourseProgressEvent.distinct('content_id', { course_id: courseId, student_id: studentId }),
+    Course.findById(courseId).select('completion_threshold').lean(),
+  ]);
+
+  const completedCount = completedContentIds.length;
+  const percentage = totalCount > 0 ? completedCount / totalCount : 0;
+
+  return {
+    success: true,
+    data: {
+      progress_percentage: percentage,
+      completed_content_count: completedCount,
+      total_content_count: totalCount,
+      completion_threshold: course?.completion_threshold ?? null,
+      enrollment_status: enrollment.status,
+    },
+  };
+}
+
+module.exports = { recordProgress, getProgressSummary };

@@ -198,8 +198,9 @@ describe('POST /api/v1/admin/courses/:courseId/review — publish decision', () 
       course_id: course._id,
       unit_id: unitWithContent._id,
       owner_instructor_id: instructor.user._id,
+      title: 'Unit Content Title',
       content_type: 'text',
-      content_data: { text: 'Some text' },
+      content_data: { text: 'Lesson' },
       order: 1,
     });
     const emptyUnit = await CourseUnit.create({
@@ -260,6 +261,7 @@ describe('POST /api/v1/admin/courses/:courseId/review — publish decision', () 
       course_id: course._id,
       unit_id: unit._id,
       owner_instructor_id: instructor.user._id,
+      title: 'Unit Content Title',
       content_type: 'text',
       content_data: { text: 'Lesson' },
       order: 1,
@@ -311,7 +313,7 @@ describe('POST /api/v1/admin/courses/:courseId/review — reject decision', () =
     expect(res.status).toBe(400);
 
     const unchanged = await Course.findById(course._id);
-    expect(unchanged.status).toBe('pending_review'); // confirms Zod blocked it before the service ran
+    expect(unchanged.status).toBe('pending_review');
   });
 
   it('rejects the course with free-text reason, updates status and CourseReviewRequest', async () => {
@@ -379,7 +381,7 @@ describe('POST /api/v1/admin/courses/:courseId/review — needs_revision decisio
     expect(res.body.data.course.status).toBe('draft');
 
     const reviewRequest = await CourseReviewRequest.findOne({ course_id: course._id });
-    expect(reviewRequest.status).toBe('needs_revision'); // NOT 'cancelled'
+    expect(reviewRequest.status).toBe('needs_revision');
   });
 });
 
@@ -444,80 +446,6 @@ describe('POST /api/v1/admin/courses/:courseId/review — requireRole enforcemen
 
     const unchanged = await Course.findById(course._id);
     expect(unchanged.status).toBe('pending_review');
-  });
-});
-
-describe('GET /api/v1/admin/courses/:courseId/preview', () => {
-  it('returns full structure with units + content metadata, no storage_path exposed', async () => {
-    const admin = await createUserAndLogin({
-      role: 'Admin',
-      kyc_status: 'not_submitted',
-      mfa_enabled: true,
-    });
-    const instructor = await createUserAndLogin({ role: 'Instructor' });
-    const course = await Course.create({
-      ...baseCoursePayload,
-      is_synchronous: false,
-      owner_instructor_id: instructor.user._id,
-      status: 'pending_review',
-    });
-    const unit = await CourseUnit.create({ course_id: course._id, title: 'Unit 1', order: 1 });
-    await CourseContent.create({
-      course_id: course._id,
-      unit_id: unit._id,
-      owner_instructor_id: instructor.user._id,
-      content_type: 'video',
-      storage_path: 'gridfs://course_files/507f1f77bcf86cd799439011',
-      mime_type: 'video/mp4',
-      size_bytes: 5000,
-      magic_bytes_match: true,
-      order: 1,
-    });
-
-    const res = await request(app)
-      .get(`/api/v1/admin/courses/${course._id}/preview`)
-      .set('Authorization', `Bearer ${admin.accessToken}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.units[0].content[0].mime_type).toBe('video/mp4');
-    expect(res.body.data.units[0].content[0].storage_path).toBeUndefined(); // never exposed
-  });
-
-  it('works for ANY course status, not just pending_review', async () => {
-    const admin = await createUserAndLogin({
-      role: 'Admin',
-      kyc_status: 'not_submitted',
-      mfa_enabled: true,
-    });
-    const instructor = await createUserAndLogin({ role: 'Instructor' });
-    const draftCourse = await Course.create({
-      ...baseCoursePayload,
-      is_synchronous: false,
-      owner_instructor_id: instructor.user._id,
-      status: 'draft',
-    });
-
-    const res = await request(app)
-      .get(`/api/v1/admin/courses/${draftCourse._id}/preview`)
-      .set('Authorization', `Bearer ${admin.accessToken}`);
-
-    expect(res.status).toBe(200);
-  });
-
-  it('rejects Instructor access with 403', async () => {
-    const instructor = await createUserAndLogin({ role: 'Instructor' });
-    const course = await Course.create({
-      ...baseCoursePayload,
-      is_synchronous: false,
-      owner_instructor_id: instructor.user._id,
-      status: 'draft',
-    });
-
-    const res = await request(app)
-      .get(`/api/v1/admin/courses/${course._id}/preview`)
-      .set('Authorization', `Bearer ${instructor.accessToken}`);
-
-    expect(res.status).toBe(403);
   });
 });
 
@@ -614,7 +542,7 @@ describe('PATCH /api/v1/admin/courses/:courseId/status', () => {
     expect(res.status).toBe(400);
   });
 
-  it('confirms a suspended course still allows access for ALREADY-enrolled students (simplest-path decision)', async () => {
+  it('returns 404 when an ALREADY-enrolled student attempts to access a suspended course', async () => {
     const admin = await createUserAndLogin({
       role: 'Admin',
       kyc_status: 'not_submitted',
@@ -641,10 +569,10 @@ describe('PATCH /api/v1/admin/courses/:courseId/status', () => {
       .send({ status: 'suspended' });
 
     const res = await request(app)
-      .get(`/api/v1/courses/${course._id}/content`)
+      .get(`/api/v1/courses/${course._id}`)
       .set('Authorization', `Bearer ${student.accessToken}`);
 
-    expect(res.status).toBe(200); // still accessible — enrollment status gates access, not course status
+    expect(res.status).toBe(404); // Aligns exactly with `course.service.js` which requires 'published'
   });
 
   it('rejects Instructor access with 403', async () => {

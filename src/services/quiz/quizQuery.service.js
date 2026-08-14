@@ -130,6 +130,7 @@ async function listAvailableQuizzesForStudent({ studentId, courseId }) {
     .sort({ start_time: 1 })
     .lean();
 
+  console.log(quizzes);
   return { success: true, data: { quizzes } };
 }
 

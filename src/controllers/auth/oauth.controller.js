@@ -1,6 +1,7 @@
 const authService = require('../../services/authService');
 const { issueSessionCookies } = require('../../utils/sessionCookies.util');
 const { AppError } = require('../../middleware/errorHandler');
+const env = require('../../config/env');
 
 async function googleConsent(req, res, next) {
   try {
@@ -26,7 +27,7 @@ const OAUTH_ERRORS = {
   TOKEN_INVALID: { status: 401, message: 'Invalid or expired token.' },
 };
 
-/** Shared response shaping for any flow that ends in a completed/challenged login. */
+/** Shared response shaping for AJAX POST flows that end in a completed/challenged login. */
 function finishOAuthLogin(result, res) {
   if (result.mfaRequired) {
     return res.status(200).json({
@@ -48,7 +49,13 @@ function finishOAuthLogin(result, res) {
   });
 }
 
-async function googleCallback(req, res, next) {
+/**
+ * GET /api/v1/auth/google/callback
+ * Browser GET request direct from Google redirect
+ */
+async function googleCallback(req, res) {
+  const frontendUrl = env.frontUrl || 'http://localhost:5173';
+
   try {
     const result = await authService.handleGoogleCallback({
       code: req.query.code,
@@ -57,33 +64,42 @@ async function googleCallback(req, res, next) {
     });
 
     if (result.error) {
-      const info = OAUTH_ERRORS[result.error];
-      throw new AppError(info.status, result.error, info.message);
+      const info = OAUTH_ERRORS[result.error] || { message: 'Google authentication failed.' };
+      return res.redirect(`${frontendUrl}/login?oauth_error=${encodeURIComponent(info.message)}`);
     }
 
+    // Case 1: Account with same email exists -> redirect to password link form
     if (result.requiresLinkConfirmation) {
-      return res.status(200).json({
-        success: true,
-        data: { requires_link_confirmation: true, link_pending_token: result.linkPendingToken },
-      });
+      return res.redirect(
+        `${frontendUrl}/login?oauth_step=google-link&token=${encodeURIComponent(result.linkPendingToken)}`
+      );
     }
 
+    // Case 2: New user -> redirect to birth date entry form
     if (result.requiresBirthDate) {
-      return res.status(200).json({
-        success: true,
-        data: {
-          requires_birth_date: true,
-          registration_pending_token: result.registrationPendingToken,
-        },
-      });
+      return res.redirect(
+        `${frontendUrl}/login?oauth_step=google-register&token=${encodeURIComponent(result.registrationPendingToken)}`
+      );
     }
 
-    return finishOAuthLogin(result, res);
+    // Case 3: User has MFA enabled -> redirect to MFA challenge form
+    if (result.mfaRequired) {
+      return res.redirect(
+        `${frontendUrl}/login?oauth_step=mfa&token=${encodeURIComponent(result.mfaTempToken)}`
+      );
+    }
+
+    // Case 4: Complete Login Success -> Set session cookie and redirect to dashboard
+    issueSessionCookies(res, result.refreshTokenRaw);
+    return res.redirect(`${frontendUrl}/dashboard?auth=google_success`);
   } catch (err) {
-    next(err);
+    return res.redirect(
+      `${frontendUrl}/login?oauth_error=${encodeURIComponent('Google authentication failed. Please try again.')}`
+    );
   }
 }
 
+/** POST /api/v1/auth/google/link/confirm */
 async function googleLinkConfirm(req, res, next) {
   try {
     const result = await authService.confirmGoogleLink({
@@ -111,6 +127,7 @@ async function googleLinkConfirm(req, res, next) {
   }
 }
 
+/** POST /api/v1/auth/google/register/confirm */
 async function googleRegisterConfirm(req, res, next) {
   try {
     const result = await authService.confirmGoogleRegistration({
@@ -141,6 +158,7 @@ async function googleRegisterConfirm(req, res, next) {
   }
 }
 
+/** POST /api/v1/auth/google/guardian-email */
 async function googleGuardianEmail(req, res, next) {
   try {
     const result = await authService.submitGoogleGuardianEmail({

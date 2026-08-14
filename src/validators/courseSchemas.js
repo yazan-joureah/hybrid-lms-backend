@@ -31,18 +31,14 @@ const courseCreateSchema = z.object({
 const courseUpdateSchema = courseCreateSchema.partial();
 
 const unitCreateSchema = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(1, 'Title is required')
-    .max(200, 'Title must not exceed 200 characters'),
+  title: z.string().trim().min(1, 'Title is required').max(200),
+  desc: z.string().trim().optional(),
 });
 
-// conditional requiredness (url required for 'link', text required
-// for 'text') is intentionally NOT duplicated here — content.service.js
-// already enforces it. This schema only validates shape/format when present.
 const contentCreateSchema = z.object({
   content_type: z.enum(['video', 'document', 'link', 'text']),
+  title: z.string().trim().min(1, 'Title is required').max(200),
+  desc: z.string().trim().optional(),
   url: z.string().trim().url('Invalid URL format').optional(),
   text: z.string().trim().min(1, 'Text must not be empty').optional(),
 });
@@ -76,6 +72,8 @@ const reorderUnitsSchema = z.object({
 });
 
 const updateContentSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  desc: z.string().trim().optional(),
   url: z.string().trim().url('Invalid URL format').optional(),
   text: z.string().trim().min(1).optional(),
 });

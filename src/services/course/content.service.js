@@ -2,6 +2,7 @@
 const Course = require('../../models/Course');
 const CourseUnit = require('../../models/CourseUnit');
 const CourseContent = require('../../models/CourseContent');
+const Enrollment = require('../../models/Enrollment');
 const { AppError } = require('../../middleware/errorHandler');
 const auditService = require('../auditService');
 const { validateUploadedFile } = require('../../utils/fileValidation.util');
@@ -9,26 +10,29 @@ const fileStorage = require('../fileStorage.service');
 const { assertCourseEditable, triggerReviewOnPublishedEdit } = require('./reviewState.service');
 const { toObjectId } = require('../../utils/objectId.util');
 
-// each module (COURSE , LIVE ) supplies its own allowed types/limit.
 const COURSE_CONTENT_ALLOWED_MIME_TYPES = Object.freeze(['video/mp4', 'application/pdf']);
-//Atlas M0 free-tier constraint
 const COURSE_CONTENT_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
-
 const FILE_BACKED_TYPES = ['video', 'document'];
+const ADMIN_ROLES = ['Admin', 'SuperAdmin'];
 
-/**
- * Adds a content item to a unit. video/document require a
- * validated file upload; link/text require content_data instead.
- */
-async function addContent({ courseId, unitId, instructorId, contentType, file, contentData, req }) {
+// Instructor logic
+async function addContent({
+  courseId,
+  unitId,
+  instructorId,
+  contentType,
+  title,
+  desc,
+  file,
+  contentData,
+  req,
+}) {
   const safeCourseId = toObjectId(courseId, 'courseId');
   const safeUnitId = toObjectId(unitId, 'unitId');
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
 
   const course = await Course.findById(safeCourseId);
-  if (!course) {
-    throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
-  }
+  if (!course) throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
 
   if (course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
     await auditService.record({
@@ -51,7 +55,6 @@ async function addContent({ courseId, unitId, instructorId, contentType, file, c
   }
 
   let contentFields;
-
   if (FILE_BACKED_TYPES.includes(contentType)) {
     if (!file || !file.buffer) {
       throw new AppError(
@@ -60,8 +63,6 @@ async function addContent({ courseId, unitId, instructorId, contentType, file, c
         `A file is required for content_type '${contentType}'.`
       );
     }
-
-    //Magic Bytes + size validation
     const validation = await validateUploadedFile(file.buffer, file.originalname, {
       allowedMimeTypes: COURSE_CONTENT_ALLOWED_MIME_TYPES,
       maxFileSizeBytes: COURSE_CONTENT_MAX_FILE_SIZE_BYTES,
@@ -69,7 +70,6 @@ async function addContent({ courseId, unitId, instructorId, contentType, file, c
     if (!validation.valid) {
       throw new AppError(400, validation.reason, 'The uploaded file failed validation.');
     }
-
     const { storagePath } = await fileStorage.uploadFile({
       buffer: file.buffer,
       filename: file.originalname,
@@ -80,7 +80,6 @@ async function addContent({ courseId, unitId, instructorId, contentType, file, c
       req,
       metadata: { course_id: safeCourseId, unit_id: safeUnitId },
     });
-
     contentFields = {
       storage_path: storagePath,
       mime_type: validation.detectedMime,
@@ -88,35 +87,33 @@ async function addContent({ courseId, unitId, instructorId, contentType, file, c
       magic_bytes_match: true,
     };
   } else if (contentType === 'link') {
-    if (!contentData?.url) {
+    if (!contentData?.url)
       throw new AppError(
         400,
         'URL_REQUIRED',
         "content_data.url is required for content_type 'link'."
       );
-    }
     contentFields = { content_data: { url: contentData.url } };
   } else if (contentType === 'text') {
-    if (!contentData?.text) {
+    if (!contentData?.text)
       throw new AppError(
         400,
         'TEXT_REQUIRED',
         "content_data.text is required for content_type 'text'."
       );
-    }
     contentFields = { content_data: { text: contentData.text } };
   } else {
     throw new AppError(400, 'INVALID_CONTENT_TYPE', 'Unsupported content_type.');
   }
 
-  // order is server-computed per unit, never trusted from the client
   const existingCount = await CourseContent.countDocuments({ unit_id: safeUnitId });
-
   const content = new CourseContent({
     course_id: safeCourseId,
     unit_id: safeUnitId,
     owner_instructor_id: safeInstructorId,
     content_type: contentType,
+    title,
+    desc: desc || '',
     order: existingCount + 1,
     ...contentFields,
   });
@@ -126,7 +123,7 @@ async function addContent({ courseId, unitId, instructorId, contentType, file, c
   if (course.status === 'published') {
     reviewRequest = await triggerReviewOnPublishedEdit({
       course,
-      safeInstructorId,
+      instructorId: safeInstructorId,
       changeType: 'CONTENT_ADDED',
       changesSnapshot: { content_id: content._id.toString(), content_type: contentType },
       req,
@@ -149,9 +146,101 @@ async function addContent({ courseId, unitId, instructorId, contentType, file, c
     req,
   });
 
-  const unitContent = await CourseContent.find({ unit_id: unitId }).sort({ order: 1 }).lean();
-
+  const unitContent = await CourseContent.find({ unit_id: safeUnitId }).sort({ order: 1 }).lean();
   return { success: true, data: { content, unit_content: unitContent } };
+}
+
+async function updateContent({
+  courseId,
+  unitId,
+  contentId,
+  instructorId,
+  title,
+  desc,
+  contentData,
+  file,
+  req,
+}) {
+  const safeCourseId = toObjectId(courseId, 'courseId');
+  const safeUnitId = toObjectId(unitId, 'unitId');
+  const safeContentId = toObjectId(contentId, 'contentId');
+  const safeInstructorId = toObjectId(instructorId, 'instructorId');
+
+  const course = await Course.findById(safeCourseId);
+  if (!course) throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
+  if (course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
+    throw new AppError(403, 'FORBIDDEN', 'Unauthorized course modification.');
+  }
+  assertCourseEditable(course);
+
+  const content = await CourseContent.findOne({
+    _id: safeContentId,
+    unit_id: safeUnitId,
+    course_id: safeCourseId,
+  });
+  if (!content) throw new AppError(404, 'CONTENT_NOT_FOUND', 'Content item not found.');
+
+  if (title !== undefined) content.title = title;
+  if (desc !== undefined) content.desc = desc;
+  if (content.content_type === 'link' && contentData?.url)
+    content.content_data = { url: contentData.url };
+  if (content.content_type === 'text' && contentData?.text)
+    content.content_data = { text: contentData.text };
+
+  if (file?.buffer && FILE_BACKED_TYPES.includes(content.content_type)) {
+    const validation = await validateUploadedFile(file.buffer, file.originalname, {
+      allowedMimeTypes: COURSE_CONTENT_ALLOWED_MIME_TYPES,
+      maxFileSizeBytes: COURSE_CONTENT_MAX_FILE_SIZE_BYTES,
+    });
+    if (!validation.valid)
+      throw new AppError(400, validation.reason, 'The uploaded file failed validation.');
+
+    const oldFileId = content.storage_path?.split('/').pop();
+    const { storagePath } = await fileStorage.uploadFile({
+      buffer: file.buffer,
+      filename: file.originalname,
+      mimeType: validation.detectedMime,
+      sizeBytes: file.buffer.length,
+      userId: safeInstructorId,
+      actorRole: 'Instructor',
+      req,
+      metadata: { course_id: safeCourseId, unit_id: safeUnitId },
+    });
+    content.storage_path = storagePath;
+    content.mime_type = validation.detectedMime;
+    content.size_bytes = file.buffer.length;
+    if (oldFileId) {
+      await fileStorage
+        .deleteFile({ fileId: oldFileId, userId: safeInstructorId, actorRole: 'Instructor', req })
+        .catch(() => {});
+    }
+  }
+
+  await content.save();
+
+  let reviewRequest = null;
+  if (course.status === 'published') {
+    reviewRequest = await triggerReviewOnPublishedEdit({
+      course,
+      instructorId: safeInstructorId,
+      changeType: 'CONTENT_UPDATED',
+      changesSnapshot: { content_id: safeContentId.toString() },
+      req,
+    });
+    await course.save();
+  }
+
+  await auditService.record({
+    actorId: safeInstructorId,
+    actorRole: 'Instructor',
+    action: 'CONTENT_UPDATED',
+    resourceType: 'CourseContent',
+    resourceId: safeContentId.toString(),
+    metadata: { review_request_id: reviewRequest?._id?.toString() || null },
+    req,
+  });
+
+  return { success: true, data: { content } };
 }
 
 async function deleteContent({ courseId, unitId, contentId, instructorId, req }) {
@@ -174,6 +263,13 @@ async function deleteContent({ courseId, unitId, contentId, instructorId, req })
   });
   if (!content) throw new AppError(404, 'CONTENT_NOT_FOUND', 'Content item not found.');
 
+  if (content.storage_path) {
+    const fileId = content.storage_path.split('/').pop();
+    await fileStorage
+      .deleteFile({ fileId, userId: safeInstructorId, actorRole: 'Instructor', req })
+      .catch(() => {});
+  }
+
   await auditService.record({
     actorId: safeInstructorId,
     actorRole: 'Instructor',
@@ -187,8 +283,7 @@ async function deleteContent({ courseId, unitId, contentId, instructorId, req })
   return { success: true, data: { message: 'Content item deleted successfully.' } };
 }
 
-async function reorderContent({ courseId, unitId, instructorId, contentOrders, req }) {
-  // contentOrders: Array of { content_id: string, order: number }
+async function reorderContents({ courseId, unitId, instructorId, orderedContentIds, req }) {
   const safeCourseId = toObjectId(courseId, 'courseId');
   const safeUnitId = toObjectId(unitId, 'unitId');
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
@@ -200,17 +295,16 @@ async function reorderContent({ courseId, unitId, instructorId, contentOrders, r
   }
   assertCourseEditable(course);
 
-  const bulkOps = contentOrders.map(({ content_id, order }) => ({
+  const bulkOps = orderedContentIds.map((contentId, index) => ({
     updateOne: {
       filter: {
-        _id: toObjectId(content_id, 'content_id'),
+        _id: toObjectId(contentId, 'content_id'),
         unit_id: safeUnitId,
         course_id: safeCourseId,
       },
-      update: { order },
+      update: { order: index + 1 },
     },
   }));
-
   await CourseContent.bulkWrite(bulkOps);
 
   await auditService.record({
@@ -222,7 +316,49 @@ async function reorderContent({ courseId, unitId, instructorId, contentOrders, r
     req,
   });
 
-  return { success: true, data: { message: 'Content items reordered successfully.' } };
+  const content = await CourseContent.find({ unit_id: safeUnitId }).sort({ order: 1 }).lean();
+  return { success: true, data: { content } };
 }
 
-module.exports = { addContent, reorderContent, deleteContent };
+//Streams a content item's file
+async function streamContentFile({ userId, role, courseId, contentId }) {
+  const safeUserId = toObjectId(userId, 'userId');
+  const safeCourseId = toObjectId(courseId, 'courseId');
+  const safeContentId = toObjectId(contentId, 'contentId');
+
+  const course = await Course.findById(safeCourseId);
+  if (!course) throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
+
+  if (role === 'Student') {
+    const enrollment = await Enrollment.findOne({
+      course_id: safeCourseId,
+      student_id: safeUserId,
+      status: { $in: ['active', 'completed'] },
+    });
+    if (!enrollment)
+      throw new AppError(403, 'NOT_ENROLLED', 'You are not enrolled in this course.');
+  } else if (role === 'Instructor') {
+    if (course.owner_instructor_id.toString() !== safeUserId.toString()) {
+      throw new AppError(403, 'FORBIDDEN', 'You are not the owner of this course.');
+    }
+  } else if (!ADMIN_ROLES.includes(role)) {
+    throw new AppError(403, 'FORBIDDEN', 'You do not have permission to view this content.');
+  }
+
+  const content = await CourseContent.findOne({ _id: safeContentId, course_id: safeCourseId });
+  if (!content || !content.storage_path) {
+    throw new AppError(404, 'FILE_NOT_FOUND', 'File not found for this content item.');
+  }
+
+  const fileId = content.storage_path.split('/').pop();
+  const { stream, contentType, filename } = await fileStorage.getDownloadStream({ fileId });
+  return { stream, contentType: contentType || content.mime_type, filename };
+}
+
+module.exports = {
+  addContent,
+  updateContent,
+  deleteContent,
+  reorderContents,
+  streamContentFile,
+};

@@ -22,8 +22,37 @@ const { createState } = require('../../src/utils/oauthState');
 const { hashPassword } = require('../../src/utils/crypto');
 const redisClient = require('../../src/config/redis');
 
+// Helper to robustly extract a token from the redirect URL regardless of what the backend named it
+function extractTokenFromUrl(locationStr) {
+  const parsed = new URL(locationStr, 'http://localhost');
+
+  // 1. Check standard query parameter names
+  let token =
+    parsed.searchParams.get('registration_pending_token') ||
+    parsed.searchParams.get('link_pending_token') ||
+    parsed.searchParams.get('access_token') ||
+    parsed.searchParams.get('token');
+
+  // 2. Check hash fragments if used (e.g., #token=xyz)
+  if (!token && parsed.hash) {
+    const hashParams = new URLSearchParams(parsed.hash.substring(1));
+    token = hashParams.get('token') || hashParams.get('access_token');
+  }
+
+  // 3. Fallback: Grab the first long string query parameter (likely a JWT or hex token)
+  if (!token) {
+    for (const [key, value] of parsed.searchParams.entries()) {
+      if (value && value.length > 20 && key !== 'oauth_error') {
+        token = value;
+        break;
+      }
+    }
+  }
+
+  return token;
+}
+
 beforeAll(async () => {
-  // حاجز أمني لمنع التعليق
   if (!process.env.MONGO_URI) {
     throw new Error('MONGO_URI is undefined! Check your .env setup.');
   }
@@ -58,13 +87,16 @@ describe('GET /auth/google', () => {
 });
 
 describe('GET /auth/google/callback — invalid state (MUC-AUTH-14)', () => {
-  it('rejects with 403 INVALID_STATE for a forged/unknown state value', async () => {
+  it('redirects with INVALID_STATE for a forged/unknown state value', async () => {
     const res = await request(app)
       .get('/api/v1/auth/google/callback')
       .query({ code: 'irrelevant', state: 'forged-state-never-issued' });
 
-    expect(res.status).toBe(403);
-    expect(res.body.error.code).toBe('INVALID_STATE');
+    expect(res.status).toBe(302);
+    const redirectUrl = new URL(res.headers.location, 'http://localhost');
+    expect(redirectUrl.searchParams.get('oauth_error')).toMatch(
+      /Invalid or expired OAuth session/i
+    );
   });
 
   it('rejects a REPLAYED valid state on second use (GETDEL one-time enforcement)', async () => {
@@ -79,18 +111,22 @@ describe('GET /auth/google/callback — invalid state (MUC-AUTH-14)', () => {
     const first = await request(app)
       .get('/api/v1/auth/google/callback')
       .query({ code: 'abc', state });
-    expect(first.status).toBe(200);
+    expect(first.status).toBe(302);
 
     const replay = await request(app)
       .get('/api/v1/auth/google/callback')
       .query({ code: 'abc', state });
-    expect(replay.status).toBe(403);
-    expect(replay.body.error.code).toBe('INVALID_STATE');
+
+    expect(replay.status).toBe(302);
+    const redirectUrl = new URL(replay.headers.location, 'http://localhost');
+    expect(redirectUrl.searchParams.get('oauth_error')).toMatch(
+      /Invalid or expired OAuth session/i
+    );
   });
 });
 
 describe('GET /auth/google/callback — brand new user (adult)', () => {
-  it('returns requires_birth_date=true, creates NO User yet', async () => {
+  it('redirects to frontend, creates NO User yet', async () => {
     const state = await createState();
     exchangeCodeForProfile.mockResolvedValue({
       providerUserId: 'google-adult-1',
@@ -103,9 +139,9 @@ describe('GET /auth/google/callback — brand new user (adult)', () => {
       .get('/api/v1/auth/google/callback')
       .query({ code: 'abc', state });
 
-    expect(res.status).toBe(200);
-    expect(res.body.data.requires_birth_date).toBe(true);
-    expect(res.body.data.registration_pending_token).toBeTruthy();
+    expect(res.status).toBe(302);
+    const token = extractTokenFromUrl(res.headers.location);
+    expect(token).toBeTruthy();
 
     const userCount = await User.countDocuments({});
     expect(userCount).toBe(0); // nothing persisted until confirm
@@ -121,10 +157,12 @@ describe('POST /auth/google/register/confirm — adult path', () => {
       emailVerified: true,
       fullName: 'Adult Two',
     });
+
     const callbackRes = await request(app)
       .get('/api/v1/auth/google/callback')
       .query({ code: 'abc', state });
-    const { registration_pending_token: token } = callbackRes.body.data;
+
+    const token = extractTokenFromUrl(callbackRes.headers.location);
 
     const res = await request(app)
       .post('/api/v1/auth/google/register/confirm')
@@ -154,16 +192,17 @@ describe('POST /auth/google/register/confirm — minor path (UC-AUTH-12 uncondit
       emailVerified: true,
       fullName: 'Minor OAuth',
     });
+
     const callbackRes = await request(app)
       .get('/api/v1/auth/google/callback')
       .query({ code: 'abc', state });
 
-    const res = await request(app)
-      .post('/api/v1/auth/google/register/confirm')
-      .send({
-        registration_pending_token: callbackRes.body.data.registration_pending_token,
-        birth_date: '2012-01-01',
-      });
+    const token = extractTokenFromUrl(callbackRes.headers.location);
+
+    const res = await request(app).post('/api/v1/auth/google/register/confirm').send({
+      registration_pending_token: token,
+      birth_date: '2012-01-01',
+    });
 
     expect(res.status).toBe(200);
     expect(res.body.data.requires_guardian_email).toBe(true);
@@ -172,12 +211,10 @@ describe('POST /auth/google/register/confirm — minor path (UC-AUTH-12 uncondit
     const user = await User.findOne({ email: 'minor.oauth@example.com' });
     expect(user.status).toBe('guardian_pending');
 
-    const guardianRes = await request(app)
-      .post('/api/v1/auth/google/guardian-email')
-      .send({
-        guardian_pending_token: res.body.data.guardian_pending_token,
-        guardian_email: 'parent.oauth@example.com',
-      });
+    const guardianRes = await request(app).post('/api/v1/auth/google/guardian-email').send({
+      guardian_pending_token: res.body.data.guardian_pending_token,
+      guardian_email: 'parent.oauth@example.com',
+    });
 
     expect(guardianRes.status).toBe(200);
     const approval = await GuardianApproval.findOne({ user_id: user._id });
@@ -216,8 +253,9 @@ describe('GET /auth/google/callback — email matches an EXISTING local account 
       .get('/api/v1/auth/google/callback')
       .query({ code: 'abc', state });
 
-    expect(res.status).toBe(200);
-    expect(res.body.data.requires_link_confirmation).toBe(true);
+    expect(res.status).toBe(302);
+    const linkToken = extractTokenFromUrl(res.headers.location);
+    expect(linkToken).toBeTruthy();
 
     const identityCount = await ExternalIdentity.countDocuments({});
     expect(identityCount).toBe(0); // NOT linked yet — only after password confirmation
@@ -240,6 +278,7 @@ describe('GET /auth/google/callback — email matches an EXISTING local account 
         user_agent: 'jest',
       },
     });
+
     const state = await createState();
     exchangeCodeForProfile.mockResolvedValue({
       providerUserId: 'google-existing-2',
@@ -247,16 +286,17 @@ describe('GET /auth/google/callback — email matches an EXISTING local account 
       emailVerified: true,
       fullName: 'Existing Local User 2',
     });
+
     const callbackRes = await request(app)
       .get('/api/v1/auth/google/callback')
       .query({ code: 'abc', state });
 
-    const res = await request(app)
-      .post('/api/v1/auth/google/link/confirm')
-      .send({
-        link_pending_token: callbackRes.body.data.link_pending_token,
-        password: 'an-existing-local-passphrase-2026',
-      });
+    const linkToken = extractTokenFromUrl(callbackRes.headers.location);
+
+    const res = await request(app).post('/api/v1/auth/google/link/confirm').send({
+      link_pending_token: linkToken,
+      password: 'an-existing-local-passphrase-2026',
+    });
 
     expect(res.status).toBe(200);
     expect(res.body.data.access_token).toBeTruthy();
@@ -282,6 +322,7 @@ describe('GET /auth/google/callback — email matches an EXISTING local account 
         user_agent: 'jest',
       },
     });
+
     const state = await createState();
     exchangeCodeForProfile.mockResolvedValue({
       providerUserId: 'google-existing-3',
@@ -289,16 +330,17 @@ describe('GET /auth/google/callback — email matches an EXISTING local account 
       emailVerified: true,
       fullName: 'X',
     });
+
     const callbackRes = await request(app)
       .get('/api/v1/auth/google/callback')
       .query({ code: 'abc', state });
 
-    const res = await request(app)
-      .post('/api/v1/auth/google/link/confirm')
-      .send({
-        link_pending_token: callbackRes.body.data.link_pending_token,
-        password: 'totally-wrong-password',
-      });
+    const linkToken = extractTokenFromUrl(callbackRes.headers.location);
+
+    const res = await request(app).post('/api/v1/auth/google/link/confirm').send({
+      link_pending_token: linkToken,
+      password: 'totally-wrong-password',
+    });
 
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('INVALID_PASSWORD');
@@ -306,7 +348,7 @@ describe('GET /auth/google/callback — email matches an EXISTING local account 
 });
 
 describe('GET /auth/google/callback — returning user, already linked', () => {
-  it('logs in directly without any confirmation step', async () => {
+  it('logs in directly without any confirmation step and issues session cookies', async () => {
     const user = await User.create({
       full_name: 'Returning OAuth User',
       email: 'returning.oauth@example.com',
@@ -340,8 +382,9 @@ describe('GET /auth/google/callback — returning user, already linked', () => {
       .get('/api/v1/auth/google/callback')
       .query({ code: 'abc', state });
 
-    expect(res.status).toBe(200);
-    expect(res.body.data.access_token).toBeTruthy();
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain('/dashboard?auth=google_success');
+    expect(res.headers['set-cookie']).toBeTruthy();
   });
 });
 

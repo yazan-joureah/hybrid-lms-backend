@@ -134,7 +134,6 @@ async function resetPassword(req, res, next) {
 
     if (result.error) {
       const statusMap = { INVALID_CODE: 400, CODE_EXPIRED: 400, TOO_MANY_ATTEMPTS: 429 };
-      console.log(result.error);
       const status = statusMap[result.error] || 400;
       return res.status(status).json({
         success: false,

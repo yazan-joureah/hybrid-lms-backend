@@ -224,6 +224,7 @@ describe('POST /api/v1/courses/:courseId/submit-review (Submit for Review)', () 
       course_id: course._id,
       unit_id: unit._id,
       owner_instructor_id: user._id,
+      title: 'Intro to course',
       content_type: 'text',
       content_data: { text: 'Intro text' },
       order: 1,
@@ -268,7 +269,7 @@ describe('POST /api/v1/courses/:courseId/units (Add Unit)', () => {
     const res = await request(app)
       .post(`/api/v1/courses/${course._id}/units`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ title: 'Unit One', order: 999 }); // order must be ignored — not in schema anyway
+      .send({ title: 'Unit One', order: 999 });
 
     expect(res.status).toBe(201);
     expect(res.body.data.unit.order).toBe(1);
@@ -362,6 +363,7 @@ describe('POST /api/v1/courses/:courseId/units/:unitId/content (Add Content)', (
     const res = await request(app)
       .post(`/api/v1/courses/${course._id}/units/${unit._id}/content`)
       .set('Authorization', `Bearer ${accessToken}`)
+      .field('title', 'Lecture 1 Video')
       .field('content_type', 'video')
       .attach('file', fakeMp4(), 'lecture1.mp4');
 
@@ -376,6 +378,7 @@ describe('POST /api/v1/courses/:courseId/units/:unitId/content (Add Content)', (
     const res = await request(app)
       .post(`/api/v1/courses/${course._id}/units/${unit._id}/content`)
       .set('Authorization', `Bearer ${accessToken}`)
+      .field('title', 'PDF Title')
       .field('content_type', 'document')
       .attach('file', fakePdf(), 'slides.pdf');
 
@@ -389,6 +392,7 @@ describe('POST /api/v1/courses/:courseId/units/:unitId/content (Add Content)', (
     const res = await request(app)
       .post(`/api/v1/courses/${course._id}/units/${unit._id}/content`)
       .set('Authorization', `Bearer ${accessToken}`)
+      .field('title', 'Link Title')
       .field('content_type', 'link')
       .field('url', 'https://youtube.com/watch?v=example');
 
@@ -402,6 +406,7 @@ describe('POST /api/v1/courses/:courseId/units/:unitId/content (Add Content)', (
     const res = await request(app)
       .post(`/api/v1/courses/${course._id}/units/${unit._id}/content`)
       .set('Authorization', `Bearer ${accessToken}`)
+      .field('title', 'Text Lesson Title')
       .field('content_type', 'text')
       .field('text', 'Written lesson content here.');
 
@@ -415,6 +420,7 @@ describe('POST /api/v1/courses/:courseId/units/:unitId/content (Add Content)', (
     const res = await request(app)
       .post(`/api/v1/courses/${course._id}/units/${unit._id}/content`)
       .set('Authorization', `Bearer ${accessToken}`)
+      .field('title', 'Video Title')
       .field('content_type', 'video');
 
     expect(res.status).toBe(400);
@@ -431,6 +437,7 @@ describe('POST /api/v1/courses/:courseId/units/:unitId/content (Add Content)', (
     const res = await request(app)
       .post(`/api/v1/courses/${course._id}/units/${unit._id}/content`)
       .set('Authorization', `Bearer ${accessToken}`)
+      .field('title', 'Huge File Title')
       .field('content_type', 'document')
       .attach('file', oversized, 'huge.pdf');
 
@@ -444,12 +451,11 @@ describe('POST /api/v1/courses/:courseId/units/:unitId/content (Add Content)', (
     const res = await request(app)
       .post(`/api/v1/courses/${course._id}/units/${unit._id}/content`)
       .set('Authorization', `Bearer ${accessToken}`)
+      .field('title', 'Mismatched File Title')
       .field('content_type', 'document')
-      .attach('file', fakeMp4(), 'fake.pdf'); // real mp4 bytes, .pdf extension
+      .attach('file', fakeMp4(), 'fake.pdf');
 
     expect(res.status).toBe(400);
-    // reason code is one of the generic FILE_TYPE_NOT_ALLOWED / EXTENSION_MISMATCH —
-    // exact code depends on which check fires first inside validateUploadedFile
   });
 });
 
@@ -470,9 +476,6 @@ describe('Review-state machine: published course edits trigger re-review', () =>
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ price: 49.99, course_type: 'paid' });
 
-    if (res.status !== 200) {
-      console.log(JSON.stringify(res.body, null, 2));
-    }
     expect(res.status).toBe(200);
     expect(res.body.data.course.status).toBe('pending_review');
 
@@ -496,9 +499,7 @@ describe('Review-state machine: published course edits trigger re-review', () =>
       .post(`/api/v1/courses/${course._id}/units`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ title: 'New Unit After Publish' });
-    if (res.status !== 201) {
-      console.log(JSON.stringify(res.body, null, 2));
-    }
+
     expect(res.status).toBe(201);
     const updatedCourse = await Course.findById(course._id);
     expect(updatedCourse.status).toBe('pending_review');
@@ -526,7 +527,7 @@ describe('Review-state machine: edits blocked while pending_review', () => {
     expect(res.body.error.code).toBe('REVIEW_IN_PROGRESS');
 
     const unchangedCourse = await Course.findById(course._id);
-    expect(unchangedCourse.title).toBe(validCoursePayload.title); // confirms no partial write happened
+    expect(unchangedCourse.title).toBe(validCoursePayload.title);
   });
 });
 
@@ -603,7 +604,7 @@ describe('PUT /api/v1/courses/:courseId/units/:unitId (Update Unit)', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.unit.title).toBe('Updated Unit Title');
-    expect(res.body.data.unit.desc).toBe('Original unit description'); // unchanged
+    expect(res.body.data.unit.desc).toBe('Original unit description');
 
     const updatedUnit = await CourseUnit.findById(unit._id);
     expect(updatedUnit.title).toBe('Updated Unit Title');
@@ -619,7 +620,7 @@ describe('PUT /api/v1/courses/:courseId/units/:unitId (Update Unit)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.data.unit.title).toBe('Original Unit Title'); // unchanged
+    expect(res.body.data.unit.title).toBe('Original Unit Title');
     expect(res.body.data.unit.desc).toBe('Updated unit description');
   });
 
@@ -648,7 +649,6 @@ describe('PUT /api/v1/courses/:courseId/units/:unitId (Update Unit)', () => {
       .send({});
 
     expect(res.status).toBe(400);
-    // Zod validation should catch this
   });
 
   it('rejects with 400 when title exceeds 200 characters', async () => {
@@ -669,7 +669,7 @@ describe('PUT /api/v1/courses/:courseId/units/:unitId (Update Unit)', () => {
     const res = await request(app)
       .put(`/api/v1/courses/${course._id}/units/${unit._id}`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ title: '   ' }); // whitespace only
+      .send({ title: '   ' });
 
     expect(res.status).toBe(400);
   });
@@ -686,7 +686,6 @@ describe('PUT /api/v1/courses/:courseId/units/:unitId (Update Unit)', () => {
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('FORBIDDEN');
 
-    // Verify unit was not updated
     const unchangedUnit = await CourseUnit.findById(owner.unit._id);
     expect(unchangedUnit.title).toBe('Original Unit Title');
   });
@@ -721,7 +720,6 @@ describe('PUT /api/v1/courses/:courseId/units/:unitId (Update Unit)', () => {
   it('rejects with 404 when unit belongs to a different course', async () => {
     const { accessToken, user } = await createInstructorAndLogin();
 
-    // Create two separate courses
     const course1 = await Course.create({
       ...validCoursePayload,
       owner_instructor_id: user._id,
@@ -741,7 +739,6 @@ describe('PUT /api/v1/courses/:courseId/units/:unitId (Update Unit)', () => {
       order: 1,
     });
 
-    // Try to update course1's unit through course2's endpoint
     const res = await request(app)
       .put(`/api/v1/courses/${course2._id}/units/${unitInCourse1._id}`)
       .set('Authorization', `Bearer ${accessToken}`)
@@ -800,11 +797,9 @@ describe('PUT /api/v1/courses/:courseId/units/:unitId (Update Unit)', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.unit.title).toBe('Updated Title on Published Course');
 
-    // Check that course status changed to pending_review
     const updatedCourse = await Course.findById(course._id);
     expect(updatedCourse.status).toBe('pending_review');
 
-    // Check that a review request was created
     const reviewRequest = await CourseReviewRequest.findOne({ course_id: course._id });
     expect(reviewRequest).not.toBeNull();
     expect(reviewRequest.changes_snapshot.change_type).toBe('UNIT_UPDATED');
@@ -856,10 +851,10 @@ describe('GET /api/v1/courses/:courseId/units/:unitId (Get Unit Details)', () =>
       desc: 'Test unit description',
       order: 1,
     });
-    // Add some content to the unit
     await CourseContent.create({
       course_id: course._id,
       unit_id: unit._id,
+      title: 'Intro to course',
       owner_instructor_id: user._id,
       content_type: 'text',
       content_data: { text: 'Lesson 1 content' },
@@ -868,6 +863,7 @@ describe('GET /api/v1/courses/:courseId/units/:unitId (Get Unit Details)', () =>
     await CourseContent.create({
       course_id: course._id,
       unit_id: unit._id,
+      title: 'Intro to course 2',
       owner_instructor_id: user._id,
       content_type: 'link',
       content_data: { url: 'https://example.com/video' },
@@ -974,7 +970,6 @@ describe('GET /api/v1/courses/:courseId/units/:unitId (Get Unit Details)', () =>
   it('rejects with 404 when unit belongs to a different course', async () => {
     const { accessToken, user } = await createInstructorAndLogin();
 
-    // Create two separate courses
     const course1 = await Course.create({
       ...validCoursePayload,
       owner_instructor_id: user._id,
@@ -994,7 +989,6 @@ describe('GET /api/v1/courses/:courseId/units/:unitId (Get Unit Details)', () =>
       order: 1,
     });
 
-    // Try to access course1's unit through course2's endpoint
     const res = await request(app)
       .get(`/api/v1/courses/${course2._id}/units/${unitInCourse1._id}`)
       .set('Authorization', `Bearer ${accessToken}`);
@@ -1003,16 +997,15 @@ describe('GET /api/v1/courses/:courseId/units/:unitId (Get Unit Details)', () =>
     expect(res.body.error.code).toBe('UNIT_NOT_FOUND');
   });
 
-  it('requires authentication', async () => {
+  it('returns 404 for unauthenticated access to draft course units (guest preview restricted to published courses)', async () => {
     const { course, unit } = await setupCourseWithUnitAndContent();
 
     const res = await request(app).get(`/api/v1/courses/${course._id}/units/${unit._id}`);
 
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(404);
   });
 
-  it('requires instructor role', async () => {
-    // Create a student user
+  it('returns 404 for student access to non-published draft course units', async () => {
     const passwordHash = await hashPassword(PLAIN_PASSWORD);
     const student = await User.create({
       full_name: 'Student User',
@@ -1052,35 +1045,7 @@ describe('GET /api/v1/courses/:courseId/units/:unitId (Get Unit Details)', () =>
       .get(`/api/v1/courses/${course._id}/units/${unit._id}`)
       .set('Authorization', `Bearer ${studentToken}`);
 
-    expect(res.status).toBe(403);
-  });
-
-  it('requires KYC verification', async () => {
-    const { accessToken, course, unit } = await setupCourseWithUnitAndContent({
-      email: 'nokyc@example.com',
-      kyc_status: 'not_submitted',
-    });
-
-    const res = await request(app)
-      .get(`/api/v1/courses/${course._id}/units/${unit._id}`)
-      .set('Authorization', `Bearer ${accessToken}`);
-
-    expect(res.status).toBe(403);
-    expect(res.body.error.code).toBe('KYC_NOT_VERIFIED');
-  });
-
-  it('requires MFA to be enabled', async () => {
-    const { accessToken, course, unit } = await setupCourseWithUnitAndContent({
-      email: 'nomfa@example.com',
-      mfa_enabled: false,
-    });
-
-    const res = await request(app)
-      .get(`/api/v1/courses/${course._id}/units/${unit._id}`)
-      .set('Authorization', `Bearer ${accessToken}`);
-
-    expect(res.status).toBe(403);
-    expect(res.body.error.code).toBe('MFA_REQUIRED');
+    expect(res.status).toBe(404);
   });
 
   it('includes content metadata (mime_type, size_bytes) for file-backed content', async () => {
@@ -1101,6 +1066,7 @@ describe('GET /api/v1/courses/:courseId/units/:unitId (Get Unit Details)', () =>
       course_id: course._id,
       unit_id: unit._id,
       owner_instructor_id: user._id,
+      title: 'Intro to course',
       content_type: 'video',
       storage_path: 'gridfs://course_files/fakeid123',
       mime_type: 'video/mp4',
@@ -1116,7 +1082,7 @@ describe('GET /api/v1/courses/:courseId/units/:unitId (Get Unit Details)', () =>
     const content = res.body.data.unit.content[0];
     expect(content.mime_type).toBe('video/mp4');
     expect(content.size_bytes).toBe(1024000);
-    expect(content.storage_path).toBe('gridfs://course_files/fakeid123');
+    expect(content.storage_path).toBeUndefined();
   });
 });
 
@@ -1132,6 +1098,7 @@ describe('POST content — enriched response with unit_content', () => {
     await CourseContent.create({
       course_id: course._id,
       unit_id: unit._id,
+      title: 'Intro to course',
       owner_instructor_id: user._id,
       content_type: 'text',
       content_data: { text: 'Existing lesson' },
@@ -1141,6 +1108,7 @@ describe('POST content — enriched response with unit_content', () => {
     const res = await request(app)
       .post(`/api/v1/courses/${course._id}/units/${unit._id}/content`)
       .set('Authorization', `Bearer ${accessToken}`)
+      .field('title', 'New Lesson Title')
       .field('content_type', 'text')
       .field('text', 'New lesson');
 

@@ -7,6 +7,8 @@ const auditService = require('../auditService');
 const { assertCourseEditable, triggerReviewOnPublishedEdit } = require('./reviewState.service');
 const { toObjectId } = require('../../utils/objectId.util');
 const fileStorage = require('../fileStorage.service');
+const Enrollment = require('../../models/Enrollment');
+const CourseProgressEvent = require('../../models/CourseProgressEvent');
 
 async function addUnit({ courseId, instructorId, unitData, req }) {
   const safeCourseId = toObjectId(courseId, 'courseId');
@@ -259,63 +261,110 @@ async function reorderUnits({ courseId, instructorId, orderedUnitIds, req }) {
   return { success: true, data: { units: reorderedUnits } };
 }
 
-/**
- * Core function: Fetches unit + content without authorization.
- * INTERNAL USE ONLY - always wrap with role-specific authorization.
- * @private
- */
-async function _getUnitDetailsCore({ courseId, unitId, courseQuery = {} }) {
+async function listUnitsForUser({ userId, role, courseId }) {
   const safeCourseId = toObjectId(courseId, 'courseId');
-  const safeUnitId = toObjectId(unitId, 'unitId');
 
-  // Fetch course with optional query filters (e.g., status for students)
+  const courseQuery = ['Instructor', 'Admin', 'SuperAdmin'].includes(role)
+    ? {}
+    : { status: 'published' };
   const course = await Course.findOne({ _id: safeCourseId, ...courseQuery }).lean();
-  if (!course) {
-    throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
-  }
+  if (!course) throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
 
-  // Fetch unit
-  const unit = await CourseUnit.findOne({ _id: safeUnitId, course_id: safeCourseId }).lean();
-  if (!unit) {
-    throw new AppError(404, 'UNIT_NOT_FOUND', 'Unit not found for this course.');
-  }
-
-  // Fetch all content items for this unit, sorted by order
-  const content = await CourseContent.find({ unit_id: safeUnitId }).sort({ order: 1 }).lean();
-
-  return { course, unit, content };
-}
-
-/**
- * Instructor-specific wrapper: Fetches a single unit with all its content items.
- * Enforces ownership check.
- */
-async function getUnitDetails({ courseId, unitId, instructorId }) {
-  const safeInstructorId = toObjectId(instructorId, 'instructorId');
-
-  // Authorization: ownership check
-  const course = await Course.findById(courseId);
-  if (!course) {
-    throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
-  }
-  if (course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
+  if (
+    role === 'Instructor' &&
+    course.owner_instructor_id.toString() !== toObjectId(userId, 'userId').toString()
+  ) {
     throw new AppError(403, 'FORBIDDEN', 'You do not have permission to view this course.');
   }
 
-  // Fetch core data
-  const { unit, content } = await _getUnitDetailsCore({ courseId, unitId });
+  const units = await CourseUnit.find({ course_id: safeCourseId })
+    .select('_id title desc order')
+    .sort({ order: 1 })
+    .lean();
 
-  // Format content with full metadata for instructors
+  return { success: true, data: { units } };
+}
+
+async function getUnitDetails({ userId, role, courseId, unitId }) {
+  const safeUserId = userId ? toObjectId(userId, 'userId') : null;
+  const safeCourseId = toObjectId(courseId, 'courseId');
+  const safeUnitId = toObjectId(unitId, 'unitId');
+
+  const isStaff = role === 'Instructor' || ['Admin', 'SuperAdmin'].includes(role);
+
+  const courseQuery = isStaff ? {} : { status: 'published' };
+  const course = await Course.findOne({ _id: safeCourseId, ...courseQuery }).lean();
+  if (!course) throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
+
+  const unit = await CourseUnit.findOne({ _id: safeUnitId, course_id: safeCourseId }).lean();
+  if (!unit) throw new AppError(404, 'UNIT_NOT_FOUND', 'Unit not found for this course.');
+
+  const content = await CourseContent.find({ unit_id: safeUnitId }).sort({ order: 1 }).lean();
+
+  // --- authorization ---
+  let isEnrolled = false;
+
+  if (isStaff) {
+    // Staff: Instructors must be owners; Admins/SuperAdmins have full access
+    if (role === 'Instructor') {
+      if (course.owner_instructor_id.toString() !== safeUserId.toString()) {
+        throw new AppError(403, 'FORBIDDEN', 'You do not have permission to view this course.');
+      }
+    }
+    // For Admin/SuperAdmin: no further checks, access granted.
+  } else {
+    // Guest or Student: apply preview rule
+    if (role === 'Student' && safeUserId) {
+      const enrollment = await Enrollment.findOne({
+        course_id: safeCourseId,
+        student_id: safeUserId,
+        status: { $in: ['active', 'completed'] },
+      });
+      isEnrolled = Boolean(enrollment);
+    }
+    if (!isEnrolled && unit.order !== 1) {
+      throw new AppError(403, 'NOT_ENROLLED', 'Enroll in this course to access this unit.');
+    }
+  }
+
+  // --- progress enrichment (real enrolled students only) ---
+  let completedSet = new Set();
+  let navigationExtras = {};
+  if (isEnrolled) {
+    const completedContentIds = await CourseProgressEvent.distinct('content_id', {
+      course_id: safeCourseId,
+      student_id: safeUserId,
+      unit_id: unit._id,
+    });
+    completedSet = new Set(completedContentIds.map((id) => id.toString()));
+
+    const [nextUnit, previousUnit, totalUnits] = await Promise.all([
+      CourseUnit.findOne({ course_id: safeCourseId, order: unit.order + 1 })
+        .select('_id title')
+        .lean(),
+      CourseUnit.findOne({ course_id: safeCourseId, order: unit.order - 1 })
+        .select('_id title')
+        .lean(),
+      CourseUnit.countDocuments({ course_id: safeCourseId }),
+    ]);
+    navigationExtras = {
+      next_unit: nextUnit ? { _id: nextUnit._id, title: nextUnit.title } : null,
+      previous_unit: previousUnit ? { _id: previousUnit._id, title: previousUnit.title } : null,
+      total_units: totalUnits,
+    };
+  }
+
   const formattedContent = content.map((c) => ({
     _id: c._id,
     content_type: c.content_type,
+    title: c.title,
+    desc: c.desc,
     order: c.order,
     content_data: c.content_data || null,
-    storage_path: c.storage_path || null,
+    download_url: c.storage_path ? `/api/v1/courses/${safeCourseId}/content/${c._id}/file` : null,
     mime_type: c.mime_type || null,
     size_bytes: c.size_bytes || null,
-    createdAt: c.createdAt,
-    updatedAt: c.updatedAt,
+    ...(isEnrolled ? { completed: completedSet.has(c._id.toString()) } : {}),
   }));
 
   return {
@@ -325,7 +374,10 @@ async function getUnitDetails({ courseId, unitId, instructorId }) {
         ...unit,
         content: formattedContent,
         content_count: formattedContent.length,
+        ...navigationExtras,
       },
+      is_preview: !isEnrolled && !isStaff,
+      ...(isEnrolled ? { course: { _id: course._id, title: course.title } } : {}),
     },
   };
 }
@@ -336,5 +388,5 @@ module.exports = {
   deleteUnit,
   updateUnit,
   getUnitDetails,
-  _getUnitDetailsCore,
+  listUnitsForUser,
 };
