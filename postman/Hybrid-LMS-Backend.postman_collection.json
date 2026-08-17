@@ -63,6 +63,46 @@
     {
       "key": "joinToken",
       "value": ""
+    },
+    {
+      "key": "peerAssignmentId",
+      "value": ""
+    },
+    {
+      "key": "student1AccessToken",
+      "value": ""
+    },
+    {
+      "key": "student1Id",
+      "value": ""
+    },
+    {
+      "key": "student1ReviewId",
+      "value": ""
+    },
+    {
+      "key": "student2AccessToken",
+      "value": ""
+    },
+    {
+      "key": "student2Id",
+      "value": ""
+    },
+    {
+      "key": "student2ReviewId",
+      "value": ""
+    },
+    {
+      "key": "student3AccessToken",
+      "value": ""
+    },
+    {
+      "key": "student3Id",
+      "value": ""
+    },
+    {
+      "key": "student3ReviewId",
+      "value": ""
     }
   ],
   "item": [
@@ -3745,6 +3785,907 @@
         }
       ],
       "description": "UC-LIVE-01..08 + UC-ATT-01..02 — راجعي مجلد '0) Setup' أولاً. متغيرات المجموعة الجديدة المطلوبة: instructorAccessToken, studentAccessToken, demoCourseId, liveSessionId (تُملأ تلقائياً), studentUserId, joinToken (تُملأ تلقائياً), anotherStudentAccessToken (اختياري، لحالات الفشل)."
+    },
+    {
+      "name": "Peer Assessment (PEER)",
+      "item": [
+        {
+          "name": "0) Setup (run once)",
+          "item": [
+            {
+              "name": "README — run this command first in your terminal",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/health",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "health"
+                  ]
+                },
+                "description": "قبل تشغيل أي طلب في هذا المجلد:\n\nnpm run seed:peer-demo\n\nيطبع في الطرفية: instructorAccessToken, demoCourseId, student1AccessToken/student1Id, student2AccessToken/student2Id, student3AccessToken/student3Id.\n\nالصقي كل القيم في Collection Variables (⋮ → Edit → Variables) ثم Ctrl+S.\n\nالتوكنات صالحة 15 دقيقة فقط — أعيدي تشغيل الأمر عند انتهائها."
+              }
+            }
+          ],
+          "description": "خطوات تجهيز البيانات والتوكنات قبل اختبار وحدة PEER."
+        },
+        {
+          "name": "1) Assignment Management (Instructor)",
+          "item": [
+            {
+              "name": "UC-PEER-01 — Create Assignment",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments"
+                  ]
+                },
+                "description": "غيّري submissionDeadline لتكون دقيقتين من الآن، وreviewDeadline لتكون 5 دقائق من الآن، قبل الإرسال الفعلي — كي تنجح اختبارات التسليم/التوزيع لاحقاً ضمن نفس الجلسة. مجموع أوزان الـ rubric يجب أن يساوي 1 بالضبط.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"courseId\": \"{{demoCourseId}}\",\n  \"title\": \"Assignment 1 — Peer Code Review\",\n  \"description\": \"راجعي حل زميلك وفق سلّم التقييم المرفق.\",\n  \"rubric\": [\n    {\n      \"criterion\": \"Correctness\",\n      \"maxScore\": 10,\n      \"weight\": 0.6\n    },\n    {\n      \"criterion\": \"Code Style\",\n      \"maxScore\": 10,\n      \"weight\": 0.4\n    }\n  ],\n  \"submissionDeadline\": \"2026-08-10T10:02:00.000Z\",\n  \"reviewDeadline\": \"2026-08-10T10:05:00.000Z\",\n  \"reviewersPerSubmission\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "pm.collectionVariables.set('peerAssignmentId', body.data.assignment._id);",
+                      "pm.test('assignmentId captured', () => pm.expect(pm.collectionVariables.get('peerAssignmentId')).to.be.a('string'));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "View Assignments (Instructor)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "View Assignments (Student)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "Assignment Details",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}"
+                  ]
+                },
+                "description": ""
+              }
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "2) Submission Phase (3 Students)",
+          "item": [
+            {
+              "name": "Student 1 — Submit",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/submit",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "submit"
+                  ]
+                },
+                "description": "يمكن أيضاً إرفاق ملف عبر حقل form-data باسم 'file' بدل/مع النص.",
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "textContent",
+                      "value": "Student 1 solution goes here.",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 201', () => pm.response.to.have.status(201));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Student 2 — Submit",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student2AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/submit",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "submit"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "textContent",
+                      "value": "Student 2 solution goes here.",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 201', () => pm.response.to.have.status(201));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Student 3 — Submit",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student3AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/submit",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "submit"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "textContent",
+                      "value": "Student 3 solution goes here.",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 201', () => pm.response.to.have.status(201));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Student 1 — My Submission",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/my-submission",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "my-submission"
+                  ]
+                },
+                "description": ""
+              }
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "3) Distribution (manual fallback — normally automatic via Cron)",
+          "item": [
+            {
+              "name": "UC-PEER-02 — Distribute Reviews",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/distribute",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "distribute"
+                  ]
+                },
+                "description": "شغّليه فقط بعد انتظار انتهاء submissionDeadline فعلياً (400 SUBMISSION_STILL_OPEN إن استعجلتِ). يعمل تلقائياً أيضاً عبر Cron كل دقيقتين — هذا مسار احتياطي للتسريع."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "pm.test('3 reviews created', () => pm.expect(body.data.reviewCount).to.equal(3));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "4) Review Phase (each student reviews an anonymized peer)",
+          "item": [
+            {
+              "name": "Student 1 — My Review Tasks",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/my-reviews",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "my-reviews"
+                  ]
+                },
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.data.reviews.length > 0) {",
+                      "  pm.collectionVariables.set('student1ReviewId', body.data.reviews[0].reviewId);",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Student 1 — View Submission To Review (anonymized)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/reviews/{{student1ReviewId}}/submission",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "reviews",
+                    "{{student1ReviewId}}",
+                    "submission"
+                  ]
+                },
+                "description": "لاحظي: الاستجابة تحتوي displaySequentialId فقط — أبداً هوية صاحب العمل الحقيقية."
+              }
+            },
+            {
+              "name": "Student 1 — Submit Review",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/reviews/{{student1ReviewId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "reviews",
+                    "{{student1ReviewId}}"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"scores\": [\n    {\n      \"criterion\": \"Correctness\",\n      \"score\": 8\n    },\n    {\n      \"criterion\": \"Code Style\",\n      \"score\": 9\n    }\n  ],\n  \"feedbackText\": \"Clean solution, minor style improvements possible.\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Student 2 — My Review Tasks",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student2AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/my-reviews",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "my-reviews"
+                  ]
+                },
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "if (body.data.reviews.length > 0) {",
+                      "  pm.collectionVariables.set('student2ReviewId', body.data.reviews[0].reviewId);",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Student 2 — Submit Review",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student2AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/reviews/{{student2ReviewId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "reviews",
+                    "{{student2ReviewId}}"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"scores\": [\n    {\n      \"criterion\": \"Correctness\",\n      \"score\": 7\n    },\n    {\n      \"criterion\": \"Code Style\",\n      \"score\": 8\n    }\n  ],\n  \"feedbackText\": \"Good attempt, logic could be simplified.\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Student 3 — My Review Tasks",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student3AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/my-reviews",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "my-reviews"
+                  ]
+                },
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "if (body.data.reviews.length > 0) {",
+                      "  pm.collectionVariables.set('student3ReviewId', body.data.reviews[0].reviewId);",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Student 3 — Submit Review",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student3AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/reviews/{{student3ReviewId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "reviews",
+                    "{{student3ReviewId}}"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"scores\": [\n    {\n      \"criterion\": \"Correctness\",\n      \"score\": 9\n    },\n    {\n      \"criterion\": \"Code Style\",\n      \"score\": 9\n    }\n  ],\n  \"feedbackText\": \"Excellent work!\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "5) Grading (manual fallback — normally automatic via Cron)",
+          "item": [
+            {
+              "name": "UC-PEER-04 — Calculate Final Grades",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/calculate-grades",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "calculate-grades"
+                  ]
+                },
+                "description": "شغّليه بعد انتظار انتهاء reviewDeadline فعلياً (400 REVIEW_STILL_OPEN إن استعجلتِ)."
+              }
+            },
+            {
+              "name": "Student 1 — My Final Grade",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/grades",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "grades"
+                  ]
+                },
+                "description": "الاستجابة تحوي finalScore + ملاحظات المراجعين بلا هوياتهم إطلاقاً."
+              }
+            },
+            {
+              "name": "Instructor — Full Grades Breakdown",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/grades",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "grades"
+                  ]
+                },
+                "description": ""
+              }
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "6) Key Failure Cases",
+          "item": [
+            {
+              "name": "Create Assignment — Student role → 403 FORBIDDEN",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"courseId\": \"{{demoCourseId}}\",\n  \"title\": \"Assignment 1 — Peer Code Review\",\n  \"description\": \"راجعي حل زميلك وفق سلّم التقييم المرفق.\",\n  \"rubric\": [\n    {\n      \"criterion\": \"Correctness\",\n      \"maxScore\": 10,\n      \"weight\": 0.6\n    },\n    {\n      \"criterion\": \"Code Style\",\n      \"maxScore\": 10,\n      \"weight\": 0.4\n    }\n  ],\n  \"submissionDeadline\": \"2026-08-10T10:02:00.000Z\",\n  \"reviewDeadline\": \"2026-08-10T10:05:00.000Z\",\n  \"reviewersPerSubmission\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Create Assignment — rubric weights don't sum to 1 → 400",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"courseId\": \"{{demoCourseId}}\",\n  \"title\": \"Bad rubric\",\n  \"rubric\": [\n    {\n      \"criterion\": \"Only one\",\n      \"maxScore\": 10,\n      \"weight\": 0.5\n    }\n  ],\n  \"submissionDeadline\": \"2026-08-10T10:02:00.000Z\",\n  \"reviewDeadline\": \"2026-08-10T10:05:00.000Z\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Distribute — before submission deadline → 400 SUBMISSION_STILL_OPEN",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/distribute",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "distribute"
+                  ]
+                },
+                "description": "جرّبيه فوراً بعد إنشاء مهمة جديدة، دون الانتظار."
+              }
+            },
+            {
+              "name": "Submit Review — missing rubric criterion → 400 INCOMPLETE_RUBRIC",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/reviews/{{student1ReviewId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "reviews",
+                    "{{student1ReviewId}}"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"scores\": [\n    {\n      \"criterion\": \"Correctness\",\n      \"score\": 5\n    }\n  ],\n  \"feedbackText\": \"Partial\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "description": ""
+        }
+      ],
+      "description": "UC-PEER-01..04 (+ مرحلة التسليم) — راجعي مجلد '0) Setup' أولاً. متغيرات المجموعة الجديدة المطلوبة: instructorAccessToken, demoCourseId, student1AccessToken/Id..student3AccessToken/Id, peerAssignmentId (تُملأ تلقائياً), student1ReviewId..student3ReviewId (تُملأ تلقائياً)."
     }
   ]
 }
