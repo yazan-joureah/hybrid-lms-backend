@@ -6,21 +6,23 @@ const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid ObjectId format'
 const createSessionSchema = z.object({
   courseId: objectId,
   title: z.string().trim().min(1, 'Title is required').max(200),
-  meetingLink: z.string().trim().url('Invalid meeting link URL'),
+  meetingLink: z.string().trim().url('Invalid meeting link URL').optional().or(z.literal('')),
   startTime: z.string().datetime({ message: 'startTime must be a valid ISO date-time' }),
   endTime: z.string().datetime({ message: 'endTime must be a valid ISO date-time' }),
   lobbyEnabled: z.boolean().optional(),
   confirmConflict: z.boolean().optional(),
+  unit_id: objectId.optional().nullable(), // ✅ إضافة
 });
 
-// UC-LIVE-02 — Edit Session (كل الحقول اختيارية)
+// UC-LIVE-02 — Edit Session
 const updateSessionSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
-  meetingLink: z.string().trim().url('Invalid meeting link URL').optional(),
+  meetingLink: z.string().trim().url('Invalid meeting link URL').optional().or(z.literal('')),
   startTime: z.string().datetime().optional(),
   endTime: z.string().datetime().optional(),
   lobbyEnabled: z.boolean().optional(),
   confirmConflict: z.boolean().optional(),
+  unit_id: objectId.optional().nullable(), // ✅ إضافة
 });
 
 // UC-LIVE-02 — Cancel Session

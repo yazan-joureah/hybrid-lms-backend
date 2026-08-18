@@ -1,8 +1,4 @@
-/**
- * Centralized environment configuration.
- * All env vars are read ONCE here — never use process.env directly elsewhere.
- * Source: Module_DB_Design_Specification_v1.3, REST_API_Contract_v1.2
- */
+//Centralized environment configuration.
 require('dotenv').config();
 
 function required(name) {
@@ -20,8 +16,7 @@ module.exports = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT, 10) || 3000,
   appUrl: process.env.APP_URL || 'http://localhost:3000',
-  frontUrl: process.env.DEMO_FRONTEND_ORIGIN || 'https://hybrid-auth.base44.app',
-
+  frontUrl: process.env.DEMO_FRONTEND_ORIGIN || 'http://localhost:5173',
   mongoUri: required('MONGO_URI'),
   redisUrl: required('REDIS_URL'),
 
@@ -47,15 +42,15 @@ module.exports = {
   privacyPolicyVersion: process.env.PRIVACY_POLICY_VERSION || 'v1.0',
 
   rateLimit: {
-    windowMs: 10 * 60 * 1000, // 10 دقائق — نافذة عدّ المحاولات قبل القفل
-    maxAttempts: 5, // نفس رقم UC-AUTH-04 لثبات المنطق عبر المشروع
-    baseLockoutSeconds: 30, // أول قفل — يطابق نمط Android (30 ثانية)
-    maxLockoutSeconds: 30 * 60, // سقف 30 دقيقة — توصية OWASP Testing Guide
-    violationsTtlSeconds: 24 * 60 * 60, // "الذاكرة" تُنسى بعد 24 ساعة
+    windowMs: 10 * 60 * 1000,
+    maxAttempts: 5,
+    baseLockoutSeconds: 30,
+    maxLockoutSeconds: 30 * 60,
+    violationsTtlSeconds: 24 * 60 * 60,
   },
 
   accountLockout: {
-    durationMinutes: 15, // OWASP Testing Guide: 5–30 min recommended range
+    durationMinutes: 15,
   },
 
   encryption: {
@@ -75,6 +70,6 @@ module.exports = {
 
   payment: {
     currency: 'usd',
-    refundWindowBusinessDays: 10,
+    refundWindowDays: 10,
   },
 };

@@ -1,15 +1,6 @@
 /**
- * Integration test for GET /auth/verify-email.
- *
- * Deliberate testing strategy: the raw verification token is NEVER
- * persisted anywhere (DP-08 — only its SHA-256 hash is stored), so it
- * only ever exists transiently inside the outbound email. Rather than
- * fragile console-log scraping of the dev-mode email fallback, we mint
- * our own token here using the SAME utility the real flow uses
- * (generateOpaqueToken), then insert the AuthToken record directly. This
- * exercises the exact verification logic in full isolation from the
- * registration flow, which is already covered separately in
- * register.test.js.
+ * Integration test for POST /auth/verify-email (OTP-based, replaces the
+ * former GET+query-token flow — see project decision log).
  */
 const request = require('supertest');
 const mongoose = require('mongoose');
@@ -17,7 +8,7 @@ const app = require('../../src/app');
 const User = require('../../src/models/User');
 const AuthToken = require('../../src/models/AuthToken');
 const GuardianApproval = require('../../src/models/GuardianApproval');
-const { generateOpaqueToken } = require('../../src/utils/crypto');
+const { generateNumericOtp } = require('../../src/utils/crypto');
 const redisClient = require('../../src/config/redis');
 
 beforeAll(async () => {
@@ -40,10 +31,11 @@ afterAll(async () => {
   await redisClient.quit();
 });
 
-async function createUserWithVerificationToken({
+async function createUserWithVerificationCode({
   minor = false,
-  expiresInHours = 24,
+  expiresInMinutes = 15,
   usedAt = null,
+  attemptCount = 0,
 } = {}) {
   const user = await User.create({
     full_name: minor ? 'Test Minor User' : 'Test Adult User',
@@ -60,23 +52,26 @@ async function createUserWithVerificationToken({
     },
   });
 
-  const { raw, hash } = generateOpaqueToken();
+  const { raw, hash } = generateNumericOtp();
   await AuthToken.create({
     user_id: user._id,
     token_hash: hash,
     token_type: 'EMAIL_VERIFICATION',
-    expires_at: new Date(Date.now() + expiresInHours * 60 * 60 * 1000),
+    expires_at: new Date(Date.now() + expiresInMinutes * 60 * 1000),
     used_at: usedAt,
+    attempt_count: attemptCount,
   });
 
-  return { user, rawToken: raw };
+  return { user, code: raw };
 }
 
-describe('GET /auth/verify-email — adult path', () => {
+describe('POST /auth/verify-email — adult path', () => {
   it('activates the account immediately and returns status=active', async () => {
-    const { user, rawToken } = await createUserWithVerificationToken({ minor: false });
+    const { user, code } = await createUserWithVerificationCode({ minor: false });
 
-    const res = await request(app).get('/api/v1/auth/verify-email').query({ token: rawToken });
+    const res = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email: user.email, code });
 
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe('active');
@@ -88,9 +83,9 @@ describe('GET /auth/verify-email — adult path', () => {
   });
 });
 
-describe('GET /auth/verify-email — minor path, guardian NOT yet approved', () => {
+describe('POST /auth/verify-email — minor path, guardian NOT yet approved', () => {
   it('sets status=guardian_pending — the closed state-machine decision, not "active"', async () => {
-    const { user, rawToken } = await createUserWithVerificationToken({ minor: true });
+    const { user, code } = await createUserWithVerificationCode({ minor: true });
 
     await GuardianApproval.create({
       user_id: user._id,
@@ -102,7 +97,9 @@ describe('GET /auth/verify-email — minor path, guardian NOT yet approved', () 
       student_registration_ip: '127.0.0.1',
     });
 
-    const res = await request(app).get('/api/v1/auth/verify-email').query({ token: rawToken });
+    const res = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email: user.email, code });
 
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe('guardian_pending');
@@ -110,13 +107,13 @@ describe('GET /auth/verify-email — minor path, guardian NOT yet approved', () 
 
     const updated = await User.findById(user._id);
     expect(updated.status).toBe('guardian_pending');
-    expect(updated.email_verified_at).not.toBeNull(); // email itself IS verified — only guardian side is pending
+    expect(updated.email_verified_at).not.toBeNull();
   });
 });
 
-describe('GET /auth/verify-email — minor path, guardian ALREADY approved', () => {
+describe('POST /auth/verify-email — minor path, guardian ALREADY approved', () => {
   it('activates the account once BOTH conditions of the state machine are satisfied', async () => {
-    const { user, rawToken } = await createUserWithVerificationToken({ minor: true });
+    const { user, code } = await createUserWithVerificationCode({ minor: true });
 
     await GuardianApproval.create({
       user_id: user._id,
@@ -129,49 +126,128 @@ describe('GET /auth/verify-email — minor path, guardian ALREADY approved', () 
       student_registration_ip: '127.0.0.1',
     });
 
-    const res = await request(app).get('/api/v1/auth/verify-email').query({ token: rawToken });
+    const res = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email: user.email, code });
 
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe('active');
   });
 });
 
-describe('GET /auth/verify-email — invalid / already-used / expired tokens', () => {
-  it('rejects a token that does not exist with 400 TOKEN_INVALID', async () => {
+describe('POST /auth/verify-email — invalid / expired / already-used codes', () => {
+  it('rejects a code that does not exist with 400 INVALID_CODE', async () => {
+    const user = await User.create({
+      full_name: 'No Code User',
+      email: 'nocode@example.com',
+      password_hash: 'irrelevant',
+      birth_date: new Date('1995-01-01'),
+      role: 'Student',
+      status: 'pending_email_verification',
+      privacy_consent: {
+        policy_version: 'v1.0',
+        accepted_at: new Date(),
+        ip: '127.0.0.1',
+        user_agent: 'jest',
+      },
+    });
+
     const res = await request(app)
-      .get('/api/v1/auth/verify-email')
-      .query({ token: 'not-a-real-token-at-all' });
+      .post('/api/v1/auth/verify-email')
+      .send({ email: user.email, code: '000000' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('TOKEN_INVALID');
+    expect(res.body.error.code).toBe('INVALID_CODE');
   });
 
-  it('rejects an already-used token with 400 TOKEN_ALREADY_USED', async () => {
-    const { rawToken } = await createUserWithVerificationToken({ usedAt: new Date() });
+  it('rejects an already-used code with 400 INVALID_CODE (unified — no distinct ALREADY_USED oracle)', async () => {
+    const { user, code } = await createUserWithVerificationCode({ usedAt: new Date() });
 
-    const res = await request(app).get('/api/v1/auth/verify-email').query({ token: rawToken });
+    const res = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email: user.email, code });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('TOKEN_ALREADY_USED');
+    expect(res.body.error.code).toBe('INVALID_CODE');
   });
 
-  it('rejects an expired token with 400 TOKEN_EXPIRED', async () => {
-    const { rawToken } = await createUserWithVerificationToken({ expiresInHours: -1 });
+  it('rejects an expired code with 400 CODE_EXPIRED', async () => {
+    const { user, code } = await createUserWithVerificationCode({ expiresInMinutes: -1 });
 
-    const res = await request(app).get('/api/v1/auth/verify-email').query({ token: rawToken });
+    const res = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email: user.email, code });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('TOKEN_EXPIRED');
+    expect(res.body.error.code).toBe('CODE_EXPIRED');
   });
 
-  it('enforces One-Time Use — a second verification with the SAME raw token fails', async () => {
-    const { rawToken } = await createUserWithVerificationToken({ minor: false });
+  it('enforces One-Time Use — a second verification with the SAME code fails', async () => {
+    const { user, code } = await createUserWithVerificationCode({ minor: false });
 
-    const first = await request(app).get('/api/v1/auth/verify-email').query({ token: rawToken });
+    const first = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email: user.email, code });
     expect(first.status).toBe(200);
 
-    const second = await request(app).get('/api/v1/auth/verify-email').query({ token: rawToken });
+    const second = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email: user.email, code });
     expect(second.status).toBe(400);
-    expect(second.body.error.code).toBe('TOKEN_ALREADY_USED');
+    expect(second.body.error.code).toBe('INVALID_CODE');
+  });
+
+  it('rejects malformed codes (not exactly 6 digits) at the Zod layer, 400', async () => {
+    const { user } = await createUserWithVerificationCode();
+
+    const res = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email: user.email, code: '12345' });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /auth/verify-email — attempt counter (SF-AUTH-02, MAX_OTP_ATTEMPTS=5)', () => {
+  it('accumulates attempt_count on each wrong guess, and still accepts the correct code before the limit', async () => {
+    const { user, code } = await createUserWithVerificationCode();
+
+    for (let i = 0; i < 3; i += 1) {
+      // eslint-disable-next-line no-await-in-loop -- sequential wrong guesses, small fixed count
+      const wrong = await request(app)
+        .post('/api/v1/auth/verify-email')
+        .send({ email: user.email, code: '999999' });
+      expect(wrong.status).toBe(400);
+      expect(wrong.body.error.code).toBe('INVALID_CODE');
+    }
+
+    const stored = await AuthToken.findOne({ user_id: user._id, token_type: 'EMAIL_VERIFICATION' });
+    expect(stored.attempt_count).toBe(3);
+
+    const success = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email: user.email, code });
+    expect(success.status).toBe(200); // 4th attempt, still within the limit
+  });
+
+  it('permanently invalidates the code after the 5th wrong attempt, rejecting even the CORRECT code afterward', async () => {
+    const { user, code } = await createUserWithVerificationCode();
+
+    for (let i = 0; i < 5; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await request(app)
+        .post('/api/v1/auth/verify-email')
+        .send({ email: user.email, code: '999999' });
+    }
+
+    const stored = await AuthToken.findOne({ user_id: user._id, token_type: 'EMAIL_VERIFICATION' });
+    expect(stored.used_at).not.toBeNull(); // disabled as a side effect of hitting the cap
+
+    const withCorrectCode = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email: user.email, code });
+
+    expect(withCorrectCode.status).toBe(400);
+    expect(withCorrectCode.body.error.code).toBe('INVALID_CODE');
   });
 });

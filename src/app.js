@@ -13,6 +13,11 @@ const adminRoutes = require('./routes/adminRoutes');
 const liveRoutes = require('./routes/liveRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
 const payRoutes = require('./routes/payRoutes');
+const quizRoutes = require('./routes/quizRoutes');
+const userRoutes = require('./routes/userRoutes');
+
+// 1. Import your custom rate limiter
+const { rateLimit } = require('./middleware/rateLimiter');
 
 const env = require('./config/env');
 
@@ -26,7 +31,7 @@ app.use(
   })
 );
 
-const allowedOrigins = [env.appUrl];
+const allowedOrigins = [env.appUrl, 'http://localhost:5173'];
 if (env.nodeEnv !== 'production' && process.env.DEMO_FRONTEND_ORIGIN) {
   allowedOrigins.push(process.env.DEMO_FRONTEND_ORIGIN);
 }
@@ -40,11 +45,21 @@ app.use(
   })
 );
 
+// We keep the Stripe webhook BEFORE the global JSON parser and BEFORE
+// the global rate limiter to ensure Stripe events are never blocked by IP
 app.use('/api/v1/pay/webhook', express.raw({ type: 'application/json' }));
 
 app.use(express.json({ limit: '10kb' }));
 app.use(cookieParser());
 app.use(compression());
+
+// 2. Apply the global baseline rate limiter to all API endpoints
+if (env.nodeEnv !== 'test') {
+  app.use(
+    '/api/v1',
+    rateLimit('global-api', (req) => req.ip)
+  );
+}
 
 app.use('/api/v1', healthRoutes);
 app.use('/api/v1/auth', authRoutes);
@@ -54,6 +69,9 @@ app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/live', liveRoutes);
 app.use('/api/v1/attendance', attendanceRoutes);
 app.use('/api/v1/pay', payRoutes);
+app.use('/api/v1/quizzes', quizRoutes);
+app.use('/api/v1/users', userRoutes);
+
 // ── 404 + Error handling (must be last) ──────────────────────────────────
 
 app.use(notFoundHandler);

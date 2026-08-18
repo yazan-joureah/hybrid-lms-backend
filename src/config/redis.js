@@ -1,6 +1,6 @@
 /**
  * Redis client (ioredis).
- * Used for: rate limiting, OAuth CSRF state, OTP transient storage (future modules).
+ * Used for: rate limiting, OAuth CSRF state, OTP transient storage.
  */
 const Redis = require('ioredis');
 const logger = require('../utils/logger');

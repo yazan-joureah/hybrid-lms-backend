@@ -43,11 +43,9 @@ beforeAll(async () => {
   if (mongoose.connection.readyState === 0) {
     await mongoose.connect(process.env.MONGO_URI);
   }
-}, 20000); // مهلة أطول قليلاً لعملية الاتصال الأولى الحقيقية
+}, 20000);
 
 beforeEach(async () => {
-  // Isolation between tests: each test starts from a clean slate for BOTH
-  // the data it created AND the rate-limiter counters it may have tripped.
   await Promise.all([
     User.deleteMany({}),
     AuthToken.deleteMany({}),
@@ -67,13 +65,13 @@ describe('POST /auth/register — adult path', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
-    expect(res.body.data.message).toMatch(/verification email sent/i);
+    expect(res.body.data.message).toMatch(/Verification code sent/i); // CHANGED
     expect(res.body.data.requires_guardian_approval).toBeUndefined();
 
     const user = await User.findOne({ email: ADULT_PAYLOAD.email });
     expect(user).not.toBeNull();
     expect(user.status).toBe('pending_email_verification');
-    expect(user.password_hash).not.toBe(ADULT_PAYLOAD.password); // never store plaintext
+    expect(user.password_hash).not.toBe(ADULT_PAYLOAD.password);
 
     const token = await AuthToken.findOne({ user_id: user._id, token_type: 'EMAIL_VERIFICATION' });
     expect(token).not.toBeNull();
@@ -97,7 +95,6 @@ describe('POST /auth/register — minor path (UC-AUTH-02 trigger)', () => {
     expect(approval.approval_token_hash).toBeTruthy();
     expect(approval.student_access_token_hash).toBeTruthy();
 
-    // Roughly 48h TTL — allow a small tolerance for test execution time.
     const hoursUntilExpiry = (approval.expires_at - Date.now()) / (1000 * 60 * 60);
     expect(hoursUntilExpiry).toBeGreaterThan(47.9);
     expect(hoursUntilExpiry).toBeLessThanOrEqual(48);
@@ -111,10 +108,10 @@ describe('POST /auth/register — User Enumeration prevention (MUC-AUTH-04)', ()
 
     expect(secondAttempt.status).toBe(201);
     expect(secondAttempt.body.success).toBe(true);
-    expect(secondAttempt.body.data.message).toMatch(/verification email sent/i);
+    expect(secondAttempt.body.data.message).toMatch(/Verification code sent/i); // CHANGED
 
     const count = await User.countDocuments({ email: ADULT_PAYLOAD.email });
-    expect(count).toBe(1); // no duplicate created
+    expect(count).toBe(1);
   });
 });
 
@@ -133,7 +130,6 @@ describe('POST /auth/register — Android-style rate limiting (NFR-03)', () => {
   it('locks out after exceeding maxAttempts and returns 429 with Retry-After', async () => {
     const spamEmail = 'rate.limit.target@example.com';
 
-    // Fire one more request than the configured threshold (default: 5).
     let lastResponse;
     for (let i = 0; i < 6; i += 1) {
       lastResponse = await request(app)

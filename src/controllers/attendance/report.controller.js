@@ -1,5 +1,6 @@
 // src/controllers/attendance/report.controller.js
 // UC-ATT-02 — Export Attendance Reports
+// UC-ATT-03 — Manual Attendance Correction
 const attendanceService = require('../../services/attendanceService');
 
 /** GET /api/v1/attendance/sessions/:sessionId/report */
@@ -51,4 +52,28 @@ async function getCourseSummary(req, res, next) {
   }
 }
 
-module.exports = { getSessionReport, exportSessionCSV, getCourseSummary };
+/** PATCH /api/v1/attendance/sessions/:sessionId/students/:studentId/correct */
+async function correctAttendance(req, res, next) {
+  try {
+    const { sessionId, studentId } = req.params;
+    const result = await attendanceService.correctAttendanceToPresent({
+      instructorId: req.user.id,
+      sessionId,
+      studentId,
+      reason: req.validatedBody?.reason,
+      req,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: result.data.alreadyPresent
+        ? 'الطالب مسجَّل present بالفعل — لا تغيير.'
+        : 'تم تصحيح حالة الحضور بنجاح.',
+      data: { record: result.data.record },
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+module.exports = { getSessionReport, exportSessionCSV, getCourseSummary, correctAttendance };

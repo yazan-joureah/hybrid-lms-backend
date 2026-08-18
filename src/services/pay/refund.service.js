@@ -10,19 +10,9 @@ const { AppError } = require('../../middleware/errorHandler');
 const { toObjectId } = require('../../utils/objectId.util');
 const { buildRefundIdempotencyKey, atomicInsertOrFetch } = require('./idempotency.service');
 
-/** counts business days between two dates. */
-function countBusinessDaysBetween(startDate, endDate) {
-  let count = 0;
-  const current = new Date(startDate);
-  current.setHours(0, 0, 0, 0);
-  const end = new Date(endDate);
-  end.setHours(0, 0, 0, 0);
-  while (current < end) {
-    current.setDate(current.getDate() + 1);
-    const day = current.getDay();
-    if (day !== 0 && day !== 6) count += 1;
-  }
-  return count;
+function daysElapsedSince(startDate, endDate) {
+  const msPerDay = 24 * 60 * 60 * 1000;
+  return Math.floor((endDate.getTime() - startDate.getTime()) / msPerDay);
 }
 
 /**
@@ -44,12 +34,12 @@ async function requestRefund({ studentId, paymentId, reason, req }) {
     );
   }
 
-  const businessDaysElapsed = countBusinessDaysBetween(payment.paid_at, new Date());
-  if (businessDaysElapsed > env.payment.refundWindowBusinessDays) {
+  const daysElapsed = daysElapsedSince(payment.paid_at, new Date());
+  if (daysElapsed > env.payment.refundWindowDays) {
     throw new AppError(
       400,
       'REFUND_WINDOW_EXPIRED',
-      `Refund window of ${env.payment.refundWindowBusinessDays} business days has passed.`
+      `Refund window of ${env.payment.refundWindowDays} days has passed.`
     );
   }
 

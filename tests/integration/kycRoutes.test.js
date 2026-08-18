@@ -135,7 +135,7 @@ describe('requireRole enforcement على مسارات المراجعة', () => {
     const student = await createUser();
 
     const res = await request(app)
-      .get('/api/v1/kyc/requests')
+      .get('/api/v1/admin/kyc/requests')
       .set('Authorization', `Bearer ${tokenFor(student)}`);
 
     expect(res.status).toBe(403);
@@ -154,7 +154,7 @@ describe('requireRole enforcement على مسارات المراجعة', () => {
     });
 
     const res = await request(app)
-      .get('/api/v1/kyc/requests')
+      .get('/api/v1/admin/kyc/requests')
       .set('Authorization', `Bearer ${tokenFor(admin)}`);
 
     expect(res.status).toBe(200);
@@ -178,7 +178,7 @@ describe('المسار الكامل: تقديم → مراجعة → قبول ع
     const kycRequest = await KYCRequest.findOne({ user_id: student._id });
 
     const approveRes = await request(app)
-      .post(`/api/v1/kyc/requests/${kycRequest._id}/approve`)
+      .post(`/api/v1/admin/kyc/requests/${kycRequest._id}/approve`)
       .set('Authorization', `Bearer ${tokenFor(admin)}`)
       .send({ documentBirthDate: '2000-01-01' });
 
@@ -201,7 +201,7 @@ describe('المسار الكامل: تقديم → مراجعة → قبول ع
     });
 
     const res = await request(app)
-      .post(`/api/v1/kyc/requests/${kycRequest._id}/approve`)
+      .post(`/api/v1/admin/kyc/requests/${kycRequest._id}/approve`)
       .set('Authorization', `Bearer ${tokenFor(student)}`) // ليس Admin
       .send({ documentBirthDate: '2000-01-01' });
 

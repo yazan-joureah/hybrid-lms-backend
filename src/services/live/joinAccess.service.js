@@ -4,7 +4,6 @@
 
 const LiveSession = require('../../models/liveSession.model');
 const Enrollment = require('../../models/Enrollment');
-const LiveLobbyRequest = require('../../models/liveLobbyRequest.model');
 const { AppError } = require('../../middleware/errorHandler');
 const { signJoinToken } = require('../../utils/joinToken.util');
 const { toObjectId } = require('../../utils/objectId.util');
@@ -13,7 +12,6 @@ const {
   recordAttendanceAutomatically,
   recordAttendanceLeave,
 } = require('../attendance/tracking.service');
-const { getIO } = require('../../sockets/ioInstance');
 
 /**
  * التحقق من تسجيل الطالب بالكورس عبر نموذج Enrollment (status: 'active' حصراً).
@@ -47,9 +45,13 @@ async function validateSessionAccessAndGenerateJoinToken({ studentId, sessionId,
   }
 
   const now = new Date();
-  if (now < session.startTime) {
-    throw new AppError(400, 'SESSION_NOT_STARTED', 'لم تبدأ الجلسة بعد.');
+  if (session.status === 'scheduled') {
+    throw new AppError(400, 'SESSION_NOT_STARTED', 'لم يبدأ المحاضر الجلسة بعد.');
   }
+  if (session.status !== 'ongoing') {
+    throw new AppError(400, 'SESSION_NOT_LIVE', 'الجلسة غير متاحة للانضمام حالياً.');
+  }
+  // إبقاء فحص endTime كطبقة أمان إضافية (احتياطي فقط)
   if (now > session.endTime) {
     throw new AppError(400, 'SESSION_ENDED', 'انتهت هذه الجلسة.');
   }
@@ -71,36 +73,10 @@ async function validateSessionAccessAndGenerateJoinToken({ studentId, sessionId,
     throw new AppError(403, 'NOT_ENROLLED', 'غير مسجل في هذا الكورس.');
   }
 
-  // UC-LIVE-05 include — إن كانت غرفة الانتظار مفعّلة، لا يُصدَر رمز الانضمام
-  // مباشرة إلا بعد قبول المحاضر صراحةً
-  if (session.lobbyEnabled) {
-    const lobbyEntry = await LiveLobbyRequest.findOneAndUpdate(
-      { sessionId: safeSessionId, studentId: safeStudentId },
-      { $setOnInsert: { status: 'waiting' } },
-      { upsert: true, new: true }
-    );
-
-    if (lobbyEntry.status !== 'admitted') {
-      // إشعار المحاضر بوجود طلب دخول جديد (أو محاولة إعادة) — يحفّزه لفتح
-      // قائمة الانتظار عبر GET /sessions/:sessionId/lobby
-      getIO()?.to(`live:${safeSessionId}:lobby`).emit('lobby:new-request', {
-        studentId: safeStudentId,
-        status: lobbyEntry.status,
-      });
-
-      return {
-        success: true,
-        data: {
-          waiting: true,
-          lobbyStatus: lobbyEntry.status,
-          message:
-            lobbyEntry.status === 'denied'
-              ? 'تم رفض طلب دخولك من قِبل المحاضر.'
-              : 'أنت في غرفة الانتظار — بانتظار موافقة المحاضر.',
-        },
-      };
-    }
-  }
+  // ملاحظة: لا يوجد بعد الآن فرع "غرفة انتظار" على مستوى الـ LMS — إن أراد
+  // المحاضر تفعيل الانتظار/الموافقة اليدوية على الدخول، يفعّلها هو مباشرة
+  // من داخل واجهة Jitsi نفسها (Lobby مجانية بالكامل على meet.jit.si).
+  // التحقق الحقيقي من الصلاحية يبقى هنا: تسجيل فعلي + اسم غرفة غير قابل للتخمين.
 
   const joinToken = signJoinToken({
     studentId: safeStudentId,
@@ -165,20 +141,51 @@ async function joinLiveSession({ studentId, sessionId, req }) {
  * مغادرة الطالب صفحة البث (أوثق من الاعتماد فقط على قطع اتصال Socket.IO،
  * وتُبقيه هذه كطبقة تكميلية أفضل جهد — راجع src/sockets/liveSocket.js).
  */
-async function leaveLiveSession({ studentId, sessionId, req }) {
-  const result = await recordAttendanceLeave({ studentId, sessionId });
+async function leaveLiveSession({ userId, role, sessionId, req }) {
+  const safeSessionId = toObjectId(sessionId, 'sessionId');
+  const safeUserId = toObjectId(userId, 'userId');
 
+  const session = await LiveSession.findById(safeSessionId);
+  if (!session) {
+    throw new AppError(404, 'SESSION_NOT_FOUND', 'الجلسة غير موجودة.');
+  }
+
+  let durationSeconds = null;
+
+  // 1. إذا كان طالباً: نسجل وقت حضوره ونتأكد من اشتراكه
+  if (role === 'Student') {
+    const enrolled = await isStudentEnrolledInCourse({
+      studentId: safeUserId,
+      courseId: session.courseId,
+    });
+    if (!enrolled) throw new AppError(403, 'NOT_ENROLLED', 'غير مسجل في الكورس.');
+
+    const result = await recordAttendanceLeave({
+      studentId: safeUserId,
+      sessionId: safeSessionId,
+      req,
+    });
+    durationSeconds = result.data?.durationSeconds;
+  }
+  // 2. إذا كان محاضراً: نتأكد فقط من ملكيته للجلسة
+  else if (role === 'Instructor') {
+    if (session.instructorId.toString() !== safeUserId.toString()) {
+      throw new AppError(403, 'FORBIDDEN', 'لا تملك صلاحية هذه الجلسة.');
+    }
+  }
+
+  // 3. تسجيل الحدث في الـ Audit لكلا الطرفين
   await auditService.record({
-    actorId: studentId,
-    actorRole: 'Student',
+    actorId: safeUserId,
+    actorRole: role,
     action: 'LIVE_SESSION_LEFT',
     resourceType: 'LiveSession',
-    resourceId: String(sessionId),
-    metadata: { durationSeconds: result.data?.durationSeconds },
+    resourceId: String(safeSessionId),
+    metadata: { durationSeconds },
     req,
   });
 
-  return result;
+  return { success: true, data: { sessionId: session._id, durationSeconds } };
 }
 
 module.exports = {

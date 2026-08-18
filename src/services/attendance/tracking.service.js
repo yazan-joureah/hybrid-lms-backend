@@ -33,8 +33,11 @@ async function recordAttendanceAutomatically({ studentId, sessionId, courseId })
 /**
  * UC-ATT-01 خطوات 3-4 — تُستدعى عند مغادرة الطالب (endpoint صريح أو قطع اتصال Socket).
  * تحسب مدة البقاء الفعلية وتحدد الحالة النهائية بمقارنتها بمدة الجلسة.
+ *
+ * التعديل: إضافة req، واستعلام session ليشمل unit_id و courseId،
+ * واستدعاء recordLiveSessionCompletion عند الحضور الكامل.
  */
-async function recordAttendanceLeave({ studentId, sessionId }) {
+async function recordAttendanceLeave({ studentId, sessionId, req }) {
   const record = await Attendance.findOne({ sessionId, studentId });
   if (!record) {
     throw new AppError(404, 'ATTENDANCE_NOT_FOUND', 'لا يوجد سجل حضور لهذا الطالب في هذه الجلسة.');
@@ -51,11 +54,12 @@ async function recordAttendanceLeave({ studentId, sessionId }) {
   record.leftAt = now;
   record.durationSeconds = durationSeconds;
 
-  // خطوة 4 من UC-ATT-01: تحديد "حضور جزئي" إن انقطع الاتصال قبل وقتٍ كافٍ من مدة
-  // الجلسة — الحسم النهائي (present/partial/absent) يُراجَع لاحقاً من المحاضر
-  // عبر UC-ATT-03 (تعديل يدوي) إن لزم؛ هذا فقط تصنيف أولي تلقائي.
+  // جلب معلومات الجلسة (بما فيها unit_id و courseId)
   const LiveSession = require('../../models/liveSession.model');
-  const session = await LiveSession.findById(sessionId).select('startTime endTime').lean();
+  const session = await LiveSession.findById(sessionId)
+    .select('startTime endTime unit_id courseId')
+    .lean();
+
   if (session) {
     const sessionDurationSeconds = Math.max(
       1,
@@ -68,6 +72,23 @@ async function recordAttendanceLeave({ studentId, sessionId }) {
   }
 
   await record.save();
+
+  // DEVIATION: غير حرج عمداً — فشل تسجيل حدث التقدّم لا يجب أن يمنع تسجيل الحضور نفسه.
+  if (record.status === 'present' && session?.unit_id) {
+    try {
+      const { recordLiveSessionCompletion } = require('../progress.service');
+      await recordLiveSessionCompletion({
+        studentId,
+        courseId: session.courseId,
+        unitId: session.unit_id,
+        sessionId,
+        req,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console -- سيُستبدل بـ logger.js لاحقاً
+      console.error('Live session progress recording failed (non-critical):', err.message);
+    }
+  }
 
   return { success: true, data: record };
 }

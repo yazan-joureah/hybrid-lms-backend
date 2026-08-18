@@ -31,21 +31,26 @@ const courseCreateSchema = z.object({
 const courseUpdateSchema = courseCreateSchema.partial();
 
 const unitCreateSchema = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(1, 'Title is required')
-    .max(200, 'Title must not exceed 200 characters'),
+  title: z.string().trim().min(1, 'Title is required').max(200),
+  desc: z.string().trim().optional(),
 });
 
-// conditional requiredness (url required for 'link', text required
-// for 'text') is intentionally NOT duplicated here — content.service.js
-// already enforces it. This schema only validates shape/format when present.
-const contentCreateSchema = z.object({
-  content_type: z.enum(['video', 'document', 'link', 'text']),
-  url: z.string().trim().url('Invalid URL format').optional(),
-  text: z.string().trim().min(1, 'Text must not be empty').optional(),
-});
+const contentCreateSchema = z
+  .object({
+    content_type: z.enum(['video', 'document', 'link', 'text']),
+    title: z.string().trim().min(1, 'Title is required').max(200),
+    desc: z.string().trim().optional(),
+    url: z.string().trim().url('Invalid URL format').optional(),
+    text: z.string().trim().min(1, 'Text must not be empty').optional(),
+  })
+  .refine((data) => data.content_type !== 'link' || !!data.url, {
+    message: 'url is required when content_type is link',
+    path: ['url'],
+  })
+  .refine((data) => data.content_type !== 'text' || !!data.text, {
+    message: 'text is required when content_type is text',
+    path: ['text'],
+  });
 
 // reason required only for 'reject' (free text) — simplest validation possible
 const courseReviewSchema = z
@@ -62,6 +67,34 @@ const progressSchema = z.object({
   content_id: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid ObjectId format'),
 });
 
+const updateUnitSchema = z
+  .object({
+    title: z.string().trim().min(1, 'Title is required').max(200).optional(),
+    desc: z.string().trim().optional(),
+  })
+  .refine((data) => data.title !== undefined || data.desc !== undefined, {
+    message: 'At least one field (title or desc) must be provided',
+  });
+
+const reorderUnitsSchema = z.object({
+  ordered_unit_ids: z.array(z.string().regex(/^[0-9a-fA-F]{24}$/)).min(1),
+});
+
+const updateContentSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  desc: z.string().trim().optional(),
+  url: z.string().trim().url('Invalid URL format').optional(),
+  text: z.string().trim().min(1).optional(),
+});
+
+const reorderContentSchema = z.object({
+  ordered_content_ids: z.array(z.string().regex(/^[0-9a-fA-F]{24}$/)).min(1),
+});
+
+const courseStatusSchema = z.object({
+  status: z.enum(['suspended', 'archived']),
+});
+
 module.exports = {
   courseCreateSchema,
   courseUpdateSchema,
@@ -69,4 +102,9 @@ module.exports = {
   contentCreateSchema,
   courseReviewSchema,
   progressSchema,
+  updateUnitSchema,
+  reorderUnitsSchema,
+  updateContentSchema,
+  reorderContentSchema,
+  courseStatusSchema,
 };

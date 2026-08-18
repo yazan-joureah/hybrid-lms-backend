@@ -25,12 +25,16 @@ const LoginAttempt = require('../../src/models/LoginAttempt');
 const { hashPassword } = require('../../src/utils/crypto');
 const authService = require('../../src/services/authService');
 const redisClient = require('../../src/config/redis');
-// gitleaks:allow
+
 const PLAIN_PASSWORD = 'a-genuinely-long-passphrase-2026';
 
 beforeAll(async () => {
   if (mongoose.connection.readyState === 0) {
     await mongoose.connect(process.env.MONGO_URI);
+  }
+  // Ensure Redis is connected (once)
+  if (redisClient.status !== 'ready') {
+    await redisClient.connect();
   }
 }, 20000);
 
@@ -42,12 +46,29 @@ beforeEach(async () => {
     MFAConfiguration.deleteMany({}),
     LoginAttempt.deleteMany({}),
   ]);
+  // Redis is guaranteed to be ready from beforeAll
   await redisClient.flushdb();
 });
 
 afterAll(async () => {
-  await mongoose.connection.close();
-  await redisClient.quit();
+  // Close Mongoose
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.connection.close();
+  }
+  // Quit Redis gracefully
+  try {
+    if (redisClient.status === 'ready') {
+      await redisClient.quit();
+    } else {
+      await redisClient.disconnect();
+    }
+  } catch (_) {
+    // Ignore
+  }
+  // Close any server instance if started by the app
+  if (app && typeof app.close === 'function') {
+    await new Promise((resolve) => app.close(resolve));
+  }
 });
 
 async function createActiveUser({ role = 'Student', mfaEnabled = false } = {}) {
@@ -117,7 +138,7 @@ describe('POST /auth/login — MFA required', () => {
     expect(res.headers['set-cookie']).toBeUndefined();
 
     const sessionCount = await Session.countDocuments({});
-    expect(sessionCount).toBe(0); // no session created before MFA is proven
+    expect(sessionCount).toBe(0);
   });
 });
 
@@ -185,12 +206,11 @@ describe('Account lockout escalation (UC-AUTH-04) — service-level, bypasses HT
       });
     }
 
-    expect(lastResult.error).toBe('INVALID_CREDENTIALS'); // 5th failure still reports as invalid creds...
+    expect(lastResult.error).toBe('INVALID_CREDENTIALS');
     const user = await User.findOne({ email: 'login.test@example.com' });
-    expect(user.status).toBe('temporary_locked'); // ...but the account is now locked as a side effect
+    expect(user.status).toBe('temporary_locked');
     expect(user.lock_until).not.toBeNull();
 
-    // A 6th attempt — even with the CORRECT password — must now be rejected as locked.
     const sixthAttempt = await authService.loginUser({
       email: 'login.test@example.com',
       password: PLAIN_PASSWORD,
@@ -204,7 +224,7 @@ describe('POST /auth/login — already-locked account (single HTTP request)', ()
   it('returns 423 without attempting Argon2id verification', async () => {
     const user = await createActiveUser();
     user.status = 'temporary_locked';
-    user.lock_until = new Date(Date.now() + 10 * 60 * 1000); // 10 min in the future
+    user.lock_until = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
     const res = await request(app)
@@ -220,7 +240,7 @@ describe('POST /auth/login — auto-unlock after lock window passes (UC-AUTH-04 
   it('transparently reactivates the account and allows login once lock_until is in the past', async () => {
     const user = await createActiveUser();
     user.status = 'temporary_locked';
-    user.lock_until = new Date(Date.now() - 60 * 1000); // 1 min in the PAST — window already expired
+    user.lock_until = new Date(Date.now() - 60 * 1000);
     user.failed_login_count = 5;
     await user.save();
 

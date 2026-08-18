@@ -5,15 +5,20 @@
 const User = require('../../models/User');
 const AuthToken = require('../../models/AuthToken');
 const GuardianApproval = require('../../models/GuardianApproval');
-const { hashPassword, generateOpaqueToken, sha256 } = require('../../utils/crypto');
+const {
+  hashPassword,
+  generateNumericOtp,
+  sha256,
+  generateOpaqueToken,
+} = require('../../utils/crypto');
 const { isMinor } = require('../../utils/ageCalculator');
 const emailService = require('../emailService');
 const auditService = require('../auditService');
 const env = require('../../config/env');
 const logger = require('../../utils/logger');
-const { ApiError } = require('../../middleware/errorHandler');
 
-const EMAIL_VERIFICATION_TTL_HOURS = 24;
+const EMAIL_VERIFICATION_TTL_MINUTES = 15;
+const MAX_OTP_ATTEMPTS = 5;
 const GUARDIAN_APPROVAL_TTL_HOURS = 48;
 
 async function registerUser({
@@ -61,16 +66,15 @@ async function registerUser({
     req,
   });
 
-  const { raw: verifyRaw, hash: verifyHash } = generateOpaqueToken();
+  const { raw: verifyCode, hash: verifyHash } = generateNumericOtp(); // CHANGED
   await AuthToken.create({
     user_id: user._id,
     token_hash: verifyHash,
     token_type: 'EMAIL_VERIFICATION',
-    expires_at: new Date(Date.now() + EMAIL_VERIFICATION_TTL_HOURS * 60 * 60 * 1000),
+    expires_at: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000), // CHANGED
   });
-  const verifyUrl = `${env.frontUrl}/verify-email?token=${verifyRaw}`;
   try {
-    await emailService.sendVerificationEmail(user.email, verifyUrl);
+    await emailService.sendVerificationEmail(user.email, verifyCode); // CHANGED — sends the code, not a URL
   } catch (err) {
     logger.error('Verification email failed to send — registration still succeeds', {
       userId: user._id,
@@ -126,27 +130,42 @@ async function registerUser({
 }
 
 // GET /auth/verify-email.
-async function verifyEmail({ rawToken, req }) {
-  const tokenHash = sha256(rawToken);
+async function verifyEmail({ email, code, req }) {
+  const user = await User.findOne({ email });
+  if (!user) {
+    return { error: 'INVALID_CODE' };
+  }
 
+  const codeHash = sha256(code);
   const authToken = await AuthToken.findOne({
-    token_hash: tokenHash,
+    user_id: user._id,
     token_type: 'EMAIL_VERIFICATION',
-  });
+    used_at: null,
+  }).sort({ created_at: -1 });
 
   if (!authToken) {
-    return { error: 'TOKEN_INVALID' };
-  }
-  if (authToken.used_at) {
-    return { error: 'TOKEN_ALREADY_USED' };
+    return { error: 'INVALID_CODE' };
   }
   if (authToken.expires_at < new Date()) {
-    return { error: 'TOKEN_EXPIRED' };
+    return { error: 'CODE_EXPIRED' };
+  }
+  if (authToken.attempt_count >= MAX_OTP_ATTEMPTS) {
+    return { error: 'TOO_MANY_ATTEMPTS' };
   }
 
-  const user = await User.findById(authToken.user_id);
-  if (!user) {
-    return { error: 'TOKEN_INVALID' };
+  const crypto = require('crypto');
+  const isValid =
+    codeHash.length === authToken.token_hash.length &&
+    crypto.timingSafeEqual(Buffer.from(codeHash), Buffer.from(authToken.token_hash));
+
+  if (!isValid) {
+    authToken.attempt_count += 1;
+
+    if (authToken.attempt_count >= MAX_OTP_ATTEMPTS) {
+      authToken.used_at = new Date();
+    }
+    await authToken.save();
+    return { error: authToken.used_at ? 'TOO_MANY_ATTEMPTS' : 'INVALID_CODE' };
   }
 
   authToken.used_at = new Date();
@@ -156,7 +175,6 @@ async function verifyEmail({ rawToken, req }) {
 
   const minor = isMinor(user.birth_date);
   let guardianApproved = true;
-
   if (minor) {
     const approval = await GuardianApproval.findOne({ user_id: user._id }).sort({ created_at: -1 });
     guardianApproved = Boolean(approval?.approved_at);
@@ -182,7 +200,50 @@ async function verifyEmail({ rawToken, req }) {
   };
 }
 
-/// POST /auth/guardian/approve. MUC-AUTH-09: matching IP/fingerprint FLAGS, never BLOCKS.
+// POST /auth/resend-verification.
+async function resendVerification({ email, req }) {
+  const user = await User.findOne({ email });
+
+  if (!user || user.email_verified_at) {
+    return { error: null };
+  }
+
+  await AuthToken.deleteMany({
+    user_id: user._id,
+    token_type: 'EMAIL_VERIFICATION',
+    used_at: null,
+  });
+
+  const { raw: code, hash } = generateNumericOtp();
+  await AuthToken.create({
+    user_id: user._id,
+    token_hash: hash,
+    token_type: 'EMAIL_VERIFICATION',
+    expires_at: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000),
+  });
+
+  try {
+    await emailService.sendVerificationEmail(user.email, code);
+  } catch (err) {
+    logger.error('Resend verification email failed to send', {
+      userId: user._id,
+      error: err.message,
+    });
+  }
+
+  await auditService.record({
+    actorId: user._id,
+    actorRole: user.role,
+    action: 'EMAIL_VERIFICATION_RESENT',
+    resourceType: 'user',
+    resourceId: user._id,
+    req,
+  });
+
+  return { error: null };
+}
+
+/// POST /auth/guardian/approve.
 async function processGuardianApproval({
   rawToken,
   decision,
@@ -267,27 +328,4 @@ async function processGuardianApproval({
   return { error: null, status: 'guardian_pending', decision };
 }
 
-//GET /auth/me.
-async function getUserProfile({ userId }) {
-  const user = await User.findById(userId).select(
-    'full_name email role status kyc_status mfa_enabled birth_date created_at'
-  );
-
-  if (!user) {
-    throw new ApiError(401, 'TOKEN_INVALID', 'User no longer exists');
-  }
-
-  return {
-    id: user._id,
-    full_name: user.full_name,
-    email: user.email,
-    role: user.role,
-    status: user.status,
-    kyc_status: user.kyc_status,
-    mfa_enabled: user.mfa_enabled,
-    birth_date: user.birth_date,
-    created_at: user.created_at,
-  };
-}
-
-module.exports = { registerUser, verifyEmail, processGuardianApproval, getUserProfile };
+module.exports = { registerUser, verifyEmail, resendVerification, processGuardianApproval };
