@@ -1,7 +1,3 @@
-/**
- * AUTH routes — Group 1 (Registration & Email Verification).
- * Source: REST_API_Contract_v1.2_Groups1-4.docx.
- */
 const express = require('express');
 const router = express.Router();
 
@@ -32,7 +28,7 @@ router.post(
 
 router.post(
   '/verify-email',
-  //rateLimit('verify-email', (req) => req.ip),
+  rateLimit('verify-email', (req) => req.ip),
   validateBody(verifyEmailSchema),
   authController.verifyEmail
 );
@@ -48,7 +44,7 @@ router.post(
 
 router.post(
   '/login',
-  //rateLimit('login', (req) => req.body?.email || 'unknown'),
+  rateLimit('login', (req) => req.body?.email || 'unknown'),
   validateBody(loginSchema),
   authController.login
 );
@@ -73,7 +69,7 @@ router.post('/reset-password', validateBody(resetPasswordSchema), authController
 
 router.post(
   '/resend-verification',
-  rateLimit('resend-verification', (req) => req.body.email), // نفس نمط register: per-IP + per-identifier
+  rateLimit('resend-verification', (req) => req.body.email),
   validateBody(resendVerificationSchema),
   authController.resendVerification
 );

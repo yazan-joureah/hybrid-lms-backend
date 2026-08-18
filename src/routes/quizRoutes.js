@@ -82,7 +82,14 @@ router.get(
   quizController.listAvailable
 );
 
-router.post('/:quizId/start', requireAuth, requireRole(['Student']), quizController.start);
+router.post(
+  '/:quizId/start',
+  requireAuth,
+  requireRole(['Student']),
+  rateLimit('quiz-start', (req) => req.user.id),
+  quizController.start
+);
+
 router.post(
   '/attempts/:attemptId/answers',
   requireAuth,

@@ -1,11 +1,3 @@
-/**
- * src/routes/liveRoutes.js
- * وحدة الجلسات المباشرة (LIVE) — UC-LIVE-01 حتى UC-LIVE-08
- * يُركَّب في app.js على: /api/v1/live
- *
- * ملاحظة: وحدة الحضور (ATT) لها مسارات منفصلة تماماً في attendanceRoutes.js
- * (/api/v1/attendance) — حسب فصل الاهتمامات المطلوب.
- */
 const express = require('express');
 const { requireAuth } = require('../middleware/authMiddleware');
 const { requireRole } = require('../middleware/requireRole');
@@ -23,21 +15,17 @@ const {
 
 const router = express.Router();
 
-// كل مسارات هذه الوحدة تتطلب مصادقة JWT أولاً
 router.use(requireAuth);
 
-/* ───────────────────────── 1) إدارة وحجز الجلسات ───────────────────────── */
-
-// UC-LIVE-01 — Create/Schedule Session
 router.post(
   '/sessions',
   requireRole(['Instructor']),
-  requireVerifiedIdentity, // نفس مستوى التحقق المطلوب لإنشاء كورس (SF-AUTH-03)
+  requireVerifiedIdentity,
+  rateLimit('live-session-create', (req) => req.user.id),
   validateBody(createSessionSchema),
   liveController.createSession
 );
 
-// UC-LIVE-02 — Edit Session
 router.put(
   '/sessions/:sessionId',
   requireRole(['Instructor']),
@@ -46,7 +34,6 @@ router.put(
 );
 router.post('/sessions/:sessionId/start', requireRole(['Instructor']), liveController.startSession);
 
-// UC-LIVE-02 — Cancel Session
 router.post(
   '/sessions/:sessionId/cancel',
   requireRole(['Instructor']),
@@ -54,44 +41,27 @@ router.post(
   liveController.cancelSession
 );
 
-// UC-LIVE-03 — View Live Schedule (طالب أو محاضر)
 router.get('/sessions', requireRole(['Student', 'Instructor']), liveController.listSessions);
 
-// 1. Get single session
 router.get(
   '/sessions/:sessionId',
   requireRole(['Student', 'Instructor']),
   liveController.getSession
 );
 
-/* ─────────────────────── 2) الانضمام والمصادقة ─────────────────────── */
-
-// UC-LIVE-04 — Join Live Session
 router.post(
   '/sessions/:sessionId/join',
   requireRole(['Student']),
-  rateLimit('live_join', (req) => req.user.id), // يمنع محاولات تخمين/قصف الانضمام
+  rateLimit('live_join', (req) => req.user.id),
   liveController.joinSession
 );
 
-// UC-ATT-01 (دعم) — Leave — يُنهي تتبع الحضور صراحةً
 router.post(
   '/sessions/:sessionId/leave',
   requireRole(['Student', 'Instructor']),
   liveController.leaveSession
 );
 
-/*
- * ملاحظة معمارية: غرفة الانتظار (Lobby)، الدردشة، والإشراف
- * (كتم/طرد/مشاركة الشاشة) لم تعد مسارات LMS مخصّصة — Jitsi
- * الحرة (meet.jit.si) توفّرها فعلياً وبدون تكلفة داخل واجهة
- * الاجتماع نفسها للمحاضر (أول من يدخل الغرفة يصبح Moderator
- * تلقائياً). لا داعي لإعادة بنائها هنا.
- */
-
-/* ─────────────────── 4) ما بعد البث والأرشفة ─────────────────── */
-
-// UC-LIVE-08 — End & Process Recording
 router.post('/sessions/:sessionId/end', requireRole(['Instructor']), liveController.endSession);
 router.post(
   '/sessions/:sessionId/recording',

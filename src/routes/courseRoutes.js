@@ -184,7 +184,13 @@ router.get('/:courseId/units', attachUserIfPresent, courseController.listUnits);
 router.get('/:courseId/units/:unitId', attachUserIfPresent, courseController.getOneUnit);
 
 // --- Student enrollment ---
-router.post('/:courseId/enroll', requireAuth, requireRole(['Student']), courseController.enroll);
+router.post(
+  '/:courseId/enroll',
+  requireAuth,
+  requireRole(['Student']),
+  rateLimit('course-enroll', (req) => req.user.id),
+  courseController.enroll
+);
 router.get(
   '/enrollments/my-courses',
   requireAuth,
