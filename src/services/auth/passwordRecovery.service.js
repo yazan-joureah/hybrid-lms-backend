@@ -5,13 +5,13 @@
 const User = require('../../models/User');
 const AuthToken = require('../../models/AuthToken');
 const RefreshToken = require('../../models/RefreshToken');
-const { hashPassword, generateNumericOtp, sha256 } = require('../../utils/crypto'); // CHANGED
+const { hashPassword, generateNumericOtp, sha256 } = require('../../utils/crypto');
 const emailService = require('../emailService');
 const auditService = require('../auditService');
 const logger = require('../../utils/logger');
 const crypto = require('crypto');
 
-const FORGOT_PASSWORD_TOKEN_TTL_MS = 15 * 60 * 1000; // unchanged — already 15 min
+const FORGOT_PASSWORD_TOKEN_TTL_MS = 15 * 60 * 1000;
 const MAX_OTP_ATTEMPTS = 5;
 
 /** POST /auth/forgot-password. Same success signal regardless of email existence. */
@@ -49,9 +49,8 @@ async function forgotPassword({ email, req }) {
   return { error: null };
 }
 
-/** POST /auth/reset-password. token_version increment invalidates every prior RefreshToken (FR-03b). */
+// POST /auth/reset-password.
 async function resetPassword({ email, code, newPassword, req }) {
-  // CHANGED signature
   const user = await User.findOne({ email });
   if (!user) {
     return { error: 'INVALID_CODE' };

@@ -3,6 +3,7 @@ const {
   listPendingCourses,
   reviewCourse,
   setCourseStatus,
+  listAllCoursesForAdmin,
 } = require('../../services/courseService');
 
 /** UC-COURSE-07: lists courses awaiting review. */
@@ -53,8 +54,18 @@ async function setCourseStatusHandler(req, res, next) {
   }
 }
 
+async function getAllCoursesForAdmin(req, res, next) {
+  try {
+    const result = await listAllCoursesForAdmin({ queryParams: req.query });
+    return res.status(200).json({ success: true, data: result.data });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 module.exports = {
   getPendingCourses,
   reviewCourseHandler,
   setCourseStatusHandler,
+  getAllCoursesForAdmin,
 };

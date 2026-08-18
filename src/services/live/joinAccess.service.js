@@ -45,9 +45,13 @@ async function validateSessionAccessAndGenerateJoinToken({ studentId, sessionId,
   }
 
   const now = new Date();
-  if (now < session.startTime) {
-    throw new AppError(400, 'SESSION_NOT_STARTED', 'لم تبدأ الجلسة بعد.');
+  if (session.status === 'scheduled') {
+    throw new AppError(400, 'SESSION_NOT_STARTED', 'لم يبدأ المحاضر الجلسة بعد.');
   }
+  if (session.status !== 'ongoing') {
+    throw new AppError(400, 'SESSION_NOT_LIVE', 'الجلسة غير متاحة للانضمام حالياً.');
+  }
+  // إبقاء فحص endTime كطبقة أمان إضافية (احتياطي فقط)
   if (now > session.endTime) {
     throw new AppError(400, 'SESSION_ENDED', 'انتهت هذه الجلسة.');
   }
@@ -156,7 +160,11 @@ async function leaveLiveSession({ userId, role, sessionId, req }) {
     });
     if (!enrolled) throw new AppError(403, 'NOT_ENROLLED', 'غير مسجل في الكورس.');
 
-    const result = await recordAttendanceLeave({ studentId: safeUserId, sessionId: safeSessionId });
+    const result = await recordAttendanceLeave({
+      studentId: safeUserId,
+      sessionId: safeSessionId,
+      req,
+    });
     durationSeconds = result.data?.durationSeconds;
   }
   // 2. إذا كان محاضراً: نتأكد فقط من ملكيته للجلسة

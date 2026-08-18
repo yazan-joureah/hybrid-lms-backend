@@ -82,6 +82,9 @@ quizSchema.pre('validate', function (next) {
       new Error('unit_id must not be set when quiz_type is "exam" (course-wide final exam).')
     );
   }
+  if (this.quiz_type === 'exam' && (!this.start_time || !this.end_time)) {
+    return next(new Error('start_time and end_time are required for exam quizzes.'));
+  }
   if (this.allow_back_navigation === undefined) {
     this.allow_back_navigation = this.quiz_type === 'quiz';
   }
@@ -94,7 +97,7 @@ quizSchema.index({ instructor_id: 1 });
 
 applyReferentialIntegrity(quizSchema, [
   { path: 'course_id', ref: 'Course', required: true },
-  { path: 'unit_id', ref: 'CourseUnit', require: false },
+  { path: 'unit_id', ref: 'CourseUnit', required: false },
   { path: 'instructor_id', ref: 'User', required: true },
 ]);
 

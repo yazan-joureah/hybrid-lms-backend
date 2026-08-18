@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 
 const courseController = require('../controllers/courseController');
+const progressController = require('../controllers/progress.controller');
 const { requireAuth } = require('../middleware/authMiddleware');
 const { attachUserIfPresent } = require('../middleware/attachUserIfPresent');
 const { requireRole } = require('../middleware/requireRole');
@@ -197,13 +198,13 @@ router.post(
   requireAuth,
   requireRole(['Student']),
   validateBody(progressSchema),
-  courseController.record
+  progressController.record
 );
 router.get(
   '/:courseId/progress-summary',
   requireAuth,
   requireRole(['Student']),
-  courseController.getProgress
+  progressController.getProgress
 );
 
 module.exports = router;

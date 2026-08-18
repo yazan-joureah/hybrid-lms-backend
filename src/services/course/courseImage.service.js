@@ -1,26 +1,19 @@
 // src/services/course/courseImage.service.js
 const Course = require('../../models/Course');
 const { AppError } = require('../../middleware/errorHandler');
-const { assertCourseEditable } = require('./reviewState.service');
 const { replaceImage } = require('../imageUpload.service');
 const fileStorage = require('../fileStorage.service');
 const { toObjectId } = require('../../utils/objectId.util');
+const { loadOwnedCourse } = require('./courseAccess.util');
 
-/**
- * Sets/replaces a course's cover image.
- */
 async function setCourseCoverImage({ courseId, instructorId, file, req }) {
-  const safeCourseId = toObjectId(courseId, 'courseId');
-  const safeInstructorId = toObjectId(instructorId, 'instructorId');
-
-  const course = await Course.findById(safeCourseId);
-  if (!course) {
-    throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
-  }
-  if (course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
-    throw new AppError(403, 'FORBIDDEN', 'You do not have permission to modify this course.');
-  }
-  assertCourseEditable(course);
+  const { course, safeInstructorId } = await loadOwnedCourse({
+    courseId,
+    instructorId,
+    req,
+    requireEditable: true,
+    attemptedAction: 'SET_COVER_IMAGE',
+  });
 
   const { storagePath } = await replaceImage({
     file,
@@ -28,7 +21,7 @@ async function setCourseCoverImage({ courseId, instructorId, file, req }) {
     userId: safeInstructorId,
     actorRole: 'Instructor',
     req,
-    metadata: { course_id: safeCourseId, purpose: 'course_cover_image' },
+    metadata: { course_id: course._id, purpose: 'course_cover_image' },
   });
 
   course.cover_image_storage_path = storagePath;
@@ -37,7 +30,6 @@ async function setCourseCoverImage({ courseId, instructorId, file, req }) {
   return { success: true, data: { course } };
 }
 
-/** Streams a course's cover image  */
 async function streamCourseCoverImage({ courseId }) {
   const safeCourseId = toObjectId(courseId, 'courseId');
   const course = await Course.findById(safeCourseId).select('cover_image_storage_path').lean();

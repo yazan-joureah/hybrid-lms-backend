@@ -1,24 +1,22 @@
 // src/services/course/adminReview.service.js
-/** UC-COURSE-07: Admin moderation of pending_review courses + suspend/archive/preview. */
 const Course = require('../../models/Course');
 const CourseUnit = require('../../models/CourseUnit');
 const CourseContent = require('../../models/CourseContent');
 const CourseReviewRequest = require('../../models/CourseReviewRequest');
 const { AppError } = require('../../middleware/errorHandler');
 const auditService = require('../auditService');
+const { assertPublishedExamExists } = require('./course.service');
 const { toObjectId } = require('../../utils/objectId.util');
+const { paginateQuery } = require('./courseAccess.util');
 
-/** UC-COURSE-07: lists all courses currently awaiting review. */
 async function listPendingCourses() {
   const courses = await Course.find({ status: 'pending_review' }).sort({ updatedAt: 1 }).lean();
   return { success: true, data: { courses } };
 }
 
-/**
- * EXT-COURSE-02: checked ONLY at publish time — async courses need >=1
- * unit, every unit non-empty, and a set completion_threshold.
- */
 async function assertContentCompleteForPublish(course) {
+  await assertPublishedExamExists(course._id);
+
   if (course.is_synchronous) {
     return;
   }
@@ -52,9 +50,10 @@ async function assertContentCompleteForPublish(course) {
   }
 }
 
-/** UC-COURSE-07: records the Admin's publish/reject/needs_revision decision. */
 async function reviewCourse({ courseId, adminId, decision, reason, req }) {
   const safeCourseId = toObjectId(courseId, 'courseId');
+  const safeAdminId = toObjectId(adminId, 'adminId');
+
   const course = await Course.findById(safeCourseId);
   if (!course) {
     throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
@@ -92,14 +91,14 @@ async function reviewCourse({ courseId, adminId, decision, reason, req }) {
   if (reviewRequest) {
     const statusMap = { publish: 'approved', reject: 'rejected', needs_revision: 'needs_revision' };
     reviewRequest.status = statusMap[decision];
-    reviewRequest.reviewer_id = adminId;
+    reviewRequest.reviewer_id = safeAdminId;
     reviewRequest.rejection_reason = reason || null;
     reviewRequest.reviewed_at = new Date();
     await reviewRequest.save();
   }
 
   await auditService.record({
-    actorId: adminId,
+    actorId: safeAdminId,
     actorRole: 'Admin',
     action: `COURSE_REVIEW_${decision.toUpperCase()}`,
     resourceType: 'Course',
@@ -111,13 +110,28 @@ async function reviewCourse({ courseId, adminId, decision, reason, req }) {
   return { success: true, data: { course } };
 }
 
+async function listAllCoursesForAdmin({ queryParams = {} }) {
+  const query = {};
+  if (queryParams.status) {
+    query.status = queryParams.status;
+  }
+
+  const { records: courses, meta } = await paginateQuery({
+    model: Course,
+    query,
+    queryParams,
+    sort: { updatedAt: -1 },
+    defaultLimit: 20,
+  });
+
+  return { success: true, data: { courses, meta } };
+}
+
 const SETTABLE_ADMIN_STATUSES = ['suspended', 'archived'];
 
-/**
- * Admin sets a course to suspended or archived.
- */
 async function setCourseStatus({ adminId, courseId, status, req }) {
   const safeCourseId = toObjectId(courseId, 'courseId');
+  const safeAdminId = toObjectId(adminId, 'adminId');
 
   if (!SETTABLE_ADMIN_STATUSES.includes(status)) {
     throw new AppError(400, 'INVALID_STATUS', 'status must be either suspended or archived.');
@@ -140,12 +154,12 @@ async function setCourseStatus({ adminId, courseId, status, req }) {
 
   course.status = status;
   if (status === 'suspended') {
-    course.suspended_by = adminId;
+    course.suspended_by = safeAdminId;
   }
   await course.save();
 
   await auditService.record({
-    actorId: adminId,
+    actorId: safeAdminId,
     actorRole: 'Admin',
     action: `COURSE_${status.toUpperCase()}`,
     resourceType: 'Course',
@@ -156,8 +170,4 @@ async function setCourseStatus({ adminId, courseId, status, req }) {
   return { success: true, data: { course } };
 }
 
-module.exports = {
-  listPendingCourses,
-  reviewCourse,
-  setCourseStatus,
-};
+module.exports = { listPendingCourses, reviewCourse, setCourseStatus, listAllCoursesForAdmin };

@@ -75,7 +75,7 @@ async function reorderUnit(req, res, next) {
   }
 }
 
-/** Unified role-aware unit list read */
+/** Get unite for a specific course */
 async function listUnits(req, res, next) {
   try {
     const userId = req.user?.id;
@@ -90,7 +90,7 @@ async function listUnits(req, res, next) {
   }
 }
 
-/** Unified read — Student/Instructor/Admin/Guest, single code path. */
+/** Get one unit for a specific course with its content */
 async function getOneUnit(req, res, next) {
   try {
     const userId = req.user?.id;

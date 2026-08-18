@@ -15,6 +15,7 @@ const redisClient = require('../../src/config/redis');
 const { signAccessToken } = require('../../src/utils/jwt');
 const CourseUnit = require('../../src/models/CourseUnit');
 const CourseContent = require('../../src/models/CourseContent');
+const Quiz = require('../../src/models/quiz.model');
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key';
 const PLAIN_PASSWORD = 'a-genuinely-long-passphrase-2026';
@@ -32,6 +33,7 @@ beforeEach(async () => {
     Session.deleteMany({}),
     CourseReviewRequest.deleteMany({}),
     CourseUnit.deleteMany({}),
+    Quiz.deleteMany({}),
     CourseContent.deleteMany({}),
     // SECURITY note: GridFS stores files in SEPARATE collections
     // (course_files.files / course_files.chunks), NOT covered by any
@@ -211,7 +213,7 @@ describe('PUT /api/v1/courses/:courseId (Update Course)', () => {
 });
 
 describe('POST /api/v1/courses/:courseId/submit-review (Submit for Review)', () => {
-  it('submits a draft course for review successfully when content exists', async () => {
+  it('submits a draft course for review successfully when content AND a published exam exist', async () => {
     const { accessToken, user } = await createInstructorAndLogin();
     const course = await Course.create({
       ...validCoursePayload,
@@ -229,6 +231,32 @@ describe('POST /api/v1/courses/:courseId/submit-review (Submit for Review)', () 
       content_data: { text: 'Intro text' },
       order: 1,
     });
+    // submitCourseForReview() calls assertPublishedExamExists() unconditionally
+    await Quiz.create({
+      course_id: course._id,
+      unit_id: null,
+      instructor_id: user._id,
+      quiz_type: 'exam',
+      title: 'Final Exam',
+      status: 'published',
+      locked: false,
+      start_time: new Date(Date.now() - 60 * 60 * 1000),
+      end_time: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      duration_minutes: 60,
+      passing_score_percent: 60,
+      max_attempts: 1,
+      questions: [
+        {
+          question_type: 'mcq',
+          text: 'What is 2 + 2?',
+          choices: [
+            { text: '4', is_correct: true },
+            { text: '5', is_correct: false },
+            { text: '22', is_correct: false },
+          ],
+        },
+      ],
+    });
 
     const res = await request(app)
       .post(`/api/v1/courses/${course._id}/submit-review`)
@@ -240,7 +268,7 @@ describe('POST /api/v1/courses/:courseId/submit-review (Submit for Review)', () 
     expect(updatedCourse.content_complete).toBe(true);
   });
 
-  it('rejects submission with 400 COURSE_CONTENT_INCOMPLETE when the course has no content', async () => {
+  it('rejects submission with 400 COURSE_CONTENT_INCOMPLETE when the course has no content (checked before the exam gate)', async () => {
     const { accessToken, user } = await createInstructorAndLogin();
     const course = await Course.create({
       ...validCoursePayload,
@@ -254,6 +282,35 @@ describe('POST /api/v1/courses/:courseId/submit-review (Submit for Review)', () 
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('COURSE_CONTENT_INCOMPLETE');
+  });
+
+  it('rejects submission with 400 EXAM_REQUIRED when content exists but no published exam does', async () => {
+    const { accessToken, user } = await createInstructorAndLogin();
+    const course = await Course.create({
+      ...validCoursePayload,
+      owner_instructor_id: user._id,
+      status: 'draft',
+    });
+    const unit = await CourseUnit.create({ course_id: course._id, title: 'Unit 1', order: 1 });
+    await CourseContent.create({
+      course_id: course._id,
+      unit_id: unit._id,
+      owner_instructor_id: user._id,
+      title: 'Intro to course',
+      content_type: 'text',
+      content_data: { text: 'Intro text' },
+      order: 1,
+    });
+
+    const res = await request(app)
+      .post(`/api/v1/courses/${course._id}/submit-review`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('EXAM_REQUIRED');
+
+    const unchanged = await Course.findById(course._id);
+    expect(unchanged.status).toBe('draft');
   });
 });
 

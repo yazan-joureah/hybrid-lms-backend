@@ -66,6 +66,14 @@ router.post(
   quizController.publish
 );
 
+// --- Admin: view quizzes/exams while reviewing a course ---
+router.get(
+  '/admin/course/:courseId',
+  requireAuth,
+  requireRole(['Admin', 'SuperAdmin']),
+  quizController.listForAdminReview
+);
+
 // --- Student: browse + take ---
 router.get(
   '/course/:courseId/available',
@@ -91,5 +99,10 @@ router.post(
 );
 
 router.get('/attempts/:attemptId', requireAuth, requireRole(['Student']), quizController.resume);
-
+router.get(
+  '/:quizId/current-attempt',
+  requireAuth,
+  requireRole(['Student']),
+  quizController.getCurrent
+);
 module.exports = router;

@@ -145,8 +145,7 @@ async function completeMfaLogin({ mfaTempToken, code, req }) {
   }
 
   const { accessToken, refreshTokenRaw, session } = await createUserSession({ user, req });
-  // createUserSession always sets mfa_verified=false (correct for the
-  // no-MFA path) — corrected here since this call site DID verify MFA.
+
   session.mfa_verified = true;
   await session.save();
 

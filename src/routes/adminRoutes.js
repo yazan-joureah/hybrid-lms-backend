@@ -38,6 +38,13 @@ router.patch(
   adminController.setCourseStatusHandler
 );
 
+router.get(
+  '/courses',
+  requireAuth,
+  requireRole(['Admin', 'SuperAdmin']),
+  adminController.getAllCoursesForAdmin
+);
+
 // --- KYC moderation ---
 
 router.get(

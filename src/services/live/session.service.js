@@ -3,6 +3,7 @@
 // UC-LIVE-08 (End & Process Recording)
 
 const LiveSession = require('../../models/liveSession.model');
+const CourseUnit = require('../../models/CourseUnit');
 const Course = require('../../models/Course');
 const Enrollment = require('../../models/Enrollment');
 const auditService = require('../auditService');
@@ -17,6 +18,15 @@ async function assertInstructorOwnsCourse({ instructorId, courseId, req }) {
   if (!course) {
     throw new AppError(404, 'COURSE_NOT_FOUND', 'الكورس غير موجود.');
   }
+
+  if (course.is_synchronous === false) {
+    throw new AppError(
+      400,
+      'COURSE_IS_ASYNCHRONOUS',
+      'لا يمكن إضافة جلسات مباشرة لكورس غير متزامن (Asynchronous).'
+    );
+  }
+
   if (course.owner_instructor_id.toString() !== instructorId.toString()) {
     await auditService.record({
       actorId: instructorId,
@@ -29,7 +39,26 @@ async function assertInstructorOwnsCourse({ instructorId, courseId, req }) {
     });
     throw new AppError(403, 'FORBIDDEN', 'لا تملك صلاحية إدارة جلسات هذا الكورس.');
   }
+
+  if (['suspended', 'archived'].includes(course.status)) {
+    throw new AppError(
+      409,
+      'COURSE_NOT_ACTIVE',
+      `Cannot manage live sessions while course status is '${course.status}'.`
+    );
+  }
+
   return course;
+}
+
+async function assertUnitBelongsToCourseIfProvided({ unitId, courseId }) {
+  if (!unitId) return null;
+  const safeUnitId = toObjectId(unitId, 'unitId');
+  const unit = await CourseUnit.findById(safeUnitId).lean();
+  if (!unit || unit.course_id.toString() !== courseId.toString()) {
+    throw new AppError(404, 'UNIT_NOT_FOUND', 'الوحدة غير موجودة ضمن هذا الكورس.');
+  }
+  return safeUnitId;
 }
 
 /** يتحقق أن المحاضر يملك الجلسة فعلياً، ويعيدها (وثيقة Mongoose قابلة للتعديل) */
@@ -80,6 +109,11 @@ async function createSession({ instructorId, sessionData, req }) {
 
   await assertInstructorOwnsCourse({ instructorId: safeInstructorId, courseId: safeCourseId, req });
 
+  const safeUnitId = await assertUnitBelongsToCourseIfProvided({
+    unitId: sessionData.unit_id,
+    courseId: safeCourseId,
+  });
+
   const startTime = new Date(sessionData.startTime);
   const endTime = new Date(sessionData.endTime);
   const now = new Date();
@@ -110,6 +144,7 @@ async function createSession({ instructorId, sessionData, req }) {
   const session = await LiveSession.create({
     courseId: safeCourseId,
     instructorId: safeInstructorId,
+    unit_id: safeUnitId,
     title: sessionData.title,
     meetingLink: finalMeetingLink,
     moderatorPassword,
@@ -189,6 +224,14 @@ async function updateSession({ instructorId, sessionId, updateData, req }) {
   if (updateData.endTime) {
     changedFields.endTime = nextEnd;
     session.endTime = nextEnd;
+  }
+
+  if (updateData.unit_id !== undefined) {
+    changedFields.unit_id = await assertUnitBelongsToCourseIfProvided({
+      unitId: updateData.unit_id,
+      courseId: session.courseId,
+    });
+    session.unit_id = changedFields.unit_id;
   }
 
   await session.save();
@@ -292,9 +335,6 @@ async function listSessionsForViewer({ userId, role, queryParams = {} }) {
     ['scheduled', 'ongoing', 'ended', 'cancelled'].includes(queryParams.status)
   ) {
     filter.status = queryParams.status;
-  } else {
-    // افتراضي: القادمة والمستمرة فقط (استبعاد المنتهية/الملغاة ما لم يُطلب صراحةً)
-    filter.status = { $in: ['scheduled', 'ongoing'] };
   }
 
   if (role === 'Instructor') {
@@ -348,6 +388,9 @@ async function startSession({ instructorId, sessionId, req }) {
 /**
  * UC-LIVE-08 — End Session
  */
+/**
+ * UC-LIVE-08 — End Session
+ */
 async function endSession({ instructorId, sessionId, req }) {
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
   const session = await assertInstructorOwnsSession({
@@ -377,6 +420,41 @@ async function endSession({ instructorId, sessionId, req }) {
     metadata: {},
     req,
   });
+
+  try {
+    const CourseProgressEvent = require('../../models/CourseProgressEvent');
+    const Enrollment = require('../../models/Enrollment');
+    const { getCompletionCounts, checkAndMarkCompletion } = require('../progress.service');
+
+    const attendedStudentIds = await CourseProgressEvent.distinct('student_id', {
+      session_id: session._id,
+      source_type: 'live_session',
+    });
+
+    for (const studentId of attendedStudentIds) {
+      const enrollment = await Enrollment.findOne({
+        course_id: session.courseId,
+        student_id: studentId,
+        status: 'active',
+      });
+      if (!enrollment) continue; // ليس نشطاً (منسحب/مكتمل بالفعل) — لا شيء لفعله
+
+      const { percentage } = await getCompletionCounts({
+        courseId: session.courseId,
+        studentId,
+      });
+      await checkAndMarkCompletion({
+        enrollment,
+        courseId: session.courseId,
+        percentage,
+        studentId,
+      });
+    }
+  } catch (err) {
+    // غير حرج: فشل إعادة فحص الاكتمال لا يجب أن يمنع إنهاء الجلسة نفسها
+    // eslint-disable-next-line no-console -- سيُستبدل بـ logger.js لاحقاً
+    console.error('Post-end completion re-check failed (non-critical):', err.message);
+  }
 
   return { success: true, data: { session } };
 }
@@ -468,6 +546,22 @@ async function leaveSession({ userId, role, sessionId, req }) {
   };
 }
 
+async function getLiveSessionsForUnit({ courseId, unitId }) {
+  const safeCourseId = toObjectId(courseId, 'courseId');
+  const safeUnitId = toObjectId(unitId, 'unitId');
+  const sessions = await LiveSession.find({ courseId: safeCourseId, unit_id: safeUnitId })
+    .select('title startTime endTime status')
+    .sort({ startTime: 1 })
+    .lean();
+  return sessions.map((s) => ({
+    session_id: s._id,
+    title: s.title,
+    scheduled_start: s.startTime,
+    scheduled_end: s.endTime,
+    status: s.status,
+  }));
+}
+
 module.exports = {
   createSession,
   updateSession,
@@ -479,4 +573,6 @@ module.exports = {
   attachRecording,
   assertInstructorOwnsSession,
   getSessionById,
+  getLiveSessionsForUnit,
+  assertUnitBelongsToCourseIfProvided,
 };

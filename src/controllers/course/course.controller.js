@@ -149,6 +149,7 @@ async function deleteCourse(req, res, next) {
   }
 }
 
+// get the students enrolled
 async function getCourseStudents(req, res, next) {
   try {
     const instructorId = req.user.id;
@@ -157,6 +158,7 @@ async function getCourseStudents(req, res, next) {
       instructorId,
       courseId,
       queryParams: req.query,
+      req,
     });
     return res.status(200).json({ success: true, data: result.data });
   } catch (err) {

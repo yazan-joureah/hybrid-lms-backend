@@ -7,15 +7,15 @@ const { AppError } = require('../../middleware/errorHandler');
 const auditService = require('../auditService');
 const { validateUploadedFile } = require('../../utils/fileValidation.util');
 const fileStorage = require('../fileStorage.service');
-const { assertCourseEditable, triggerReviewOnPublishedEdit } = require('./reviewState.service');
+const { triggerReviewOnPublishedEdit } = require('./reviewState.service');
 const { toObjectId } = require('../../utils/objectId.util');
+const { loadOwnedCourse } = require('./courseAccess.util');
 
 const COURSE_CONTENT_ALLOWED_MIME_TYPES = Object.freeze(['video/mp4', 'application/pdf']);
 const COURSE_CONTENT_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 const FILE_BACKED_TYPES = ['video', 'document'];
 const ADMIN_ROLES = ['Admin', 'SuperAdmin'];
 
-// Instructor logic
 async function addContent({
   courseId,
   unitId,
@@ -27,27 +27,14 @@ async function addContent({
   contentData,
   req,
 }) {
-  const safeCourseId = toObjectId(courseId, 'courseId');
+  const { course, safeCourseId, safeInstructorId } = await loadOwnedCourse({
+    courseId,
+    instructorId,
+    req,
+    requireEditable: true,
+    attemptedAction: 'ADD_CONTENT',
+  });
   const safeUnitId = toObjectId(unitId, 'unitId');
-  const safeInstructorId = toObjectId(instructorId, 'instructorId');
-
-  const course = await Course.findById(safeCourseId);
-  if (!course) throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
-
-  if (course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
-    await auditService.record({
-      actorId: safeInstructorId,
-      actorRole: 'Instructor',
-      action: 'UNAUTHORIZED_COURSE_ACCESS_ATTEMPT',
-      resourceType: 'Course',
-      resourceId: safeCourseId,
-      metadata: { target_owner: course.owner_instructor_id, attempted_action: 'ADD_CONTENT' },
-      req,
-    });
-    throw new AppError(403, 'FORBIDDEN', 'You do not have permission to modify this course.');
-  }
-
-  assertCourseEditable(course);
 
   const unit = await CourseUnit.findById(safeUnitId);
   if (!unit || !unit.course_id.equals(safeCourseId)) {
@@ -161,17 +148,15 @@ async function updateContent({
   file,
   req,
 }) {
-  const safeCourseId = toObjectId(courseId, 'courseId');
+  const { course, safeCourseId, safeInstructorId } = await loadOwnedCourse({
+    courseId,
+    instructorId,
+    req,
+    requireEditable: true,
+    attemptedAction: 'UPDATE_CONTENT',
+  });
   const safeUnitId = toObjectId(unitId, 'unitId');
   const safeContentId = toObjectId(contentId, 'contentId');
-  const safeInstructorId = toObjectId(instructorId, 'instructorId');
-
-  const course = await Course.findById(safeCourseId);
-  if (!course) throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
-  if (course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
-    throw new AppError(403, 'FORBIDDEN', 'Unauthorized course modification.');
-  }
-  assertCourseEditable(course);
 
   const content = await CourseContent.findOne({
     _id: safeContentId,
@@ -244,17 +229,15 @@ async function updateContent({
 }
 
 async function deleteContent({ courseId, unitId, contentId, instructorId, req }) {
-  const safeCourseId = toObjectId(courseId, 'courseId');
+  const { safeCourseId, safeInstructorId } = await loadOwnedCourse({
+    courseId,
+    instructorId,
+    req,
+    requireEditable: true,
+    attemptedAction: 'DELETE_CONTENT',
+  });
   const safeUnitId = toObjectId(unitId, 'unitId');
   const safeContentId = toObjectId(contentId, 'contentId');
-  const safeInstructorId = toObjectId(instructorId, 'instructorId');
-
-  const course = await Course.findById(safeCourseId);
-  if (!course) throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
-  if (course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
-    throw new AppError(403, 'FORBIDDEN', 'Unauthorized course modification.');
-  }
-  assertCourseEditable(course);
 
   const content = await CourseContent.findOneAndDelete({
     _id: safeContentId,
@@ -284,16 +267,14 @@ async function deleteContent({ courseId, unitId, contentId, instructorId, req })
 }
 
 async function reorderContents({ courseId, unitId, instructorId, orderedContentIds, req }) {
-  const safeCourseId = toObjectId(courseId, 'courseId');
+  const { safeCourseId, safeInstructorId } = await loadOwnedCourse({
+    courseId,
+    instructorId,
+    req,
+    requireEditable: true,
+    attemptedAction: 'REORDER_CONTENT',
+  });
   const safeUnitId = toObjectId(unitId, 'unitId');
-  const safeInstructorId = toObjectId(instructorId, 'instructorId');
-
-  const course = await Course.findById(safeCourseId);
-  if (!course) throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
-  if (course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
-    throw new AppError(403, 'FORBIDDEN', 'Unauthorized course modification.');
-  }
-  assertCourseEditable(course);
 
   const bulkOps = orderedContentIds.map((contentId, index) => ({
     updateOne: {
@@ -320,7 +301,7 @@ async function reorderContents({ courseId, unitId, instructorId, orderedContentI
   return { success: true, data: { content } };
 }
 
-//Streams a content item's file
+// Streams a content item's file — ownership rule differs per role, kept separate from loadOwnedCourse.
 async function streamContentFile({ userId, role, courseId, contentId }) {
   const safeUserId = toObjectId(userId, 'userId');
   const safeCourseId = toObjectId(courseId, 'courseId');

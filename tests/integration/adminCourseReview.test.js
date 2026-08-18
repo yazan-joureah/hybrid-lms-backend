@@ -1,6 +1,12 @@
 /**
  * Integration tests for Admin Course Review (UC-COURSE-07).
  * Covers GET /admin/courses/pending and POST /admin/courses/:courseId/review.
+ *
+ * NOTE: assertContentCompleteForPublish() calls assertPublishedExamExists()
+ * FIRST and UNCONDITIONALLY — before the is_synchronous check and before the
+ * units/content checks. This means EVERY course (sync or not) needs a
+ * published 'exam' quiz before it can be published. Tests below create one
+ * wherever the flow is expected to proceed past that gate.
  */
 const request = require('supertest');
 const mongoose = require('mongoose');
@@ -12,6 +18,7 @@ const CourseUnit = require('../../src/models/CourseUnit');
 const CourseContent = require('../../src/models/CourseContent');
 const Session = require('../../src/models/Session');
 const CourseReviewRequest = require('../../src/models/CourseReviewRequest');
+const Quiz = require('../../src/models/quiz.model');
 const { hashPassword } = require('../../src/utils/crypto');
 const redisClient = require('../../src/config/redis');
 const { signAccessToken } = require('../../src/utils/jwt');
@@ -33,6 +40,7 @@ beforeEach(async () => {
     CourseContent.deleteMany({}),
     Session.deleteMany({}),
     CourseReviewRequest.deleteMany({}),
+    Quiz.deleteMany({}),
     mongoose.connection.collection('course_files.files').deleteMany({}),
     mongoose.connection.collection('course_files.chunks').deleteMany({}),
   ]);
@@ -76,6 +84,39 @@ async function createUserAndLogin(overrides = {}) {
 
   const accessToken = signAccessToken({ userId: user._id, sessionId: session._id });
   return { accessToken, user };
+}
+
+/**
+ * Creates a published 'exam' quiz for the given course — satisfies the
+ * unconditional assertPublishedExamExists() gate in the service layer.
+ * Adjust the field set here if the real Quiz schema requires more.
+ */
+async function createPublishedExam({ courseId, instructorId }) {
+  return Quiz.create({
+    course_id: courseId,
+    unit_id: null,
+    instructor_id: instructorId,
+    quiz_type: 'exam',
+    title: 'Final Exam',
+    status: 'published',
+    locked: false,
+    start_time: new Date(Date.now() - 60 * 60 * 1000), // بدأ منذ ساعة
+    end_time: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // ينتهي بعد أسبوع
+    duration_minutes: 60,
+    passing_score_percent: 60,
+    max_attempts: 1,
+    questions: [
+      {
+        question_type: 'mcq',
+        text: 'What is 2 + 2?',
+        choices: [
+          { text: '4', is_correct: true },
+          { text: '5', is_correct: false },
+          { text: '22', is_correct: false },
+        ],
+      },
+    ],
+  });
 }
 
 const baseCoursePayload = {
@@ -150,7 +191,7 @@ describe('GET /api/v1/admin/courses/pending', () => {
 });
 
 describe('POST /api/v1/admin/courses/:courseId/review — publish decision', () => {
-  it('rejects publishing an async course with NO units at all (EXT-COURSE-02)', async () => {
+  it('rejects publishing a course with NO published exam (EXAM_REQUIRED) — checked before anything else', async () => {
     const admin = await createUserAndLogin({
       role: 'Admin',
       kyc_status: 'not_submitted',
@@ -170,13 +211,13 @@ describe('POST /api/v1/admin/courses/:courseId/review — publish decision', () 
       .send({ decision: 'publish' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('NO_UNITS');
+    expect(res.body.error.code).toBe('EXAM_REQUIRED');
 
     const unchanged = await Course.findById(course._id);
     expect(unchanged.status).toBe('pending_review');
   });
 
-  it('rejects publishing an async course with a unit that has NO content (EXT-COURSE-02)', async () => {
+  it('rejects publishing an async course with NO units at all, once the exam gate is satisfied (EXT-COURSE-02)', async () => {
     const admin = await createUserAndLogin({
       role: 'Admin',
       kyc_status: 'not_submitted',
@@ -189,6 +230,35 @@ describe('POST /api/v1/admin/courses/:courseId/review — publish decision', () 
       owner_instructor_id: instructor.user._id,
       status: 'pending_review',
     });
+    await createPublishedExam({ courseId: course._id, instructorId: instructor.user._id });
+
+    const res = await request(app)
+      .post(`/api/v1/admin/courses/${course._id}/review`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ decision: 'publish' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('NO_UNITS');
+
+    const unchanged = await Course.findById(course._id);
+    expect(unchanged.status).toBe('pending_review');
+  });
+
+  it('rejects publishing an async course with a unit that has NO content, once the exam gate is satisfied (EXT-COURSE-02)', async () => {
+    const admin = await createUserAndLogin({
+      role: 'Admin',
+      kyc_status: 'not_submitted',
+      mfa_enabled: true,
+    });
+    const instructor = await createUserAndLogin({ role: 'Instructor' });
+    const course = await Course.create({
+      ...baseCoursePayload,
+      is_synchronous: false,
+      owner_instructor_id: instructor.user._id,
+      status: 'pending_review',
+    });
+    await createPublishedExam({ courseId: course._id, instructorId: instructor.user._id });
+
     const unitWithContent = await CourseUnit.create({
       course_id: course._id,
       title: 'Unit With Content',
@@ -219,7 +289,31 @@ describe('POST /api/v1/admin/courses/:courseId/review — publish decision', () 
     expect(res.body.error.message).toMatch(new RegExp(emptyUnit.title));
   });
 
-  it('allows publishing a SYNCHRONOUS course with NO units (exempt per UC-COURSE-07 scoping)', async () => {
+  it('allows publishing a SYNCHRONOUS course with NO units, given a published exam (exam gate applies to sync courses too)', async () => {
+    const admin = await createUserAndLogin({
+      role: 'Admin',
+      kyc_status: 'not_submitted',
+      mfa_enabled: true,
+    });
+    const instructor = await createUserAndLogin({ role: 'Instructor' });
+    const course = await Course.create({
+      ...baseCoursePayload,
+      is_synchronous: true,
+      owner_instructor_id: instructor.user._id,
+      status: 'pending_review',
+    });
+    await createPublishedExam({ courseId: course._id, instructorId: instructor.user._id });
+
+    const res = await request(app)
+      .post(`/api/v1/admin/courses/${course._id}/review`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ decision: 'publish' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.course.status).toBe('published');
+  });
+
+  it('rejects publishing a SYNCHRONOUS course with NO units and NO published exam — exam gate is unconditional', async () => {
     const admin = await createUserAndLogin({
       role: 'Admin',
       kyc_status: 'not_submitted',
@@ -238,8 +332,8 @@ describe('POST /api/v1/admin/courses/:courseId/review — publish decision', () 
       .set('Authorization', `Bearer ${admin.accessToken}`)
       .send({ decision: 'publish' });
 
-    expect(res.status).toBe(200);
-    expect(res.body.data.course.status).toBe('published');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('EXAM_REQUIRED');
   });
 
   it('publishes a fully-complete async course successfully, sets published_at and content_complete', async () => {
@@ -256,6 +350,8 @@ describe('POST /api/v1/admin/courses/:courseId/review — publish decision', () 
       status: 'pending_review',
       completion_threshold: 0.7,
     });
+    await createPublishedExam({ courseId: course._id, instructorId: instructor.user._id });
+
     const unit = await CourseUnit.create({ course_id: course._id, title: 'Unit 1', order: 1 });
     await CourseContent.create({
       course_id: course._id,

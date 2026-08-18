@@ -35,13 +35,22 @@ const unitCreateSchema = z.object({
   desc: z.string().trim().optional(),
 });
 
-const contentCreateSchema = z.object({
-  content_type: z.enum(['video', 'document', 'link', 'text']),
-  title: z.string().trim().min(1, 'Title is required').max(200),
-  desc: z.string().trim().optional(),
-  url: z.string().trim().url('Invalid URL format').optional(),
-  text: z.string().trim().min(1, 'Text must not be empty').optional(),
-});
+const contentCreateSchema = z
+  .object({
+    content_type: z.enum(['video', 'document', 'link', 'text']),
+    title: z.string().trim().min(1, 'Title is required').max(200),
+    desc: z.string().trim().optional(),
+    url: z.string().trim().url('Invalid URL format').optional(),
+    text: z.string().trim().min(1, 'Text must not be empty').optional(),
+  })
+  .refine((data) => data.content_type !== 'link' || !!data.url, {
+    message: 'url is required when content_type is link',
+    path: ['url'],
+  })
+  .refine((data) => data.content_type !== 'text' || !!data.text, {
+    message: 'text is required when content_type is text',
+    path: ['text'],
+  });
 
 // reason required only for 'reject' (free text) — simplest validation possible
 const courseReviewSchema = z

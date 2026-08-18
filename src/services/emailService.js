@@ -84,7 +84,7 @@ async function sendMail({ to, subject, html }) {
     const rawMessage = createMimeMessage({ to, subject, html });
 
     const response = await gmail.users.messages.send({
-      userId: 'me', // 'me' refers to the authenticated user (env.gmail.senderEmail)
+      userId: 'me',
       requestBody: {
         raw: rawMessage,
       },

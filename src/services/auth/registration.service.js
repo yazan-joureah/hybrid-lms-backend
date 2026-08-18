@@ -133,7 +133,7 @@ async function registerUser({
 async function verifyEmail({ email, code, req }) {
   const user = await User.findOne({ email });
   if (!user) {
-    return { error: 'INVALID_CODE' }; // SECURITY: same generic error as a wrong code — no email enumeration
+    return { error: 'INVALID_CODE' };
   }
 
   const codeHash = sha256(code);
@@ -141,7 +141,7 @@ async function verifyEmail({ email, code, req }) {
     user_id: user._id,
     token_type: 'EMAIL_VERIFICATION',
     used_at: null,
-  }).sort({ created_at: -1 }); // most recent still-valid code for this user
+  }).sort({ created_at: -1 });
 
   if (!authToken) {
     return { error: 'INVALID_CODE' };
@@ -153,7 +153,6 @@ async function verifyEmail({ email, code, req }) {
     return { error: 'TOO_MANY_ATTEMPTS' };
   }
 
-  // SECURITY: timing-safe comparison — same discipline as verifyTotpCode
   const crypto = require('crypto');
   const isValid =
     codeHash.length === authToken.token_hash.length &&
@@ -161,8 +160,7 @@ async function verifyEmail({ email, code, req }) {
 
   if (!isValid) {
     authToken.attempt_count += 1;
-    // SF-AUTH-02: 5th failure permanently invalidates this code (simplest
-    // path — matches your earlier "no separate lock timer" decision).
+
     if (authToken.attempt_count >= MAX_OTP_ATTEMPTS) {
       authToken.used_at = new Date();
     }
@@ -202,26 +200,14 @@ async function verifyEmail({ email, code, req }) {
   };
 }
 
-/**
- * POST /auth/resend-verification. Same generic-success pattern as
- * forgot-password — no distinction shown between "no such email",
- * "already verified", and "code resent", to prevent Email Verification
- * from becoming a second enumeration vector alongside registration itself.
- * Reuses SF-AUTH-05 (invalidate previous OTP before issuing a new one).
- */
+// POST /auth/resend-verification.
 async function resendVerification({ email, req }) {
   const user = await User.findOne({ email });
 
   if (!user || user.email_verified_at) {
-    // SECURITY: identical response whether the account doesn't exist OR
-    // is already verified — matches the same principle already applied
-    // in forgotPassword() (MUC-AUTH-04, User Enumeration prevention).
     return { error: null };
   }
 
-  // SF-AUTH-05: invalidate all previous still-valid EMAIL_VERIFICATION
-  // codes for this account before issuing a new one — same call already
-  // used by forgotPassword, reused here rather than duplicated.
   await AuthToken.deleteMany({
     user_id: user._id,
     token_type: 'EMAIL_VERIFICATION',
@@ -257,7 +243,7 @@ async function resendVerification({ email, req }) {
   return { error: null };
 }
 
-/// POST /auth/guardian/approve. MUC-AUTH-09: matching IP/fingerprint FLAGS, never BLOCKS.
+/// POST /auth/guardian/approve.
 async function processGuardianApproval({
   rawToken,
   decision,

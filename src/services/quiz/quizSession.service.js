@@ -1,16 +1,153 @@
 // src/services/quiz/quizSession.service.js
 const Quiz = require('../../models/quiz.model');
 const QuizAttempt = require('../../models/quizAttempt.model');
+const Enrollment = require('../../models/Enrollment');
 const auditService = require('../auditService');
 const { AppError } = require('../../middleware/errorHandler');
 const { toObjectId } = require('../../utils/objectId.util');
-const { checkQuizEligibility } = require('./eligibility.service');
-const { generateShuffledOrder } = require('./randomizer.service');
-const { sanitizeQuizForStudent } = require('./sanitize.service');
-const { autoSubmitExpiredAttempt } = require('./autoSubmit.service');
-const { gradeAttempt } = require('./grading.service');
+const { generateShuffledOrder, sanitizeQuizForStudent } = require('./quizPresentation.service');
 
-//starts a new quiz attempt.
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// ---------------------------------------------------------------------------
+// Eligibility
+// ---------------------------------------------------------------------------
+
+async function checkQuizEligibility({ studentId, quizId }) {
+  const quiz = await Quiz.findById(quizId);
+
+  if (!quiz || quiz.status !== 'published') {
+    throw new AppError(404, 'QUIZ_NOT_FOUND', 'This quiz does not exist.');
+  }
+
+  const enrollment = await Enrollment.findOne({
+    course_id: quiz.course_id,
+    student_id: studentId,
+    status: { $in: ['active', 'completed'] },
+  }).lean();
+  if (!enrollment) {
+    throw new AppError(403, 'NOT_ENROLLED', 'You are not eligible to take this quiz.');
+  }
+
+  const now = new Date();
+  if (quiz.start_time && now < quiz.start_time) {
+    throw new AppError(400, 'QUIZ_WINDOW_CLOSED', 'This quiz is not currently available.');
+  }
+  if (quiz.end_time && now > quiz.end_time) {
+    throw new AppError(400, 'QUIZ_WINDOW_CLOSED', 'This quiz is not currently available.');
+  }
+
+  // A quiz with no max_attempts configured (or set to 0) is intentionally
+  // unlimited — made explicit here instead of relying on
+  // `count >= undefined` being implicitly false, so "unlimited" is a
+  // documented decision rather than an accident of comparison semantics.
+  const hasDailyCap = typeof quiz.max_attempts === 'number' && quiz.max_attempts > 0;
+  if (hasDailyCap) {
+    const dailyAttemptsCount = await QuizAttempt.countDocuments({
+      quiz_id: quiz._id,
+      student_id: studentId,
+      started_at: { $gte: new Date(Date.now() - DAY_MS) },
+    });
+    if (dailyAttemptsCount >= quiz.max_attempts) {
+      throw new AppError(
+        403,
+        'ATTEMPTS_EXHAUSTED',
+        'You have used all attempts allowed for today.'
+      );
+    }
+  }
+
+  const lifetimeAttemptsCount = await QuizAttempt.countDocuments({
+    quiz_id: quiz._id,
+    student_id: studentId,
+  });
+
+  return { quiz, lifetimeAttemptsCount };
+}
+// ---------------------------------------------------------------------------
+// Grading
+// ---------------------------------------------------------------------------
+
+async function gradeAttempt({ attempt, req }) {
+  const quiz = await Quiz.findById(attempt.quiz_id);
+
+  const answerKey = new Map();
+  quiz.questions.forEach((q) => {
+    const correctChoice = q.choices.find((c) => c.is_correct);
+    answerKey.set(q._id.toString(), correctChoice._id.toString());
+  });
+
+  let correctCount = 0;
+  attempt.answers.forEach((a) => {
+    if (answerKey.get(a.question_id.toString()) === a.selected_choice_id.toString()) {
+      correctCount += 1;
+    }
+  });
+
+  const totalQuestions = quiz.questions.length;
+  const scorePercent = totalQuestions > 0 ? (correctCount / totalQuestions) * 100 : 0;
+
+  attempt.score_percent = scorePercent;
+  attempt.passed = scorePercent >= quiz.passing_score_percent;
+  attempt.graded_at = new Date();
+  attempt.status = 'graded';
+  await attempt.save();
+
+  await auditService.record({
+    actorId: attempt.student_id,
+    actorRole: 'System',
+    action: 'QUIZ_ATTEMPT_GRADED',
+    resourceType: 'QuizAttempt',
+    resourceId: attempt._id.toString(),
+    metadata: {
+      quiz_id: quiz._id.toString(),
+      score_percent: scorePercent,
+      passed: attempt.passed,
+      correct_count: correctCount,
+      total_questions: totalQuestions,
+    },
+    req,
+  });
+
+  return {
+    success: true,
+    data: {
+      attempt,
+      score: correctCount,
+      total_possible: totalQuestions,
+      percentage: Math.round(scorePercent * 10) / 10,
+      passed: attempt.passed,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Auto-submit
+// ---------------------------------------------------------------------------
+
+async function autoSubmitExpiredAttempt({ attempt, req }) {
+  attempt.status = 'submitted';
+  attempt.submitted_at = new Date();
+  attempt.submitted_by = 'system_timeout';
+  await attempt.save();
+
+  await auditService.record({
+    actorId: attempt.student_id,
+    actorRole: 'System',
+    action: 'QUIZ_ATTEMPT_AUTO_SUBMITTED',
+    resourceType: 'QuizAttempt',
+    resourceId: attempt._id.toString(),
+    metadata: { quiz_id: attempt.quiz_id.toString(), answered_count: attempt.answers.length },
+    req,
+  });
+
+  return gradeAttempt({ attempt, req });
+}
+
+// ---------------------------------------------------------------------------
+// Attempt lifecycle
+// ---------------------------------------------------------------------------
+
 async function startQuizAttempt({ studentId, quizId, req }) {
   const safeStudentId = toObjectId(studentId, 'studentId');
   const safeQuizId = toObjectId(quizId, 'quizId');
@@ -71,17 +208,11 @@ async function startQuizAttempt({ studentId, quizId, req }) {
   };
 }
 
-async function submitAnswer({ studentId, attemptId, questionId, selectedChoiceId, req }) {
-  const safeStudentId = toObjectId(studentId, 'studentId');
-  const safeAttemptId = toObjectId(attemptId, 'attemptId');
-  const safeQuestionId = toObjectId(questionId, 'questionId');
-  const safeChoiceId = toObjectId(selectedChoiceId, 'selectedChoiceId');
-
-  const attempt = await QuizAttempt.findOne({ _id: safeAttemptId, student_id: safeStudentId });
+async function loadActiveAttempt(attemptId, studentId, req) {
+  const attempt = await QuizAttempt.findOne({ _id: attemptId, student_id: studentId });
   if (!attempt) {
     throw new AppError(404, 'ATTEMPT_NOT_FOUND', 'Quiz attempt not found.');
   }
-
   if (attempt.status === 'in_progress' && attempt.expires_at < new Date()) {
     await autoSubmitExpiredAttempt({ attempt, req });
     throw new AppError(409, 'ATTEMPT_TIMED_OUT', 'Time is up — this attempt was auto-submitted.');
@@ -89,15 +220,36 @@ async function submitAnswer({ studentId, attemptId, questionId, selectedChoiceId
   if (attempt.status !== 'in_progress') {
     throw new AppError(409, 'ATTEMPT_NOT_IN_PROGRESS', 'This attempt is no longer active.');
   }
+  return attempt;
+}
 
-  const belongsToAttempt = attempt.shuffled_question_order.some((q) =>
+async function submitAnswer({ studentId, attemptId, questionId, selectedChoiceId, req }) {
+  const safeStudentId = toObjectId(studentId, 'studentId');
+  const safeAttemptId = toObjectId(attemptId, 'attemptId');
+  const safeQuestionId = toObjectId(questionId, 'questionId');
+  const safeChoiceId = toObjectId(selectedChoiceId, 'selectedChoiceId');
+
+  const attempt = await loadActiveAttempt(safeAttemptId, safeStudentId, req);
+
+  const questionEntry = attempt.shuffled_question_order.find((q) =>
     q.question_id.equals(safeQuestionId)
   );
-  if (!belongsToAttempt) {
+  if (!questionEntry) {
     throw new AppError(
       400,
       'QUESTION_NOT_IN_ATTEMPT',
       'This question does not belong to your attempt.'
+    );
+  }
+
+  const choiceBelongsToQuestion = questionEntry.shuffled_choice_ids.some((id) =>
+    id.equals(safeChoiceId)
+  );
+  if (!choiceBelongsToQuestion) {
+    throw new AppError(
+      400,
+      'CHOICE_NOT_IN_QUESTION',
+      'This choice does not belong to the given question.'
     );
   }
 
@@ -117,7 +269,6 @@ async function submitAnswer({ studentId, attemptId, questionId, selectedChoiceId
   return { success: true, data: { saved: true, answered_count: attempt.answers.length } };
 }
 
-//Student ends the attempt before time runs out
 async function submitAttempt({ studentId, attemptId, req }) {
   const safeStudentId = toObjectId(studentId, 'studentId');
   const safeAttemptId = toObjectId(attemptId, 'attemptId');
@@ -127,12 +278,9 @@ async function submitAttempt({ studentId, attemptId, req }) {
     throw new AppError(404, 'ATTEMPT_NOT_FOUND', 'Quiz attempt not found.');
   }
 
-  // if the student's "Submit" click arrives AFTER expiry treat it as a timeout, not a manual submission
   if (attempt.status === 'in_progress' && attempt.expires_at < new Date()) {
-    const result = await autoSubmitExpiredAttempt({ attempt, req });
-    return result;
+    return autoSubmitExpiredAttempt({ attempt, req });
   }
-
   if (attempt.status !== 'in_progress') {
     throw new AppError(409, 'ATTEMPT_NOT_IN_PROGRESS', 'This attempt is no longer active.');
   }
@@ -142,26 +290,46 @@ async function submitAttempt({ studentId, attemptId, req }) {
   attempt.submitted_by = 'student';
   await attempt.save();
 
-  const result = await gradeAttempt({ attempt, req });
-  return result;
+  return gradeAttempt({ attempt, req });
 }
 
-// GET /attempts/:attemptId (resume path)
 async function getAttemptForResume({ studentId, attemptId }) {
   const safeStudentId = toObjectId(studentId, 'studentId');
   const safeAttemptId = toObjectId(attemptId, 'attemptId');
 
-  const attempt = await QuizAttempt.findOne({ _id: safeAttemptId, student_id: safeStudentId });
+  const attempt = await loadActiveAttempt(safeAttemptId, safeStudentId, null);
+  const quiz = await Quiz.findById(attempt.quiz_id);
+
+  return {
+    success: true,
+    data: {
+      attempt_id: attempt._id,
+      expires_at: attempt.expires_at,
+      quiz: sanitizeQuizForStudent({ quiz, shuffledOrder: attempt.shuffled_question_order }),
+      previous_answers: attempt.answers.map((a) => ({
+        question_id: a.question_id,
+        selected_choice_id: a.selected_choice_id,
+      })),
+    },
+  };
+}
+
+async function getCurrentAttempt({ studentId, quizId, req }) {
+  const safeStudentId = toObjectId(studentId, 'studentId');
+  const safeQuizId = toObjectId(quizId, 'quizId');
+
+  const attempt = await QuizAttempt.findOne({
+    quiz_id: safeQuizId,
+    student_id: safeStudentId,
+    status: 'in_progress',
+  });
   if (!attempt) {
-    throw new AppError(404, 'ATTEMPT_NOT_FOUND', 'Quiz attempt not found.');
+    return { success: true, data: null };
   }
 
-  if (attempt.status === 'in_progress' && attempt.expires_at < new Date()) {
-    await autoSubmitExpiredAttempt({ attempt, req: null });
-    throw new AppError(409, 'ATTEMPT_TIMED_OUT', 'Time is up — this attempt was auto-submitted.');
-  }
-  if (attempt.status !== 'in_progress') {
-    throw new AppError(409, 'ATTEMPT_NOT_IN_PROGRESS', 'This attempt is no longer active.');
+  if (attempt.expires_at < new Date()) {
+    await autoSubmitExpiredAttempt({ attempt, req });
+    return { success: true, data: null };
   }
 
   const quiz = await Quiz.findById(attempt.quiz_id);
@@ -180,4 +348,13 @@ async function getAttemptForResume({ studentId, attemptId }) {
   };
 }
 
-module.exports = { startQuizAttempt, submitAnswer, submitAttempt, getAttemptForResume };
+module.exports = {
+  checkQuizEligibility,
+  gradeAttempt,
+  autoSubmitExpiredAttempt,
+  startQuizAttempt,
+  submitAnswer,
+  submitAttempt,
+  getAttemptForResume,
+  getCurrentAttempt,
+};

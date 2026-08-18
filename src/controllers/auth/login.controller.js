@@ -1,7 +1,5 @@
 const authService = require('../../services/authService');
-const { issueSessionCookies } = require('../../utils/sessionCookies.util');
-const env = require('../../config/env');
-const { CSRF_COOKIE_NAME } = require('../../middleware/csrfProtection');
+const { issueSessionCookies, clearSessionCookies } = require('../../utils/sessionCookies.util');
 const { AppError } = require('../../middleware/errorHandler');
 
 const LOGIN_ERRORS = {
@@ -72,23 +70,12 @@ async function login(req, res, next) {
 async function logout(req, res, next) {
   try {
     await authService.logoutUser({ sessionId: req.user.sessionId, req });
-
-    res.clearCookie('refresh_token', {
-      httpOnly: true,
-      secure: env.nodeEnv === 'production',
-      sameSite: 'lax',
-    });
-    res.clearCookie(CSRF_COOKIE_NAME, {
-      httpOnly: false,
-      secure: env.nodeEnv === 'production',
-      sameSite: 'lax',
-    });
+    clearSessionCookies(res);
     return res.status(200).json({ success: true, data: { message: 'Logged out successfully' } });
   } catch (err) {
     next(err);
   }
 }
-
 const REFRESH_ERRORS = {
   TOKEN_MISSING: { status: 401, message: 'Refresh token is missing.' },
   TOKEN_INVALID: { status: 401, message: 'Refresh token is invalid, expired, or revoked.' },

@@ -22,10 +22,7 @@ const questionSchema = z
 
 const objectIdString = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid ObjectId format');
 
-const quizBaseObjectSchema = z.object({
-  course_id: objectIdString,
-  unit_id: objectIdString.optional(),
-  quiz_type: z.enum(['quiz', 'exam']),
+const quizMutableFieldsSchema = z.object({
   title: z.string().trim().min(1, 'Title is required').max(200),
   description: z.string().trim().optional(),
   start_time: z.coerce.date().nullable().optional(),
@@ -37,10 +34,19 @@ const quizBaseObjectSchema = z.object({
   questions: z.array(questionSchema).min(1, 'A quiz must contain at least one question'),
 });
 
-const quizCreateSchema = quizBaseObjectSchema
+const quizCreateSchema = quizMutableFieldsSchema
+  .extend({
+    course_id: objectIdString,
+    unit_id: objectIdString.optional(),
+    quiz_type: z.enum(['quiz', 'exam']),
+  })
   .refine((data) => !data.start_time || !data.end_time || data.end_time > data.start_time, {
     message: 'end_time must be after start_time',
     path: ['end_time'],
+  })
+  .refine((data) => data.quiz_type !== 'exam' || (!!data.start_time && !!data.end_time), {
+    message: 'start_time and end_time are required for exam quizzes',
+    path: ['start_time'],
   })
   .refine((data) => data.quiz_type !== 'quiz' || !!data.unit_id, {
     message: 'unit_id is required when quiz_type is "quiz"',
@@ -51,22 +57,12 @@ const quizCreateSchema = quizBaseObjectSchema
     path: ['unit_id'],
   });
 
-const quizUpdateSchema = quizBaseObjectSchema
+const quizUpdateSchema = quizMutableFieldsSchema
   .partial()
   .refine((data) => !data.start_time || !data.end_time || data.end_time > data.start_time, {
     message: 'end_time must be after start_time',
     path: ['end_time'],
-  })
-  .refine((data) => data.quiz_type === undefined || data.quiz_type !== 'quiz' || !!data.unit_id, {
-    message: 'unit_id is required when quiz_type is "quiz"',
-    path: ['unit_id'],
-  })
-  .refine((data) => data.quiz_type === undefined || data.quiz_type !== 'exam' || !data.unit_id, {
-    message: 'unit_id must not be provided when quiz_type is "exam"',
-    path: ['unit_id'],
   });
-
-const quizIdParamSchema = z.object({ quizId: objectIdString });
 
 const submitAnswerSchema = z.object({
   question_id: objectIdString,
@@ -76,6 +72,5 @@ const submitAnswerSchema = z.object({
 module.exports = {
   quizCreateSchema,
   quizUpdateSchema,
-  quizIdParamSchema,
   submitAnswerSchema,
 };
