@@ -26,12 +26,7 @@ router.post(
   authController.register
 );
 
-router.post(
-  '/verify-email',
-  rateLimit('verify-email', (req) => req.ip),
-  validateBody(verifyEmailSchema),
-  authController.verifyEmail
-);
+router.post('/verify-email', validateBody(verifyEmailSchema), authController.verifyEmail);
 
 router.get('/guardian/approve', authController.guardianApprovePagePlaceholder);
 

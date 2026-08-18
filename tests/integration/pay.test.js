@@ -24,13 +24,23 @@ const env = require('../../src/config/env');
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key';
 const PLAIN_PASSWORD = 'a-genuinely-long-passphrase-2026';
 
+// Increase timeout for Stripe sandbox calls
+jest.setTimeout(20000);
+
 beforeAll(async () => {
+  // Connect MongoDB if not already connected
   if (mongoose.connection.readyState === 0) {
     await mongoose.connect(process.env.MONGO_URI);
   }
-}, 20000);
+
+  // Ensure Redis is connected (once) – using `status` instead of `isOpen`
+  if (redisClient.status !== 'ready') {
+    await redisClient.connect();
+  }
+});
 
 beforeEach(async () => {
+  // Clean all database collections
   await Promise.all([
     User.deleteMany({}),
     Course.deleteMany({}),
@@ -41,13 +51,39 @@ beforeEach(async () => {
     ProcessedWebhookEvent.deleteMany({}),
     Session.deleteMany({}),
   ]);
-  if (redisClient.isOpen) await redisClient.flushdb();
+
+  // Flush Redis – connection is guaranteed to be ready from beforeAll
+  await redisClient.flushdb();
 });
 
 afterAll(async () => {
-  await mongoose.connection.close();
-  if (redisClient.isOpen) await redisClient.quit();
+  // Close Mongoose connection
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.connection.close();
+  }
+
+  // Quit Redis gracefully – ignore any errors (e.g., if already closed)
+  try {
+    if (redisClient.status === 'ready') {
+      await redisClient.quit();
+    } else {
+      // Force disconnect if not ready
+      await redisClient.disconnect();
+    }
+  } catch (_) {
+    // Ignore – already closed or error
+  }
+
+  // If the app itself started a server, close it (supertest usually doesn't,
+  // but this ensures no lingering handles)
+  if (app && typeof app.close === 'function') {
+    await new Promise((resolve) => app.close(resolve));
+  }
 });
+
+// ------------------------------------------------------------------
+// Helper functions
+// ------------------------------------------------------------------
 
 async function createUserAndLogin(overrides = {}) {
   const passwordHash = await hashPassword(PLAIN_PASSWORD);
@@ -102,6 +138,10 @@ async function createPaidCourseWithPendingEnrollment(studentId, instructorId) {
   });
   return { course, enrollment };
 }
+
+// ------------------------------------------------------------------
+// Test suites
+// ------------------------------------------------------------------
 
 describe('POST /api/v1/pay/initiate — eligibility (no live Stripe call in these cases)', () => {
   it('rejects with 404 ENROLLMENT_NOT_FOUND for a non-existent enrollment', async () => {
@@ -183,7 +223,7 @@ describe('POST /api/v1/pay/initiate — success path (LIVE Stripe Sandbox call, 
     const payment = await Payment.findOne({ enrollment_id: enrollment._id });
     expect(payment.status).toBe('pending');
     expect(payment.gateway_session_id).toBeTruthy();
-  }, 15000); // network call — generous timeout
+  }, 15000);
 
   it('reuses the same open Checkout Session on a repeated call (idempotency)', async () => {
     const instructor = await createUserAndLogin({ role: 'Instructor' });
@@ -204,10 +244,10 @@ describe('POST /api/v1/pay/initiate — success path (LIVE Stripe Sandbox call, 
       .send({ enrollment_id: enrollment._id.toString() });
 
     expect(second.status).toBe(200);
-    expect(second.body.data.checkoutUrl).toBe(first.body.data.checkoutUrl); // same session reused, not a new one
+    expect(second.body.data.checkoutUrl).toBe(first.body.data.checkoutUrl);
 
     const paymentsCount = await Payment.countDocuments({ enrollment_id: enrollment._id });
-    expect(paymentsCount).toBe(1); // still exactly one Payment record — SF-PAY-02 in action
+    expect(paymentsCount).toBe(1);
   }, 20000);
 });
 
@@ -348,10 +388,10 @@ describe('POST /api/v1/pay/webhook — signature verification (no network, gener
       .set('stripe-signature', signature)
       .send(payloadString);
 
-    expect(secondDelivery.status).toBe(200); // still 200 — "always succeed" strategy
+    expect(secondDelivery.status).toBe(200);
 
     const invoiceCount = await Invoice.countDocuments({ payment_id: payment._id });
-    expect(invoiceCount).toBe(1); // NOT duplicated despite two identical deliveries
+    expect(invoiceCount).toBe(1);
 
     const eventCount = await ProcessedWebhookEvent.countDocuments({
       event_id: 'evt_fixed_id_for_dup_test',
@@ -487,13 +527,6 @@ describe('POST /api/v1/pay/refund-requests (UC-PAY-09, simplified — no escalat
 });
 
 describe('POST /api/v1/pay/refund-requests/:id/review — approve (LIVE Stripe Sandbox, full real payment→refund cycle)', () => {
-  /**
-   * DEVIATION: uses Stripe's official test-mode PaymentMethod ID
-   * (pm_card_visa) instead of a raw card number, per Stripe's own
-   * documented recommendation against using card numbers directly in
-   * server-side/API test code (PCI-compliance habit, even in test mode).
-   * Reference: https://docs.stripe.com/testing
-   */
   async function createRealSucceededPaymentIntent(amountInCents) {
     return stripe.paymentIntents.create({
       amount: amountInCents,
@@ -515,7 +548,6 @@ describe('POST /api/v1/pay/refund-requests/:id/review — approve (LIVE Stripe S
     enrollment.status = 'active';
     await enrollment.save();
 
-    // Real Stripe Sandbox call — a genuinely succeeded PaymentIntent, refundable for real.
     const realPaymentIntent = await createRealSucceededPaymentIntent(4999);
     expect(realPaymentIntent.status).toBe('succeeded');
 
@@ -551,11 +583,10 @@ describe('POST /api/v1/pay/refund-requests/:id/review — approve (LIVE Stripe S
     const updatedEnrollment = await Enrollment.findById(enrollment._id);
     expect(updatedEnrollment.status).toBe('cancelled');
 
-    // Ultimate proof: verify DIRECTLY against Stripe that a real refund now exists
     const refunds = await stripe.refunds.list({ payment_intent: realPaymentIntent.id });
     expect(refunds.data).toHaveLength(1);
     expect(refunds.data[0].status).toBe('succeeded');
-  }, 20000); // two live network calls (create PI + refund) — generous timeout
+  }, 20000);
 
   it('rejects with 409 ALREADY_REVIEWED on a second review attempt of the same request', async () => {
     const instructor = await createUserAndLogin({ role: 'Instructor' });
