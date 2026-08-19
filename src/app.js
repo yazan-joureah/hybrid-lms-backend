@@ -15,6 +15,7 @@ const attendanceRoutes = require('./routes/attendanceRoutes');
 const payRoutes = require('./routes/payRoutes');
 const quizRoutes = require('./routes/quizRoutes');
 const userRoutes = require('./routes/userRoutes');
+const certRoutes = require('./routes/certRoutes');
 
 // 1. Import your custom rate limiter
 const { rateLimit } = require('./middleware/rateLimiter');
@@ -71,6 +72,7 @@ app.use('/api/v1/attendance', attendanceRoutes);
 app.use('/api/v1/pay', payRoutes);
 app.use('/api/v1/quizzes', quizRoutes);
 app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/certificates', certRoutes);
 
 // ── 404 + Error handling (must be last) ──────────────────────────────────
 

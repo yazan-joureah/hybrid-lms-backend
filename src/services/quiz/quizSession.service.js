@@ -6,6 +6,9 @@ const auditService = require('../auditService');
 const { AppError } = require('../../middleware/errorHandler');
 const { toObjectId } = require('../../utils/objectId.util');
 const { generateShuffledOrder, sanitizeQuizForStudent } = require('./quizPresentation.service');
+const {
+  checkCertificateEligibilityAfterGrading,
+} = require('../cert/certificateEligibility.service');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -108,6 +111,9 @@ async function gradeAttempt({ attempt, req }) {
     },
     req,
   });
+
+  // Automatically triggers check certificate eligibility.
+  await checkCertificateEligibilityAfterGrading({ attempt, req });
 
   return {
     success: true,
