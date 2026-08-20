@@ -56,7 +56,7 @@ jobs:
         run: npm run lint
 
       - name: Run tests with coverage
-        run: npm run test:coverage
+        run: npm run test:coverage -- --runInBand --forceExit
         env:
           NODE_ENV: test
           MONGO_URI: mongodb://localhost:27017/test

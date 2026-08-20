@@ -3,7 +3,7 @@ const authService = require('../../services/authService');
 const { issueSessionCookies } = require('../../utils/sessionCookies.util');
 const { AppError } = require('../../middleware/errorHandler');
 
-/** POST /auth/mfa/totp/setup — requires Bearer JWT. */
+// POST /auth/mfa/totp/setup
 async function setupTotp(req, res, next) {
   try {
     const result = await authService.setupTotp({ userId: req.user.id, req });
@@ -19,7 +19,7 @@ async function setupTotp(req, res, next) {
       data: {
         qr_code_data_url: qrCodeDataUrl,
         manual_entry_key: result.rawSecret,
-        message: 'Scan the QR code, then confirm with POST /auth/mfa/totp/verify',
+        message: 'Scan the QR code',
       },
     });
   } catch (err) {
@@ -33,7 +33,7 @@ const TOTP_VERIFY_ERRORS = {
   INVALID_CODE: { status: 400, message: 'Invalid or expired code.' },
 };
 
-/** POST /auth/mfa/totp/verify — requires Bearer JWT. */
+// POST /auth/mfa/totp/verify
 async function verifyTotp(req, res, next) {
   try {
     const result = await authService.confirmTotpSetup({
@@ -69,12 +69,7 @@ const MFA_LOGIN_VERIFY_ERRORS = {
   INVALID_CODE: { status: 400, message: 'Invalid or expired code.' },
 };
 
-/**
- * POST /auth/mfa/login/verify — completes login after mfa_required=true.
- * DEVIATION: cookie-setting duplication with login.controller.js's login()
- * still stands (5th occurrence) — flagged for a controller-level cookie
- * helper pass, not addressed here.
- */
+// POST /auth/mfa/login/verify
 async function verifyMfaLogin(req, res, next) {
   try {
     const result = await authService.completeMfaLogin({ ...req.validatedBody, req });

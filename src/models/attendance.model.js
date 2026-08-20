@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util'); // أعلى الملف
 
 /**
  * ATT — سجل الحضور
@@ -50,9 +51,30 @@ const attendanceSchema = new mongoose.Schema(
       enum: ['auto_join', 'code', 'csv_import', 'manual'],
       default: 'auto_join',
     },
+    correctionReason: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    correctedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    correctedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
+
+applyReferentialIntegrity(attendanceSchema, [
+  { path: 'sessionId', ref: 'LiveSession', required: true },
+  { path: 'studentId', ref: 'User', required: true },
+  { path: 'courseId', ref: 'Course', required: true },
+  { path: 'correctedBy', ref: 'User', required: false },
+]);
 
 // Idempotent by design: سجل حضور واحد فقط لكل طالب لكل جلسة
 attendanceSchema.index({ sessionId: 1, studentId: 1 }, { unique: true });

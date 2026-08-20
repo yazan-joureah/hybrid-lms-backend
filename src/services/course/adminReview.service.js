@@ -1,25 +1,22 @@
 // src/services/course/adminReview.service.js
-/** UC-COURSE-07: Admin moderation of pending_review courses. */
 const Course = require('../../models/Course');
 const CourseUnit = require('../../models/CourseUnit');
 const CourseContent = require('../../models/CourseContent');
 const CourseReviewRequest = require('../../models/CourseReviewRequest');
 const { AppError } = require('../../middleware/errorHandler');
 const auditService = require('../auditService');
+const { assertPublishedExamExists } = require('./course.service');
 const { toObjectId } = require('../../utils/objectId.util');
+const { paginateQuery } = require('./courseAccess.util');
 
-/** lists all courses currently awaiting review. */
 async function listPendingCourses() {
   const courses = await Course.find({ status: 'pending_review' }).sort({ updatedAt: 1 }).lean();
   return { success: true, data: { courses } };
 }
 
-/**
- * checked ONLY at publish time (decision A) — async courses
- * need >=1 unit, every unit non-empty, and a set completion_threshold.
- * Synchronous courses are exempt per UC-COURSE-07's own scoping.
- */
 async function assertContentCompleteForPublish(course) {
+  await assertPublishedExamExists(course._id);
+
   if (course.is_synchronous) {
     return;
   }
@@ -53,7 +50,6 @@ async function assertContentCompleteForPublish(course) {
   }
 }
 
-/** records the Admin's publish/reject/needs_revision decision. */
 async function reviewCourse({ courseId, adminId, decision, reason, req }) {
   const safeCourseId = toObjectId(courseId, 'courseId');
   const safeAdminId = toObjectId(adminId, 'adminId');
@@ -73,7 +69,6 @@ async function reviewCourse({ courseId, adminId, decision, reason, req }) {
 
   if (decision === 'publish') {
     await assertContentCompleteForPublish(course);
-
     course.status = 'published';
     course.published_at = new Date();
     course.content_complete = true;
@@ -82,6 +77,7 @@ async function reviewCourse({ courseId, adminId, decision, reason, req }) {
     course.rejection_reason = reason;
   } else if (decision === 'needs_revision') {
     course.status = 'draft';
+    course.rejection_reason = reason;
   } else {
     throw new AppError(
       400,
@@ -92,9 +88,6 @@ async function reviewCourse({ courseId, adminId, decision, reason, req }) {
 
   await course.save();
 
-  // needs_revision is a distinct Admin decision from
-  // cancelReviewRequest (instructor self-service) — kept separate so
-  // CourseReviewRequest.status accurately reflects WHO acted and why.
   if (reviewRequest) {
     const statusMap = { publish: 'approved', reject: 'rejected', needs_revision: 'needs_revision' };
     reviewRequest.status = statusMap[decision];
@@ -109,7 +102,7 @@ async function reviewCourse({ courseId, adminId, decision, reason, req }) {
     actorRole: 'Admin',
     action: `COURSE_REVIEW_${decision.toUpperCase()}`,
     resourceType: 'Course',
-    resourceId: safeCourseId,
+    resourceId: safeCourseId.toString(),
     metadata: { decision, reason: reason || null },
     req,
   });
@@ -117,4 +110,64 @@ async function reviewCourse({ courseId, adminId, decision, reason, req }) {
   return { success: true, data: { course } };
 }
 
-module.exports = { listPendingCourses, reviewCourse };
+async function listAllCoursesForAdmin({ queryParams = {} }) {
+  const query = {};
+  if (queryParams.status) {
+    query.status = queryParams.status;
+  }
+
+  const { records: courses, meta } = await paginateQuery({
+    model: Course,
+    query,
+    queryParams,
+    sort: { updatedAt: -1 },
+    defaultLimit: 20,
+  });
+
+  return { success: true, data: { courses, meta } };
+}
+
+const SETTABLE_ADMIN_STATUSES = ['suspended', 'archived'];
+
+async function setCourseStatus({ adminId, courseId, status, req }) {
+  const safeCourseId = toObjectId(courseId, 'courseId');
+  const safeAdminId = toObjectId(adminId, 'adminId');
+
+  if (!SETTABLE_ADMIN_STATUSES.includes(status)) {
+    throw new AppError(400, 'INVALID_STATUS', 'status must be either suspended or archived.');
+  }
+
+  const course = await Course.findById(safeCourseId);
+  if (!course) {
+    throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
+  }
+  if (course.status === 'archived') {
+    throw new AppError(
+      409,
+      'COURSE_ARCHIVED',
+      'Archived courses are in a terminal state and cannot be modified further.'
+    );
+  }
+  if (course.status === status) {
+    throw new AppError(409, 'ALREADY_IN_STATUS', `Course is already ${status}.`);
+  }
+
+  course.status = status;
+  if (status === 'suspended') {
+    course.suspended_by = safeAdminId;
+  }
+  await course.save();
+
+  await auditService.record({
+    actorId: safeAdminId,
+    actorRole: 'Admin',
+    action: `COURSE_${status.toUpperCase()}`,
+    resourceType: 'Course',
+    resourceId: safeCourseId.toString(),
+    req,
+  });
+
+  return { success: true, data: { course } };
+}
+
+module.exports = { listPendingCourses, reviewCourse, setCourseStatus, listAllCoursesForAdmin };

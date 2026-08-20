@@ -15,14 +15,26 @@ async function joinSession(req, res, next) {
   }
 }
 
-/** POST /api/v1/live/sessions/:sessionId/leave */
+/**
+ * POST /api/v1/live/sessions/:sessionId/leave
+ *
+ * Records that the current participant left the live session.
+ * This does NOT end the session.
+ */
 async function leaveSession(req, res, next) {
   try {
-    const { sessionId } = req.params;
-    const studentId = req.user.id;
+    const result = await liveService.leaveLiveSession({
+      userId: req.user.id,
+      role: req.verifiedRole,
+      sessionId: req.params.sessionId,
+      req,
+    });
 
-    const result = await liveService.leaveLiveSession({ studentId, sessionId, req });
-    return res.status(200).json(result);
+    return res.status(200).json({
+      success: true,
+      message: 'Participant left the session.',
+      data: result.data,
+    });
   } catch (err) {
     return next(err);
   }

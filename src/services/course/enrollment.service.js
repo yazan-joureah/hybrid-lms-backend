@@ -4,6 +4,7 @@ const Enrollment = require('../../models/Enrollment');
 const { AppError } = require('../../middleware/errorHandler');
 const auditService = require('../auditService');
 const { toObjectId } = require('../../utils/objectId.util');
+const { loadOwnedCourse, paginateQuery } = require('./courseAccess.util');
 
 const BLOCKING_ENROLLMENT_STATUSES = ['pending_payment', 'active', 'completed'];
 
@@ -25,8 +26,7 @@ async function checkEnrollmentEligibility({ studentId, courseId }) {
     throw new AppError(409, 'ALREADY_ENROLLED', 'You are already enrolled in this course.');
   }
 
-  // a prerequisite is satisfied only by a COMPLETED
-  // enrollment in that course — no partial-progress credit.
+  // A prerequisite is satisfied only by a COMPLETED enrollment.
   if (course.prerequisite_course_ids?.length > 0) {
     const completedCount = await Enrollment.countDocuments({
       student_id: safeStudentId,
@@ -42,7 +42,6 @@ async function checkEnrollmentEligibility({ studentId, courseId }) {
     }
   }
 
-  // Synchronous course capacity check
   if (course.is_synchronous && course.max_students != null) {
     const activeCount = await Enrollment.countDocuments({
       course_id: safeCourseId,
@@ -60,15 +59,9 @@ async function checkEnrollmentEligibility({ studentId, courseId }) {
   return course;
 }
 
-/**
- * enrolls a student. Free courses activate immediately;
- * paid courses create a pending_payment record.
- */
 async function enrollInCourse({ studentId, courseId, req }) {
   const course = await checkEnrollmentEligibility({ studentId, courseId });
-
   const isFree = course.course_type === 'free';
-
   const safeStudentId = toObjectId(studentId, 'studentId');
   const safeCourseId = toObjectId(courseId, 'courseId');
 
@@ -106,42 +99,18 @@ async function enrollInCourse({ studentId, courseId, req }) {
   };
 }
 
-/** Lists all of the student's own enrollments (any status). */
 async function listMyEnrollments({ studentId, queryParams = {} }) {
   const safeStudentId = toObjectId(studentId, 'studentId');
-  const page = parseInt(queryParams.page, 10) || 1;
-  const limit = parseInt(queryParams.limit, 10) || 10;
-  const skip = (page - 1) * limit;
-
-  const query = { student_id: safeStudentId };
-
-  const [enrollments, totalRecords] = await Promise.all([
-    Enrollment.find(query)
-      .populate('course_id', 'title category course_type is_synchronous')
-      .sort({ enrolled_at: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean(),
-    Enrollment.countDocuments(query),
-  ]);
-
-  return {
-    success: true,
-    data: {
-      enrollments,
-      meta: {
-        total_records: totalRecords,
-        current_page: page,
-        total_pages: Math.ceil(totalRecords / limit),
-      },
-    },
-  };
+  const { records: enrollments, meta } = await paginateQuery({
+    model: Enrollment,
+    query: { student_id: safeStudentId },
+    queryParams,
+    sort: { enrolled_at: -1 },
+    populate: { path: 'course_id', select: 'title category course_type is_synchronous' },
+  });
+  return { success: true, data: { enrollments, meta } };
 }
 
-/**
- * here: this is a system-to-system call triggered by a verified webhook,
- * not a user-facing HTTP request.
- */
 async function activatePendingEnrollment({ enrollmentId }) {
   const enrollment = await Enrollment.findById(enrollmentId);
   if (!enrollment) {
@@ -158,11 +127,6 @@ async function activatePendingEnrollment({ enrollmentId }) {
   return { success: true, data: { enrollment, alreadyActive: false } };
 }
 
-/**
- * Called by PAY (UC-PAY-07) when a refund is approved — cancels the
- * enrollment. System-triggered by a verified admin decision downstream,
- * no ownership/session check here (mirrors activatePendingEnrollment).
- */
 async function cancelEnrollmentForRefund({ enrollmentId }) {
   const enrollment = await Enrollment.findById(enrollmentId);
   if (!enrollment) {
@@ -178,10 +142,33 @@ async function cancelEnrollmentForRefund({ enrollmentId }) {
   return { success: true, data: { enrollment, alreadyCancelled: false } };
 }
 
+/** Instructor-facing roster for a course they own. */
+async function getCourseStudents({ instructorId, courseId, queryParams = {}, req }) {
+  const { safeCourseId } = await loadOwnedCourse({
+    courseId,
+    instructorId,
+    req,
+    attemptedAction: 'VIEW_ROSTER',
+  });
+
+  const { records: enrollments, meta } = await paginateQuery({
+    model: Enrollment,
+    // pending_payment excluded
+    query: { course_id: safeCourseId, status: { $in: ['active', 'completed'] } },
+    queryParams,
+    defaultLimit: 20,
+    sort: { enrolled_at: -1 },
+    populate: { path: 'student_id', select: 'full_name email' },
+  });
+
+  return { success: true, data: { students: enrollments, meta } };
+}
+
 module.exports = {
   checkEnrollmentEligibility,
   enrollInCourse,
   listMyEnrollments,
   activatePendingEnrollment,
   cancelEnrollmentForRefund,
+  getCourseStudents,
 };

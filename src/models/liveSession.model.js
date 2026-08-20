@@ -4,6 +4,7 @@
    ========================================================================== */
 
 const mongoose = require('mongoose');
+const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util'); // أعلى الملف
 
 const liveSessionSchema = new mongoose.Schema(
   {
@@ -11,6 +12,12 @@ const liveSessionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Course',
       required: true,
+      index: true,
+    },
+    unit_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'CourseUnit',
+      default: null,
       index: true,
     },
     instructorId: {
@@ -28,6 +35,11 @@ const liveSessionSchema = new mongoose.Schema(
     meetingLink: {
       type: String,
       required: true,
+    },
+    moderatorPassword: {
+      type: String,
+      select: false, // hidden by default
+      default: null,
     },
     startTime: {
       type: Date,
@@ -97,8 +109,15 @@ const liveSessionSchema = new mongoose.Schema(
   }
 );
 
+applyReferentialIntegrity(liveSessionSchema, [
+  { path: 'courseId', ref: 'Course', required: true },
+  { path: 'unit_id', ref: 'CourseUnit', required: false },
+  { path: 'instructorId', ref: 'User', required: true },
+]);
+
 liveSessionSchema.index({ courseId: 1, startTime: 1 });
 liveSessionSchema.index({ instructorId: 1, startTime: 1 });
 liveSessionSchema.index({ status: 1, startTime: 1 });
+liveSessionSchema.index({ courseId: 1, unit_id: 1 });
 
 module.exports = mongoose.model('LiveSession', liveSessionSchema);

@@ -19,6 +19,7 @@ const authTokenSchema = new Schema(
       enum: ['EMAIL_VERIFICATION', 'PASSWORD_RESET', 'EMAIL_OTP', 'ACCOUNT_RESTORE'],
       required: true,
     },
+    attempt_count: { type: Number, required: true, default: 0 },
     expires_at: { type: Date, required: true },
     used_at: { type: Date, default: null },
   },

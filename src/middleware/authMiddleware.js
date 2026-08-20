@@ -51,9 +51,7 @@ function requireAuth(req, res, next) {
         },
       });
     }
-    // Covers: malformed token, invalid signature, wrong `type` claim
-    // (e.g. an mfa_temp token presented here) — see jwt.js's
-    // verifyAccessToken for the Type Confusion guard itself.
+
     return res.status(401).json({
       success: false,
       error: { code: 'TOKEN_INVALID', message: 'Invalid or malformed access token.' },

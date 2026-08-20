@@ -1,7 +1,5 @@
 const authService = require('../../services/authService');
-const { issueSessionCookies } = require('../../utils/sessionCookies.util');
-const env = require('../../config/env');
-const { CSRF_COOKIE_NAME } = require('../../middleware/csrfProtection');
+const { issueSessionCookies, clearSessionCookies } = require('../../utils/sessionCookies.util');
 const { AppError } = require('../../middleware/errorHandler');
 
 const LOGIN_ERRORS = {
@@ -27,7 +25,7 @@ const LOGIN_ERRORS = {
   },
 };
 
-/** POST /auth/login — UC-AUTH-03. */
+// POST /auth/login.
 async function login(req, res, next) {
   try {
     const result = await authService.loginUser({ ...req.validatedBody, req });
@@ -68,27 +66,16 @@ async function login(req, res, next) {
   }
 }
 
-/** POST /auth/logout — requires Bearer JWT. */
+// POST /auth/logout
 async function logout(req, res, next) {
   try {
     await authService.logoutUser({ sessionId: req.user.sessionId, req });
-
-    res.clearCookie('refresh_token', {
-      httpOnly: true,
-      secure: env.nodeEnv === 'production',
-      sameSite: 'lax',
-    });
-    res.clearCookie(CSRF_COOKIE_NAME, {
-      httpOnly: false,
-      secure: env.nodeEnv === 'production',
-      sameSite: 'lax',
-    });
+    clearSessionCookies(res);
     return res.status(200).json({ success: true, data: { message: 'Logged out successfully' } });
   } catch (err) {
     next(err);
   }
 }
-
 const REFRESH_ERRORS = {
   TOKEN_MISSING: { status: 401, message: 'Refresh token is missing.' },
   TOKEN_INVALID: { status: 401, message: 'Refresh token is invalid, expired, or revoked.' },
@@ -126,19 +113,19 @@ async function forgotPassword(req, res, next) {
   }
 }
 
-const RESET_PASSWORD_ERRORS = {
-  TOKEN_INVALID: 'This reset link is invalid.',
-  TOKEN_ALREADY_USED: 'This reset link has already been used.',
-  TOKEN_EXPIRED: 'This reset link has expired. Please request a new one.',
-};
-
+// POST /resert-password
 async function resetPassword(req, res, next) {
   try {
-    const { token, new_password: newPassword } = req.validatedBody;
-    const result = await authService.resetPassword({ rawToken: token, newPassword, req });
+    const { email, code, new_password: newPassword } = req.validatedBody;
+    const result = await authService.resetPassword({ email, code, newPassword, req });
 
     if (result.error) {
-      throw new AppError(400, result.error, RESET_PASSWORD_ERRORS[result.error]);
+      const statusMap = { INVALID_CODE: 400, CODE_EXPIRED: 400, TOO_MANY_ATTEMPTS: 429 };
+      const status = statusMap[result.error] || 400;
+      return res.status(status).json({
+        success: false,
+        error: { code: result.error, message: 'Reset failed.' },
+      });
     }
 
     return res.status(200).json({

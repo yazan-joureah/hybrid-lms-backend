@@ -1,21 +1,19 @@
 const courseCoreService = require('./course/course.service');
 const unitService = require('./course/unit.service');
-const contentService = require('./course/content.service');
 const reviewStateService = require('./course/reviewState.service');
 const adminReviewService = require('./course/adminReview.service');
 const publicCourseService = require('./course/publicCourse.service');
 const enrollmentService = require('./course/enrollment.service');
-const progressService = require('./course/progress.service');
-const studentContentService = require('./course/studentContent.service');
+const courseImageService = require('./course/courseImage.service');
+const contentService = require('./course/content.service');
 
 module.exports = {
   ...courseCoreService,
   ...unitService,
   ...contentService,
-  cancelReviewRequest: reviewStateService.cancelReviewRequest,
+  ...reviewStateService,
   ...adminReviewService,
   ...publicCourseService,
   ...enrollmentService,
-  ...progressService,
-  ...studentContentService,
+  ...courseImageService,
 };

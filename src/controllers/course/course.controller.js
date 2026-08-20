@@ -4,9 +4,9 @@ const {
   getInstructorCourses,
   updateCourse,
   submitCourseForReview,
-  addUnit,
-  addContent,
   cancelReviewRequest,
+  deleteCourse: deleteCourseService,
+  getCourseStudents: getCourseStudentsService,
 } = require('../../services/courseService');
 
 /** creates a course draft. */
@@ -120,57 +120,6 @@ async function submitForReview(req, res, next) {
   }
 }
 
-/** adds a unit to a course. */
-async function createUnit(req, res, next) {
-  try {
-    const instructorId = req.user.id;
-    const { courseId } = req.params;
-    const { title } = req.body;
-
-    const result = await addUnit({ courseId, instructorId, unitData: { title }, req });
-
-    return res.status(201).json({
-      success: true,
-      message: 'Unit added successfully.',
-      data: { unit: result.data.unit },
-    });
-  } catch (err) {
-    return next(err);
-  }
-}
-
-/**
- * adds a content item to a unit.
- */
-async function createContent(req, res, next) {
-  try {
-    const instructorId = req.user.id;
-    const { courseId, unitId } = req.params;
-    const { content_type: contentType, url, text } = req.body;
-
-    const contentData =
-      contentType === 'link' ? { url } : contentType === 'text' ? { text } : undefined;
-
-    const result = await addContent({
-      courseId,
-      unitId,
-      instructorId,
-      contentType,
-      file: req.file,
-      contentData,
-      req,
-    });
-
-    return res.status(201).json({
-      success: true,
-      message: 'Content added successfully.',
-      data: { content: result.data.content },
-    });
-  } catch (err) {
-    return next(err);
-  }
-}
-
 /** Cancels an active pending review request, reverting the course to draft. */
 async function cancelReview(req, res, next) {
   try {
@@ -189,12 +138,40 @@ async function cancelReview(req, res, next) {
   }
 }
 
+async function deleteCourse(req, res, next) {
+  try {
+    const instructorId = req.user.id;
+    const { courseId } = req.params;
+    await deleteCourseService({ courseId, instructorId, req });
+    return res.status(200).json({ success: true, message: 'Course deleted successfully.' });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+// get the students enrolled
+async function getCourseStudents(req, res, next) {
+  try {
+    const instructorId = req.user.id;
+    const { courseId } = req.params;
+    const result = await getCourseStudentsService({
+      instructorId,
+      courseId,
+      queryParams: req.query,
+      req,
+    });
+    return res.status(200).json({ success: true, data: result.data });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 module.exports = {
   create,
   getMyCourses,
   update,
   submitForReview,
-  createUnit,
-  createContent,
   cancelReview,
+  deleteCourse,
+  getCourseStudents,
 };

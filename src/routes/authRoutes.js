@@ -1,7 +1,3 @@
-/**
- * AUTH routes — Group 1 (Registration & Email Verification).
- * Source: REST_API_Contract_v1.2_Groups1-4.docx.
- */
 const express = require('express');
 const router = express.Router();
 
@@ -14,6 +10,8 @@ const {
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  verifyEmailSchema,
+  resendVerificationSchema,
   totpVerifySchema,
   mfaLoginVerifySchema,
   googleGuardianEmailSchema,
@@ -28,11 +26,7 @@ router.post(
   authController.register
 );
 
-router.get(
-  '/verify-email',
-  rateLimit('verify-email', (req) => req.ip),
-  authController.verifyEmail
-);
+router.post('/verify-email', validateBody(verifyEmailSchema), authController.verifyEmail);
 
 router.get('/guardian/approve', authController.guardianApprovePagePlaceholder);
 
@@ -66,11 +60,13 @@ router.post(
   authController.forgotPassword
 );
 
+router.post('/reset-password', validateBody(resetPasswordSchema), authController.resetPassword);
+
 router.post(
-  '/reset-password',
-  rateLimit('reset-password', (req) => req.ip),
-  validateBody(resetPasswordSchema),
-  authController.resetPassword
+  '/resend-verification',
+  rateLimit('resend-verification', (req) => req.body.email),
+  validateBody(resendVerificationSchema),
+  authController.resendVerification
 );
 
 router.post(
@@ -133,7 +129,5 @@ router.post(
   validateBody(googleGuardianEmailSchema),
   authController.googleGuardianEmail
 );
-
-router.get('/me', requireAuth, authController.getMe);
 
 module.exports = router;

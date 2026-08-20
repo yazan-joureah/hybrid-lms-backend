@@ -8,7 +8,7 @@ const {
 } = require('../../services/kycService');
 const { AppError } = require('../../middleware/errorHandler');
 
-async function listPending(req, res, next) {
+async function listKycPending(req, res, next) {
   try {
     const requests = await KYCRequest.find({ status: 'review_pending' })
       .sort({ submitted_at: 1 })
@@ -21,7 +21,7 @@ async function listPending(req, res, next) {
   }
 }
 
-async function getDetail(req, res, next) {
+async function getKycDetail(req, res, next) {
   try {
     const context = await getRequestForReview(req.params.id);
     if (!context) {
@@ -49,7 +49,7 @@ async function getDetail(req, res, next) {
   }
 }
 
-async function getDocumentImage(req, res, next) {
+async function getKycDocumentImage(req, res, next) {
   try {
     const { id, documentType } = req.params;
     if (!['id_document', 'selfie'].includes(documentType)) {
@@ -85,7 +85,7 @@ async function getDocumentImage(req, res, next) {
   }
 }
 
-async function approve(req, res, next) {
+async function approveKyc(req, res, next) {
   try {
     const result = await approveKycRequest({
       kycRequestId: req.params.id,
@@ -105,7 +105,7 @@ async function approve(req, res, next) {
   }
 }
 
-async function reject(req, res, next) {
+async function rejectKyc(req, res, next) {
   try {
     const result = await rejectKycRequest({
       kycRequestId: req.params.id,
@@ -124,4 +124,4 @@ async function reject(req, res, next) {
   }
 }
 
-module.exports = { listPending, getDetail, getDocumentImage, approve, reject };
+module.exports = { listKycPending, getKycDetail, getKycDocumentImage, approveKyc, rejectKyc };

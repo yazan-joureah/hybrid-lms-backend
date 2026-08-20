@@ -1,7 +1,5 @@
 /**
- * Session & Token Lifecycle — Bounded Context.
- * Covers: UC-AUTH-03 (Login), UC-AUTH-04 (Lock Account), UC-AUTH-07
- * (Session Management: Logout + Refresh + Token Rotation), FR-03b.
+ * Session & Token Lifecycle
  */
 const User = require('../../models/User');
 const Session = require('../../models/Session');
@@ -37,7 +35,6 @@ async function handleFailedLogin({ user, req }) {
   await user.save();
 }
 
-//Single-value input (user document only)
 function computeRedirectTo(user) {
   if (user.role === 'Student') return '/dashboard';
   if (user.role === 'Instructor') {
@@ -48,7 +45,7 @@ function computeRedirectTo(user) {
   return '/admin/dashboard';
 }
 
-// Shared session-issuance — used by password login, MFA-completed login, and Google OAuth login.
+// Session-issuance
 async function createUserSession({ user, req }) {
   const session = await Session.create({
     user_id: user._id,

@@ -70,7 +70,17 @@ async function listSessions(req, res, next) {
     return next(err);
   }
 }
-
+/** POST /api/v1/live/sessions/:sessionId/start */
+async function startSession(req, res, next) {
+  try {
+    const instructorId = req.user.id;
+    const { sessionId } = req.params;
+    const result = await liveService.startSession({ instructorId, sessionId, req });
+    return res.status(200).json({ success: true, message: 'Session started.', data: result.data });
+  } catch (err) {
+    return next(err);
+  }
+}
 /** UC-LIVE-08 — POST /api/v1/live/sessions/:sessionId/end */
 async function endSession(req, res, next) {
   try {
@@ -78,6 +88,20 @@ async function endSession(req, res, next) {
     const { sessionId } = req.params;
     const result = await liveService.endSession({ instructorId, sessionId, req });
     return res.status(200).json({ success: true, message: 'Session ended.', data: result.data });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+// GET /live/sessions/:sessionId
+async function getSession(req, res, next) {
+  try {
+    const { sessionId } = req.params;
+    const userId = req.user.id;
+    const role = req.verifiedRole;
+    // Delegate to a new service function (implement in session.service.js)
+    const result = await liveService.getSessionById({ userId, role, sessionId });
+    return res.status(200).json({ success: true, data: result.data });
   } catch (err) {
     return next(err);
   }
@@ -108,6 +132,8 @@ module.exports = {
   updateSession,
   cancelSession,
   listSessions,
+  startSession,
   endSession,
   attachRecording,
+  getSession,
 };

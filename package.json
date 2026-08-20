@@ -8,7 +8,7 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "test": "jest --runInBand",
-    "test:coverage": "jest --coverage --runInBand",
+    "test:coverage": "jest --coverage --runInBand --forceExit",
     "test:watch": "jest  --watch",
     "lint": "eslint src tests",
     "lint:fix": "eslint src tests --fix",
@@ -49,6 +49,7 @@
     "qrcode": "^1.5.4",
     "socket.io": "^4.7.5",
     "stripe": "^22.3.2",
+    "uuid": "^8.3.2",
     "winston": "^3.13.0",
     "zod": "^3.23.8"
   },

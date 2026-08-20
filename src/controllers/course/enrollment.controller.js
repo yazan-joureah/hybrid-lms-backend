@@ -6,13 +6,11 @@ async function enroll(req, res, next) {
     const studentId = req.user.id;
     const { courseId } = req.params;
     const result = await enrollInCourse({ studentId, courseId, req });
-    return res
-      .status(201)
-      .json({
-        success: true,
-        message: result.data.message,
-        data: { enrollment: result.data.enrollment },
-      });
+    return res.status(201).json({
+      success: true,
+      message: result.data.message,
+      data: { enrollment: result.data.enrollment },
+    });
   } catch (err) {
     return next(err);
   }

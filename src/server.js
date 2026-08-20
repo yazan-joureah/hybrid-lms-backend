@@ -18,9 +18,9 @@ async function start() {
     logger.error('Failed to connect Redis', { error: err.message });
   });
 
-  // http.Server صريح (بدل app.listen مباشرة) — مطلوب كي يتشارك Socket.IO
-  // نفس منفذ HTTP الحالي بدل فتح منفذ منفصل (طبقة LIVE — الدردشة/الإشراف
-  // اللحظية التكميلية، راجع src/sockets/liveSocket.js).
+  // Explicit http.Server (instead of app.listen directly) — required so that Socket.IO can share
+  // the same current HTTP port instead of opening a separate port (LIVE layer — complementary
+  // real-time chat/moderation, refer to src/sockets/liveSocket.js).
   const httpServer = http.createServer(app);
 
   const io = new SocketIOServer(httpServer, {

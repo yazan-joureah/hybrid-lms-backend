@@ -75,7 +75,8 @@ const forgotPasswordSchema = z.object({
 });
 
 const resetPasswordSchema = z.object({
-  token: z.string().min(1),
+  email: z.string().trim().toLowerCase().email(),
+  code: z.string().regex(/^\d{6}$/, 'Code must be exactly 6 digits'),
   new_password: z
     .string()
     .min(15, 'Password must be at least 15 characters (NIST SP 800-63-4)')
@@ -107,6 +108,15 @@ const googleGuardianEmailSchema = z.object({
   guardian_email: z.string().trim().toLowerCase().email(),
 });
 
+const verifyEmailSchema = z.object({
+  email: z.string().email(),
+  code: z.string().regex(/^\d{6}$/, 'Code must be exactly 6 digits'),
+});
+
+const resendVerificationSchema = z.object({
+  email: z.string().email(),
+});
+
 module.exports = {
   registerSchema,
   isBlocklisted,
@@ -114,6 +124,8 @@ module.exports = {
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  resendVerificationSchema,
+  verifyEmailSchema,
   totpVerifySchema,
   mfaLoginVerifySchema,
   googleLinkConfirmSchema,

@@ -1,7 +1,4 @@
-/**
- * MongoDB connection via Mongoose.
- * Retries on failure — fails fast in production, retries in dev.
- */
+// MongoDB connection via Mongoose.
 const mongoose = require('mongoose');
 const logger = require('../utils/logger');
 const env = require('./env');

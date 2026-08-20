@@ -10,13 +10,13 @@ const courseContentSchema = new Schema(
     owner_instructor_id: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     content_type: { type: String, enum: ['video', 'document', 'link', 'text'], required: true },
 
+    title: { type: String, required: true, trim: true, maxlength: 200 },
+    desc: { type: String, default: '', trim: true },
+
     storage_path: { type: String, default: null },
     mime_type: { type: String, default: null },
     size_bytes: { type: Number, default: null },
     magic_bytes_match: { type: Boolean, default: null },
-
-    // link/text content has no file
-    // Shape by content_type: { url: string } for 'link', { text: string } for 'text'.
     content_data: { type: Schema.Types.Mixed, default: null },
 
     order: { type: Number, required: true },

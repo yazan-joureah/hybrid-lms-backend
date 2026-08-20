@@ -10,15 +10,16 @@ const router = express.Router();
 const { requireAuth } = require('../middleware/authMiddleware');
 const { requireRole } = require('../middleware/requireRole');
 const { validateBody } = require('../middleware/validate');
-const adminCourseController = require('../controllers/admin/adminCourse.controller');
-const { courseReviewSchema } = require('../validators/courseSchemas');
+const adminController = require('../controllers/adminController');
+const { courseReviewSchema, courseStatusSchema } = require('../validators/courseSchemas');
+const { kycApproveSchema, kycRejectSchema } = require('../validators/kycSchemas');
 
-// --- Course moderation (UC-COURSE-07) ---
+// --- Course moderation ---
 router.get(
   '/courses/pending',
   requireAuth,
   requireRole(['Admin', 'SuperAdmin']),
-  adminCourseController.getPendingCourses
+  adminController.getPendingCourses
 );
 
 router.post(
@@ -26,7 +27,61 @@ router.post(
   requireAuth,
   requireRole(['Admin', 'SuperAdmin']),
   validateBody(courseReviewSchema),
-  adminCourseController.reviewCourseHandler
+  adminController.reviewCourseHandler
+);
+
+router.patch(
+  '/courses/:courseId/status',
+  requireAuth,
+  requireRole(['Admin', 'SuperAdmin']),
+  validateBody(courseStatusSchema),
+  adminController.setCourseStatusHandler
+);
+
+router.get(
+  '/courses',
+  requireAuth,
+  requireRole(['Admin', 'SuperAdmin']),
+  adminController.getAllCoursesForAdmin
+);
+
+// --- KYC moderation ---
+
+router.get(
+  '/kyc/requests',
+  requireAuth,
+  requireRole(['Admin', 'SuperAdmin']),
+  adminController.listKycPending
+);
+
+router.get(
+  '/kyc/requests/:id',
+  requireAuth,
+  requireRole(['Admin', 'SuperAdmin']),
+  adminController.getKycDetail
+);
+
+router.get(
+  '/kyc/requests/:id/documents/:documentType',
+  requireAuth,
+  requireRole(['Admin', 'SuperAdmin']),
+  adminController.getKycDocumentImage
+);
+
+router.post(
+  '/kyc/requests/:id/approve',
+  requireAuth,
+  requireRole(['Admin', 'SuperAdmin']),
+  validateBody(kycApproveSchema),
+  adminController.approveKyc
+);
+
+router.post(
+  '/kyc/requests/:id/reject',
+  requireAuth,
+  requireRole(['Admin', 'SuperAdmin']),
+  validateBody(kycRejectSchema),
+  adminController.rejectKyc
 );
 
 module.exports = router;

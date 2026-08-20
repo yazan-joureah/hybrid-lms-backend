@@ -106,4 +106,8 @@ async function cancelReviewRequest({ courseId, instructorId, req }) {
   return { success: true, data: { course } };
 }
 
-module.exports = { assertCourseEditable, triggerReviewOnPublishedEdit, cancelReviewRequest };
+module.exports = {
+  assertCourseEditable,
+  triggerReviewOnPublishedEdit,
+  cancelReviewRequest,
+};

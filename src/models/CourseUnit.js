@@ -6,6 +6,7 @@ const courseUnitSchema = new Schema(
   {
     course_id: { type: Schema.Types.ObjectId, ref: 'Course', required: true },
     title: { type: String, required: true },
+    desc: { type: String, default: '' },
     order: { type: Number, required: true },
   },
   {
