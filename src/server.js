@@ -10,6 +10,7 @@ const redisClient = require('./config/redis');
 const logger = require('./utils/logger');
 const { setIO } = require('./sockets/ioInstance');
 const { registerLiveSocket } = require('./sockets/liveSocket');
+const { registerPeerCronJobs } = require('./jobs/peerCron.job');
 
 async function start() {
   await connectDatabase();
@@ -30,6 +31,13 @@ async function start() {
   });
   setIO(io);
   registerLiveSocket(io);
+
+  // DEVIATION: لا تُسجَّل مهام Cron أثناء الاختبارات الآلية (NODE_ENV=test) —
+  // كل اختبار يفتح/يغلق اتصال DB منفصلاً، وتشغيل Cron خلفي متزامن معها قد
+  // يسبب نتائج غير متوقعة (Race Conditions) في بيانات الاختبار المؤقتة.
+  if (env.nodeEnv !== 'test') {
+    registerPeerCronJobs();
+  }
 
   httpServer.listen(env.port, () => {
     logger.info(`Server listening on port ${env.port} [${env.nodeEnv}] (HTTP + Socket.IO)`);
