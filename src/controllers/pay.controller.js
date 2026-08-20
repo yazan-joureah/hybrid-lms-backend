@@ -4,6 +4,9 @@ const {
   reviewRefund,
   verifyWebhookSignature,
   processStripeWebhook,
+  getPaymentStatus,
+  listMyPayments,
+  listRefundRequests,
 } = require('../services/payService');
 const { AppError } = require('../middleware/errorHandler');
 
@@ -73,4 +76,43 @@ async function webhook(req, res, next) {
   }
 }
 
-module.exports = { initiate, requestRefundHandler, reviewRefundHandler, webhook };
+async function paymentStatus(req, res, next) {
+  try {
+    const isAdmin = ['Admin', 'SuperAdmin'].includes(req.user.role);
+    const result = await getPaymentStatus({
+      studentId: req.user.id,
+      paymentId: req.params.paymentId,
+      isAdmin,
+    });
+    return res.status(200).json({ success: true, data: result.data });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function myPayments(req, res, next) {
+  try {
+    const result = await listMyPayments({ studentId: req.user.id, queryParams: req.query });
+    return res.status(200).json({ success: true, data: result.data });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function refundRequestsList(req, res, next) {
+  try {
+    const result = await listRefundRequests({ queryParams: req.query });
+    return res.status(200).json({ success: true, data: result.data });
+  } catch (err) {
+    return next(err);
+  }
+}
+module.exports = {
+  initiate,
+  requestRefundHandler,
+  reviewRefundHandler,
+  webhook,
+  paymentStatus,
+  myPayments,
+  refundRequestsList,
+};

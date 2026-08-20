@@ -2,7 +2,7 @@
 // UC-PEER-03 — Submit Peer Review
 
 const PeerReview = require('../../models/peerReview.model');
-const PeerSubmission = require('../../models/peerSubmission.model');
+//const PeerSubmission = require('../../models/peerSubmission.model');
 const PeerAssignment = require('../../models/peerAssignment.model');
 const { AppError } = require('../../middleware/errorHandler');
 const { toObjectId } = require('../../utils/objectId.util');
@@ -150,4 +150,9 @@ async function submitReview({ reviewerId, reviewId, scores, feedbackText, req })
   return { success: true, data: { review } };
 }
 
-module.exports = { listMyReviewTasks, getReviewSubmissionContent, streamReviewSubmissionFile, submitReview };
+module.exports = {
+  listMyReviewTasks,
+  getReviewSubmissionContent,
+  streamReviewSubmissionFile,
+  submitReview,
+};

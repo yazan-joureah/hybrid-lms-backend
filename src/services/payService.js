@@ -5,6 +5,7 @@ const webhookSecurityService = require('./pay/webhookSecurity.service');
 const webhookService = require('./pay/webhook.service');
 const invoiceService = require('./pay/invoice.service');
 const refundService = require('./pay/refund.service');
+const payQuery = require('./pay/payQuery.service');
 
 module.exports = {
   ...eligibilityService,
@@ -13,4 +14,5 @@ module.exports = {
   ...webhookService,
   ...invoiceService,
   ...refundService,
+  ...payQuery,
 };

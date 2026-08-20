@@ -17,9 +17,6 @@ const payRoutes = require('./routes/payRoutes');
 const quizRoutes = require('./routes/quizRoutes');
 const userRoutes = require('./routes/userRoutes');
 
-// 1. Import your custom rate limiter
-const { rateLimit } = require('./middleware/rateLimiter');
-
 const env = require('./config/env');
 
 const app = express();
@@ -53,14 +50,6 @@ app.use('/api/v1/pay/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '10kb' }));
 app.use(cookieParser());
 app.use(compression());
-
-// 2. Apply the global baseline rate limiter to all API endpoints
-if (env.nodeEnv !== 'test') {
-  app.use(
-    '/api/v1',
-    rateLimit('global-api', (req) => req.ip)
-  );
-}
 
 app.use('/api/v1', healthRoutes);
 app.use('/api/v1/auth', authRoutes);

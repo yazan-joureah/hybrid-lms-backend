@@ -1,7 +1,7 @@
 // src/services/peer/allocation.service.js
 // UC-PEER-02 — Anonymize & Distribute Peer Review
 
-const mongoose = require('mongoose');
+//const mongoose = require('mongoose');
 const PeerAssignment = require('../../models/peerAssignment.model');
 const PeerSubmission = require('../../models/peerSubmission.model');
 const PeerReview = require('../../models/peerReview.model');
@@ -58,7 +58,12 @@ function shuffle(array) {
  * @param {string|null} params.actorId - null إن استُدعيت من Cron (System)
  * @param {string} params.actorRole - 'System' | 'Instructor' | 'Admin'
  */
-async function distributeReviews({ assignmentId, actorId = null, actorRole = 'System', req = null }) {
+async function distributeReviews({
+  assignmentId,
+  actorId = null,
+  actorRole = 'System',
+  req = null,
+}) {
   const safeAssignmentId = toObjectId(assignmentId, 'assignmentId');
   const assignment = await PeerAssignment.findById(safeAssignmentId);
   if (!assignment) {
@@ -155,7 +160,11 @@ async function distributeReviews({ assignmentId, actorId = null, actorRole = 'Sy
 
   return {
     success: true,
-    data: { assignment, submissionCount: shuffledSubmissions.length, reviewCount: reviewDocs.length },
+    data: {
+      assignment,
+      submissionCount: shuffledSubmissions.length,
+      reviewCount: reviewDocs.length,
+    },
   };
 }
 
