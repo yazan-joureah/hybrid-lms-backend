@@ -1,0 +1,35 @@
+# Local development infrastructure
+version: '3.8'
+services:
+  mongo:
+    image: mongo:8
+    container_name: hybrid-lms-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    container_name: hybrid-lms-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  # Visual DB browser for local development ONLY — never deployed to production.
+  mongo-express:
+    image: mongo-express:1.0
+    container_name: hybrid-lms-mongo-express
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongo
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: local_dev_only
+
+volumes:
+  mongo_data:

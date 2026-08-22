@@ -1,0 +1,51 @@
+{
+  "env": {
+    "node": true,
+    "es2022": true,
+    "jest": true
+  },
+  "extends": [
+    "eslint:recommended",
+    "plugin:security/recommended-legacy",
+    "plugin:n/recommended"
+  ],
+  "plugins": [
+    "security",
+    "n"
+  ],
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "script"
+  },
+  "rules": {
+    "n/no-unpublished-require": "off",
+    "n/no-missing-require": "off",
+    "security/detect-object-injection": "warn",
+    "no-console": [
+      "warn",
+      {
+        "allow": [
+          "warn",
+          "error"
+        ]
+      }
+    ],
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "scripts/**/*.js"
+      ],
+      "rules": {
+        "no-process-exit": "off"
+      }
+    }
+  ]
+}

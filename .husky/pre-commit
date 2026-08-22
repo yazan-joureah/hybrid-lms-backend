@@ -1,0 +1,9 @@
+npx lint-staged
+
+# Secret scanning before every commit (requires gitleaks installed locally:
+# brew install gitleaks   OR   see https://github.com/gitleaks/gitleaks#installing)
+if command -v gitleaks &> /dev/null; then
+  gitleaks protect --staged --verbose
+else
+  echo "⚠️  gitleaks not installed locally — skipping secret scan (CI will still catch it)"
+fi
