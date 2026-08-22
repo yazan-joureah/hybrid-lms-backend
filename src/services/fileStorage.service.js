@@ -1,11 +1,11 @@
 // src/services/fileStorage.service.js
-/**
- * SF-COURSE-02 (storage layer): Generic file storage via MongoDB GridFS.
- * Used by COURSE ,LIVE.
- */
+
 const mongoose = require('mongoose');
 const { Readable } = require('stream');
 const auditService = require('./auditService');
+const { validateUploadedFile } = require('../utils/fileValidation.util');
+const { AppError } = require('../middleware/errorHandler');
+const logger = require('../utils/logger');
 
 const GRIDFS_BUCKET_NAME = 'course_files';
 
@@ -74,14 +74,8 @@ async function deleteFile({ fileId, userId, actorRole, req }) {
   return { success: true };
 }
 
-/**
- * Opens a readable stream for a GridFS file by ID, for piping directly
- * into an HTTP response.
- *
- * @param {object} params
- * @param {string} params.fileId - GridFS file ID (string)
- * @returns {Promise<{ stream: import('stream').Readable, contentType: string, filename: string }>}
- */
+// Opens a readable stream for a GridFS file by ID, for piping directly
+//into an HTTP response.
 async function getDownloadStream({ fileId }) {
   const db = mongoose.connection.db;
   if (!db) {
@@ -92,7 +86,6 @@ async function getDownloadStream({ fileId }) {
   const objectId = new mongoose.Types.ObjectId(fileId);
 
   // Confirms the file actually exists before returning a stream — avoids
-  // a confusing generic stream-error later if the ID is stale/invalid.
   const files = await bucket.find({ _id: objectId }).toArray();
   if (files.length === 0) {
     throw new Error('FILE_NOT_FOUND_IN_GRIDFS');
@@ -106,4 +99,61 @@ async function getDownloadStream({ fileId }) {
   };
 }
 
-module.exports = { uploadFile, deleteFile, getDownloadStream };
+// Safely deletes a file from GridFS — deletion failure (file already missing,
+// temporary connection issues, etc.) must not stop the calling operation
+// (update/delete of a resource).
+async function safeDeleteFile({ fileId, userId, actorRole, req }) {
+  try {
+    await deleteFile({ fileId, userId, actorRole, req });
+  } catch (err) {
+    logger.error('File deletion failed (non-critical)', { fileId, error: err.message });
+  }
+}
+
+async function replaceFile({
+  file,
+  previousStoragePath = null,
+  allowedMimeTypes,
+  maxFileSizeBytes,
+  userId,
+  actorRole,
+  req,
+  metadata = {},
+}) {
+  if (!file || !file.buffer) {
+    throw new AppError(400, 'FILE_REQUIRED', 'A file is required.');
+  }
+
+  const validation = await validateUploadedFile(file.buffer, file.originalname, {
+    allowedMimeTypes,
+    maxFileSizeBytes,
+  });
+  if (!validation.valid) {
+    throw new AppError(400, validation.reason, 'The uploaded file failed validation.');
+  }
+
+  const { fileId, storagePath } = await uploadFile({
+    buffer: file.buffer,
+    filename: file.originalname,
+    mimeType: validation.detectedMime,
+    sizeBytes: file.buffer.length,
+    userId,
+    actorRole,
+    req,
+    metadata,
+  });
+
+  if (previousStoragePath) {
+    const previousFileId = previousStoragePath.split('/').pop();
+    await safeDeleteFile({ fileId: previousFileId, userId, actorRole, req });
+  }
+
+  return {
+    fileId,
+    storagePath,
+    detectedMime: validation.detectedMime,
+    sizeBytes: file.buffer.length,
+  };
+}
+
+module.exports = { uploadFile, deleteFile, getDownloadStream, safeDeleteFile, replaceFile };

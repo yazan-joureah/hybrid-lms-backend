@@ -135,9 +135,12 @@ async function deleteUnit({ courseId, unitId, instructorId, req }) {
       // eslint-disable-next-line no-await-in-loop -- sequential cleanup, low volume per unit
       const fileId = content.storage_path.split('/').pop();
       // eslint-disable-next-line no-await-in-loop
-      await fileStorage
-        .deleteFile({ fileId, userId: safeInstructorId, actorRole: 'Instructor', req })
-        .catch(() => {});
+      await fileStorage.safeDeleteFile({
+        fileId,
+        userId: safeInstructorId,
+        actorRole: 'Instructor',
+        req,
+      });
     }
   }
   await CourseContent.deleteMany({ unit_id: safeUnitId });

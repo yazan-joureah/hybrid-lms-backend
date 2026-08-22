@@ -6,8 +6,9 @@ const userController = require('../controllers/userController');
 const { requireAuth } = require('../middleware/authMiddleware');
 const { createMemoryUpload } = require('../middleware/upload.util');
 const { rateLimit } = require('../middleware/rateLimiter');
+const { IMAGE_POLICY } = require('../config/uploadPolicies');
 
-const uploadImage = createMemoryUpload(5 * 1024 * 1024, 1);
+const uploadImage = createMemoryUpload(IMAGE_POLICY.maxFileSizeBytes, 1);
 
 router.patch(
   '/me/profile-picture',

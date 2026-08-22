@@ -52,11 +52,35 @@ async function submitReview(req, res, next) {
     const { reviewId } = req.params;
     const { scores, feedbackText } = req.validatedBody;
 
-    const result = await peerService.submitReview({ reviewerId, reviewId, scores, feedbackText, req });
+    const result = await peerService.submitReview({
+      reviewerId,
+      reviewId,
+      scores,
+      feedbackText,
+      req,
+    });
     return res.status(200).json({ success: true, message: 'Review submitted.', data: result.data });
   } catch (err) {
     return next(err);
   }
 }
 
-module.exports = { listMyReviews, getSubmissionToReview, downloadSubmissionFile, submitReview };
+/** GET /api/v1/peer/assignments/:assignmentId/reviews (Instructor — quality control) */
+async function listReviewsForInstructor(req, res, next) {
+  try {
+    const instructorId = req.user.id;
+    const { assignmentId } = req.params;
+    const result = await peerService.listReviewsForInstructor({ instructorId, assignmentId });
+    return res.status(200).json({ success: true, data: result.data });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+module.exports = {
+  listMyReviews,
+  getSubmissionToReview,
+  downloadSubmissionFile,
+  submitReview,
+  listReviewsForInstructor,
+};

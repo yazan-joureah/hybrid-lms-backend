@@ -7,6 +7,7 @@ const Enrollment = require('../../models/Enrollment');
 const auditService = require('../auditService');
 const { AppError } = require('../../middleware/errorHandler');
 const { toObjectId } = require('../../utils/objectId.util');
+const { loadOwnedResource } = require('../../utils/ownedResource.util');
 
 const UPDATABLE_FIELDS = [
   'title',
@@ -21,25 +22,18 @@ const UPDATABLE_FIELDS = [
 ];
 
 async function loadOwnedQuiz(quizId, instructorId, { req, unauthorizedAction } = {}) {
-  const quiz = await Quiz.findById(quizId);
-  if (!quiz) {
-    throw new AppError(404, 'QUIZ_NOT_FOUND', 'Quiz not found.');
-  }
-  if (quiz.instructor_id.toString() !== instructorId.toString()) {
-    if (unauthorizedAction) {
-      await auditService.record({
-        actorId: instructorId,
-        actorRole: 'Instructor',
-        action: unauthorizedAction,
-        resourceType: 'Quiz',
-        resourceId: quizId.toString(),
-        metadata: { target_owner: quiz.instructor_id },
-        req,
-      });
-    }
-    throw new AppError(403, 'FORBIDDEN', 'You do not have permission to modify this quiz.');
-  }
-  return quiz;
+  return loadOwnedResource({
+    model: Quiz,
+    resourceId: quizId,
+    actorId: instructorId,
+    ownerField: 'instructor_id',
+    resourceType: 'Quiz',
+    notFoundCode: 'QUIZ_NOT_FOUND',
+    notFoundMessage: 'Quiz not found.',
+    forbiddenMessage: 'You do not have permission to modify this quiz.',
+    unauthorizedAction,
+    req,
+  });
 }
 
 function assertEditable(quiz) {
@@ -105,6 +99,15 @@ async function createQuiz({ instructorId, quizData, req }) {
         'This course already has a final exam. Delete or edit the existing one instead of creating a new one.'
       );
     }
+    // The only mandatory timing rule across the entire platform: a final exam
+    // within a synchronous course must have a defined time window.
+    if (course.is_synchronous && (!quizData.start_time || !quizData.end_time)) {
+      throw new AppError(
+        400,
+        'EXAM_WINDOW_REQUIRED',
+        'Final exams in synchronous courses must have both a start and end time.'
+      );
+    }
   }
 
   const newQuiz = new Quiz({
@@ -143,6 +146,19 @@ async function updateQuiz({ quizId, instructorId, updateData, req }) {
   const safeUpdate = {};
   for (const field of UPDATABLE_FIELDS) {
     if (updateData[field] !== undefined) safeUpdate[field] = updateData[field];
+  }
+
+  if (quiz.quiz_type === 'exam') {
+    const course = await Course.findById(quiz.course_id).select('is_synchronous').lean();
+    const nextStart = 'start_time' in safeUpdate ? safeUpdate.start_time : quiz.start_time;
+    const nextEnd = 'end_time' in safeUpdate ? safeUpdate.end_time : quiz.end_time;
+    if (course?.is_synchronous && (!nextStart || !nextEnd)) {
+      throw new AppError(
+        400,
+        'EXAM_WINDOW_REQUIRED',
+        'Final exams in synchronous courses must have both a start and end time.'
+      );
+    }
   }
 
   Object.assign(quiz, safeUpdate);

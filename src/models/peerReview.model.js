@@ -38,6 +38,7 @@ const peerReviewSchema = new mongoose.Schema(
     scores: { type: [rubricScoreSchema], default: [] },
     feedbackText: { type: String, trim: true, maxlength: 5000, default: null },
     totalScore: { type: Number, default: null }, // مجموع مرجَّح حسب أوزان الـ Rubric
+    attemptNumber: { type: Number, default: 1, min: 1 },
 
     // assigned: انتُدِب المراجِع ولم يُقيِّم بعد | completed: أرسل تقييمه
     status: { type: String, enum: ['assigned', 'completed'], default: 'assigned' },
@@ -47,7 +48,8 @@ const peerReviewSchema = new mongoose.Schema(
 );
 
 // مراجعة واحدة فقط لكل (تسليم، مراجِع) — يمنع الازدواجية عند إعادة تشغيل التوزيع بالخطأ
-peerReviewSchema.index({ submissionId: 1, reviewerId: 1 }, { unique: true });
+peerReviewSchema.index({ submissionId: 1, reviewerId: 1, attemptNumber: 1 }, { unique: true });
 peerReviewSchema.index({ assignmentId: 1, reviewerId: 1 });
+peerReviewSchema.index({ submissionId: 1, attemptNumber: 1 });
 
 module.exports = mongoose.model('PeerReview', peerReviewSchema);

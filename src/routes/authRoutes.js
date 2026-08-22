@@ -48,7 +48,7 @@ router.post('/logout', requireAuth, authController.logout);
 
 router.post(
   '/refresh',
-  rateLimit('refresh', (req) => req.ip),
+  // rateLimit('refresh', (req) => req.ip),
   requireCsrfToken,
   authController.refresh
 );
@@ -98,26 +98,26 @@ const {
 
 router.get(
   '/google',
-  rateLimit('google-consent', (req) => req.ip),
+  // rateLimit('google-consent', (req) => req.ip),
   authController.googleConsent
 );
 
 router.get(
   '/google/callback',
-  rateLimit('google-callback', (req) => req.ip),
+  // rateLimit('google-callback', (req) => req.ip),
   authController.googleCallback
 );
 
 router.post(
   '/google/link/confirm',
-  rateLimit('google-link', (req) => req.ip),
+  // rateLimit('google-link', (req) => req.ip),
   validateBody(googleLinkConfirmSchema),
   authController.googleLinkConfirm
 );
 
 router.post(
   '/google/register/confirm',
-  rateLimit('google-register', (req) => req.ip),
+  // rateLimit('google-register', (req) => req.ip),
   validateBody(googleRegisterConfirmSchema),
   authController.googleRegisterConfirm
 );
@@ -125,7 +125,7 @@ router.post(
 // authRoutes.js
 router.post(
   '/google/guardian-email',
-  rateLimit('google-guardian-email', (req) => req.ip),
+  // rateLimit('google-guardian-email', (req) => req.ip),
   validateBody(googleGuardianEmailSchema),
   authController.googleGuardianEmail
 );
