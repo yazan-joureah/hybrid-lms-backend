@@ -8,10 +8,10 @@ const { requireAuth } = require('../middleware/authMiddleware');
 const { rateLimit } = require('../middleware/rateLimiter');
 const { createMemoryUpload } = require('../middleware/upload.util');
 const { AppError } = require('../middleware/errorHandler');
-const { KYC_MAX_FILE_SIZE_BYTES } = require('../utils/fileValidation.util');
+const { KYC_DOCUMENT_POLICY } = require('../config/uploadPolicies');
 const { kycSubmitSchema } = require('../validators/kycSchemas');
 
-const kycUpload = createMemoryUpload(KYC_MAX_FILE_SIZE_BYTES, 2).fields([
+const kycUpload = createMemoryUpload(KYC_DOCUMENT_POLICY.maxFileSizeBytes, 2).fields([
   { name: 'id_document', maxCount: 1 },
   { name: 'selfie', maxCount: 1 },
 ]);

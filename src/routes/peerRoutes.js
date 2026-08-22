@@ -1,11 +1,10 @@
+// src/routes/peerRoutes.js
 /**
- * src/routes/peerRoutes.js
- * وحدة التقييم بين الأقران (PEER) — UC-PEER-01..04 (+ مرحلة التسليم)
- * يُركَّب في app.js على: /api/v1/peer
+ * Peer Assessment Module (PEER) — UC-PEER-01..04 (+ submission phase)
+ * Mounted in app.js at: /api/v1/peer
  *
- * وحدة مستقلة تماماً عن LIVE/ATT/COURSE — نفس مبدأ الاستقلالية المطبَّق
- * سابقاً بين LIVE وATT. الاعتماديات الوحيدة (قراءة فقط): Course (فحص
- * الملكية) وEnrollment (فحص التسجيل)، بنفس نمط joinAccess.service.js.
+ * Fully independent module (same principle as LIVE/ATT) with read-only dependencies:
+ * Course (for ownership checks) and Enrollment (for enrollment checks).
  */
 const express = require('express');
 const { requireAuth } = require('../middleware/authMiddleware');
@@ -16,19 +15,22 @@ const { rateLimit } = require('../middleware/rateLimiter');
 const { createMemoryUpload } = require('../middleware/upload.util');
 
 const peerController = require('../controllers/peerController');
+const submissionController = require('../controllers/peer/submission.controller');
 const {
   createAssignmentSchema,
   submitAssignmentSchema,
   submitReviewSchema,
+  updateAssignmentSchema,
+  overrideGradeSchema,
 } = require('../validators/peerSchemas');
-const { PEER_SUBMISSION_MAX_FILE_SIZE_BYTES } = require('../services/peer/submission.service');
+const { PEER_SUBMISSION_POLICY } = require('../config/uploadPolicies');
 
 const router = express.Router();
-const uploadSubmissionFile = createMemoryUpload(PEER_SUBMISSION_MAX_FILE_SIZE_BYTES, 1);
+const uploadSubmissionFile = createMemoryUpload(PEER_SUBMISSION_POLICY.maxFileSizeBytes, 1);
 
 router.use(requireAuth);
 
-/* ───────────────────────── 1) إدارة المهام ───────────────────────── */
+/* ───────────────────────── 1) Assignment Management ───────────────────────── */
 
 // UC-PEER-01 — Create Peer Assessment Task
 router.post(
@@ -39,23 +41,34 @@ router.post(
   peerController.createAssignment
 );
 
-// عرض قائمة المهام (محاضر: مهامه، طالب: مهام كورساته)
-router.get(
-  '/assignments',
-  requireRole(['Student', 'Instructor']),
-  peerController.listAssignments
-);
+// List assignments (Instructor: own; Student: enrolled courses)
+router.get('/assignments', requireRole(['Student', 'Instructor']), peerController.listAssignments);
 
-// تفاصيل مهمة واحدة
+// Single assignment details
 router.get(
   '/assignments/:assignmentId',
   requireRole(['Student', 'Instructor']),
   peerController.getAssignment
 );
 
-/* ───────────────────────── 2) مرحلة التسليم ───────────────────────── */
+// Update assignment (only before distribution, status='open')
+router.patch(
+  '/assignments/:assignmentId',
+  requireRole(['Instructor']),
+  validateBody(updateAssignmentSchema),
+  peerController.updateAssignment
+);
 
-// تسليم/إعادة تسليم الحل (نص و/أو ملف) — قبل submissionDeadline فقط
+// Delete assignment (only before distribution and if no submissions exist)
+router.delete(
+  '/assignments/:assignmentId',
+  requireRole(['Instructor']),
+  peerController.deleteAssignment
+);
+
+/* ───────────────────────── 2) Submission Phase ───────────────────────── */
+
+// Submit / re-submit solution (text and/or file) — only before submissionDeadline
 router.post(
   '/assignments/:assignmentId/submit',
   requireRole(['Student']),
@@ -71,40 +84,47 @@ router.get(
   peerController.getMySubmission
 );
 
-/* ─────────────── 3) التوزيع (احتياطي يدوي — الأساسي عبر Cron) ─────────────── */
+// Instructor: list submissions to check readiness before distribution
+router.get(
+  '/assignments/:assignmentId/submissions',
+  requireRole(['Instructor']),
+  submissionController.listSubmissions
+);
 
-// UC-PEER-02 — يُشغَّل تلقائياً من jobs/peerCron.job.js بعد انتهاء مهلة
-// التسليم؛ هذا المسار مخصَّص فقط لتجربة/تسريع التوزيع يدوياً عند الحاجة.
+/* ─────────────── 3) Distribution (manual fallback — primary via Cron) ─────────────── */
+
+// UC-PEER-02 — automatically triggered by jobs/peerCron.job.js after submission deadline;
+// this endpoint is only for manual test / early distribution if needed.
 router.post(
   '/assignments/:assignmentId/distribute',
   requireRole(['Instructor', 'Admin', 'SuperAdmin']),
   peerController.distribute
 );
 
-/* ───────────────────────── 4) مرحلة المراجعة ───────────────────────── */
+/* ───────────────────────── 4) Review Phase ───────────────────────── */
 
-// UC-PEER-03 — قائمة مهام المراجعة المسنَدة للطالب
+// UC-PEER-03 — List review tasks assigned to the student
 router.get(
   '/assignments/:assignmentId/my-reviews',
   requireRole(['Student']),
   peerController.listMyReviews
 );
 
-// محتوى التسليم المطلوب مراجعته (بلا كشف هوية صاحبه)
+// Submission content to review (without revealing author identity)
 router.get(
   '/reviews/:reviewId/submission',
   requireRole(['Student']),
   peerController.getSubmissionToReview
 );
 
-// تنزيل الملف المرفق بالتسليم (إن وُجد)
+// Download attached file from the submission (if any)
 router.get(
   '/reviews/:reviewId/submission/download',
   requireRole(['Student']),
   peerController.downloadSubmissionFile
 );
 
-// إرسال التقييم (الدرجات + الملاحظات)
+// Submit review (scores + feedback)
 router.post(
   '/reviews/:reviewId',
   requireRole(['Student']),
@@ -112,22 +132,40 @@ router.post(
   peerController.submitReview
 );
 
-/* ────────── 5) الدرجات (احتياطي يدوي للاحتساب — الأساسي عبر Cron) ────────── */
+/* ────────── 5) Grades (manual fallback for calculation — primary via Cron) ────────── */
 
-// UC-PEER-04 — يُشغَّل تلقائياً من jobs/peerCron.job.js بعد انتهاء مهلة
-// المراجعة؛ هذا المسار احتياطي يدوي فقط.
+// UC-PEER-04 — automatically triggered by jobs/peerCron.job.js after review deadline;
+// this endpoint is only a manual fallback.
 router.post(
   '/assignments/:assignmentId/calculate-grades',
   requireRole(['Instructor', 'Admin', 'SuperAdmin']),
   peerController.calculateGrades
 );
 
-// الطالب: درجته النهائية + ملاحظات المراجعين (بلا هوياتهم)
-// المحاضر/الإدارة: تفصيل كامل لكل الطلاب
+// Student: final grade + reviewer feedback (without identities)
+// Instructor/Admin: full breakdown for all students
 router.get(
   '/assignments/:assignmentId/grades',
   requireRole(['Student', 'Instructor', 'Admin', 'SuperAdmin']),
   peerController.getGrades
+);
+
+// Instructor: manual override للحالات التي فشل فيها الحساب الآلي (NO_REVIEWER_COMPLETED)
+// أو حالات flagged بفارق مراجعين كبير راجعها المدرب يدوياً وقرر الدرجة النهائية.
+// متاحة فقط بعد اكتمال الحساب الآلي (assignment.status === 'completed').
+router.patch(
+  '/assignments/:assignmentId/submissions/:submissionId/override-grade',
+  requireRole(['Instructor']),
+  rateLimit('peer_grade_override', (req) => req.user.id),
+  validateBody(overrideGradeSchema),
+  peerController.overrideGrade
+);
+
+// Instructor: full review content for quality control (reviewer identity included on purpose)
+router.get(
+  '/assignments/:assignmentId/reviews',
+  requireRole(['Instructor']),
+  peerController.listReviewsForInstructor
 );
 
 module.exports = router;

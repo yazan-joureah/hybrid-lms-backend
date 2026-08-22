@@ -5,7 +5,6 @@
 
 const mongoose = require('mongoose');
 
-// كل محور تقييم في الـ Rubric — اسم المحور، أقصى درجة له، ووزنه في الدرجة الكلية
 const rubricCriterionSchema = new mongoose.Schema(
   {
     criterion: { type: String, required: true, trim: true, maxlength: 200 },
@@ -23,6 +22,11 @@ const peerAssignmentSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    unitId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'CourseUnit',
+      default: null,
+    },
     instructorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -36,19 +40,17 @@ const peerAssignmentSchema = new mongoose.Schema(
       required: true,
       validate: {
         validator: (v) => Array.isArray(v) && v.length > 0,
-        message: 'يجب إضافة محور تقييم واحد على الأقل.',
+        message: 'At least one rubric criterion must be added.',
       },
     },
-    submissionDeadline: { type: Date, required: true },
-    reviewDeadline: { type: Date, required: true },
-    // عدد المراجعين لكل تسليم — افتراضي 2 حسب UC-PEER-01 خطوة 5
+    submissionDeadline: { type: Date, required: false, default: null },
+    reviewDeadline: { type: Date, required: false, default: null },
     reviewersPerSubmission: { type: Number, required: true, default: 2, min: 1 },
-
-    // open: يقبل تسليمات الطلاب | distributed: وُزِّعت المراجعات (UC-PEER-02 اكتملت)
-    // completed: احتُسبت الدرجات النهائية (UC-PEER-04 اكتملت)
+    allowFileSubmission: { type: Boolean, default: true },
+    maxAttempts: { type: Number, default: 3, min: 1, max: 5 },
     status: {
       type: String,
-      enum: ['open', 'distributed', 'completed'],
+      enum: ['open', 'distributing', 'distributed', 'completed'],
       default: 'open',
     },
     distributedAt: { type: Date, default: null },
@@ -56,6 +58,20 @@ const peerAssignmentSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+peerAssignmentSchema.pre('validate', function (next) {
+  if (this.reviewDeadline && !this.submissionDeadline) {
+    return next(new Error('reviewDeadline requires submissionDeadline to be set.'));
+  }
+  if (
+    this.submissionDeadline &&
+    this.reviewDeadline &&
+    this.reviewDeadline <= this.submissionDeadline
+  ) {
+    return next(new Error('reviewDeadline must be after submissionDeadline.'));
+  }
+  next();
+});
 
 peerAssignmentSchema.index({ courseId: 1, submissionDeadline: 1 });
 peerAssignmentSchema.index({ status: 1, submissionDeadline: 1 });

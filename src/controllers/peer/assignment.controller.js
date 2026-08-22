@@ -50,4 +50,43 @@ async function getAssignment(req, res, next) {
   }
 }
 
-module.exports = { createAssignment, listAssignments, getAssignment };
+/** PATCH /api/v1/peer/assignments/:assignmentId */
+async function updateAssignment(req, res, next) {
+  try {
+    const instructorId = req.user.id;
+    const { assignmentId } = req.params;
+    const result = await peerService.updateAssignment({
+      instructorId,
+      assignmentId,
+      updateData: req.validatedBody,
+      req,
+    });
+    return res
+      .status(200)
+      .json({ success: true, message: 'Assignment updated.', data: result.data });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+/** DELETE /api/v1/peer/assignments/:assignmentId */
+async function deleteAssignment(req, res, next) {
+  try {
+    const instructorId = req.user.id;
+    const { assignmentId } = req.params;
+    const result = await peerService.deleteAssignment({ instructorId, assignmentId, req });
+    return res
+      .status(200)
+      .json({ success: true, message: 'Assignment deleted.', data: result.data });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+module.exports = {
+  createAssignment,
+  listAssignments,
+  getAssignment,
+  updateAssignment,
+  deleteAssignment,
+};

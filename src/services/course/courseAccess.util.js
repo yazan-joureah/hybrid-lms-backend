@@ -1,17 +1,10 @@
 // src/services/course/courseAccess.util.js
-// Shared helpers used across every course service. Centralizes the
-// "load course -> verify ownership -> (optionally) verify editable state"
 
 const Course = require('../../models/Course');
-const { AppError } = require('../../middleware/errorHandler');
-const auditService = require('../auditService');
 const { toObjectId } = require('../../utils/objectId.util');
 const { assertCourseEditable } = require('./reviewState.service');
+const { loadOwnedResource } = require('../../utils/ownedResource.util');
 
-/**
- * Loads a course, verifies the given instructor owns it, and (optionally)
- * asserts it is currently editable.
- */
 async function loadOwnedCourse({
   courseId,
   instructorId,
@@ -22,23 +15,19 @@ async function loadOwnedCourse({
   const safeCourseId = toObjectId(courseId, 'courseId');
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
 
-  const course = await Course.findById(safeCourseId);
-  if (!course) {
-    throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found.');
-  }
-
-  if (course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
-    await auditService.record({
-      actorId: safeInstructorId,
-      actorRole: 'Instructor',
-      action: 'UNAUTHORIZED_COURSE_ACCESS_ATTEMPT',
-      resourceType: 'Course',
-      resourceId: safeCourseId,
-      metadata: { target_owner: course.owner_instructor_id, attempted_action: attemptedAction },
-      req,
-    });
-    throw new AppError(403, 'FORBIDDEN', 'You do not have permission to modify this course.');
-  }
+  const course = await loadOwnedResource({
+    model: Course,
+    resourceId: safeCourseId,
+    actorId: safeInstructorId,
+    ownerField: 'owner_instructor_id',
+    resourceType: 'Course',
+    notFoundCode: 'COURSE_NOT_FOUND',
+    notFoundMessage: 'Course not found.',
+    forbiddenMessage: 'You do not have permission to modify this course.',
+    unauthorizedAction: 'UNAUTHORIZED_COURSE_ACCESS_ATTEMPT',
+    auditMetadata: { attempted_action: attemptedAction },
+    req,
+  });
 
   if (requireEditable) {
     assertCourseEditable(course);
@@ -47,7 +36,6 @@ async function loadOwnedCourse({
   return { course, safeCourseId, safeInstructorId };
 }
 
-/** Shared pagination for every `Model.find(query)` list endpoint. */
 async function paginateQuery({
   model,
   query,

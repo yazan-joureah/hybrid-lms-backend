@@ -2,6 +2,11 @@
  * Integration tests — PEER module (UC-PEER-01..04 + مرحلة التسليم)
  * يغطي المسار الأساسي الكامل: إنشاء مهمة → 3 طلاب يسلّمون → توزيع →
  * 3 مراجعات → احتساب الدرجة النهائية، بالإضافة لأهم حالات الرفض.
+ *
+ * ملاحظة: التوزيع والاحتساب هنا يُستدعيان يدوياً عبر مسارات /distribute
+ * و /calculate-grades كاحتياط، لكن في السيناريو الواقعي (كورس async) قد
+ * يحدثان تلقائياً بشكل أبكر عبر ensureAssignmentUpToDate بمجرد وصول عدد
+ * التسليمات إلى 3، دون انتظار الموعد النهائي.
  */
 const request = require('supertest');
 const mongoose = require('mongoose');
@@ -13,6 +18,7 @@ const Enrollment = require('../../src/models/Enrollment');
 const PeerAssignment = require('../../src/models/peerAssignment.model');
 const PeerSubmission = require('../../src/models/peerSubmission.model');
 const PeerReview = require('../../src/models/peerReview.model');
+const CourseProgressEvent = require('../../src/models/CourseProgressEvent');
 const { hashPassword } = require('../../src/utils/crypto');
 const redisClient = require('../../src/config/redis');
 const { signAccessToken } = require('../../src/utils/jwt');
@@ -34,13 +40,14 @@ beforeEach(async () => {
     PeerAssignment.deleteMany({}),
     PeerSubmission.deleteMany({}),
     PeerReview.deleteMany({}),
+    CourseProgressEvent.deleteMany({}),
   ]);
-  if (redisClient.isOpen) await redisClient.flushdb();
+  if (redisClient.status === 'ready') await redisClient.flushdb();
 });
 
 afterAll(async () => {
   await mongoose.connection.close();
-  await redisClient.quit();
+  if (redisClient.status !== 'end') await redisClient.quit();
 });
 
 async function createUserAndLogin({ role, email }) {
@@ -149,7 +156,9 @@ describe('PEER — full happy path', () => {
     // ننتظر حتى تنتهي مهلة التسليم فعلياً
     await new Promise((resolve) => setTimeout(resolve, 1100));
 
-    // UC-PEER-02 — Distribute (احتياطي يدوي من المحاضر، بدل انتظار الـ Cron)
+    // UC-PEER-02 — Distribute (احتياطي يدوي؛ التوزيع التلقائي أصبح عبر نمط
+    // Lazy Check-on-Access في lifecycle.service.js عند أي وصول لاحق للمهمة،
+    // وليس عبر peerCron.job.js الذي تم حذفه)
     const distributeRes = await request(app)
       .post(`/api/v1/peer/assignments/${assignmentId}/distribute`)
       .set('Authorization', `Bearer ${instructorToken}`);
@@ -191,7 +200,8 @@ describe('PEER — full happy path', () => {
     // ننتظر حتى تنتهي مهلة المراجعة
     await new Promise((resolve) => setTimeout(resolve, 1100));
 
-    // UC-PEER-04 — Calculate Final Grades (احتياطي يدوي)
+    // UC-PEER-04 — Calculate Final Grades (احتياطي يدوي؛ الاحتساب التلقائي عند
+    // انتهاء reviewDeadline يحدث أيضاً بشكل كسول عبر lifecycle.service.js)
     const gradeRes = await request(app)
       .post(`/api/v1/peer/assignments/${assignmentId}/calculate-grades`)
       .set('Authorization', `Bearer ${instructorToken}`);
