@@ -139,9 +139,13 @@ function encryptForUser(plaintextBuffer, userId) {
 
 function decryptForUser(encryptedBuffer, userId) {
   const key = deriveUserKey(userId);
-  const iv = encryptedBuffer.subarray(0, GCM_IV_BYTES);
-  const authTag = encryptedBuffer.subarray(GCM_IV_BYTES, GCM_IV_BYTES + 16);
-  const ciphertext = encryptedBuffer.subarray(GCM_IV_BYTES + 16);
+  const buf = Buffer.isBuffer(encryptedBuffer)
+    ? encryptedBuffer
+    : Buffer.from(encryptedBuffer.buffer || encryptedBuffer);
+
+  const iv = buf.subarray(0, GCM_IV_BYTES);
+  const authTag = buf.subarray(GCM_IV_BYTES, GCM_IV_BYTES + 16);
+  const ciphertext = buf.subarray(GCM_IV_BYTES + 16);
 
   const decipher = nodeCrypto.createDecipheriv(ENCRYPTION_ALGORITHM, key, iv);
   decipher.setAuthTag(authTag);
