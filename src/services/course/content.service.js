@@ -10,9 +10,8 @@ const fileStorage = require('../fileStorage.service');
 const { triggerReviewOnPublishedEdit } = require('./reviewState.service');
 const { toObjectId } = require('../../utils/objectId.util');
 const { loadOwnedCourse } = require('./courseAccess.util');
+const { COURSE_CONTENT_POLICY } = require('../../config/uploadPolicies');
 
-const COURSE_CONTENT_ALLOWED_MIME_TYPES = Object.freeze(['video/mp4', 'application/pdf']);
-const COURSE_CONTENT_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 const FILE_BACKED_TYPES = ['video', 'document'];
 const ADMIN_ROLES = ['Admin', 'SuperAdmin'];
 
@@ -50,10 +49,11 @@ async function addContent({
         `A file is required for content_type '${contentType}'.`
       );
     }
-    const validation = await validateUploadedFile(file.buffer, file.originalname, {
-      allowedMimeTypes: COURSE_CONTENT_ALLOWED_MIME_TYPES,
-      maxFileSizeBytes: COURSE_CONTENT_MAX_FILE_SIZE_BYTES,
-    });
+    const validation = await validateUploadedFile(
+      file.buffer,
+      file.originalname,
+      COURSE_CONTENT_POLICY
+    );
     if (!validation.valid) {
       throw new AppError(400, validation.reason, 'The uploaded file failed validation.');
     }
@@ -173,32 +173,18 @@ async function updateContent({
     content.content_data = { text: contentData.text };
 
   if (file?.buffer && FILE_BACKED_TYPES.includes(content.content_type)) {
-    const validation = await validateUploadedFile(file.buffer, file.originalname, {
-      allowedMimeTypes: COURSE_CONTENT_ALLOWED_MIME_TYPES,
-      maxFileSizeBytes: COURSE_CONTENT_MAX_FILE_SIZE_BYTES,
-    });
-    if (!validation.valid)
-      throw new AppError(400, validation.reason, 'The uploaded file failed validation.');
-
-    const oldFileId = content.storage_path?.split('/').pop();
-    const { storagePath } = await fileStorage.uploadFile({
-      buffer: file.buffer,
-      filename: file.originalname,
-      mimeType: validation.detectedMime,
-      sizeBytes: file.buffer.length,
+    const { storagePath, detectedMime, sizeBytes } = await fileStorage.replaceFile({
+      file,
+      previousStoragePath: content.storage_path,
+      ...COURSE_CONTENT_POLICY,
       userId: safeInstructorId,
       actorRole: 'Instructor',
       req,
       metadata: { course_id: safeCourseId, unit_id: safeUnitId },
     });
     content.storage_path = storagePath;
-    content.mime_type = validation.detectedMime;
-    content.size_bytes = file.buffer.length;
-    if (oldFileId) {
-      await fileStorage
-        .deleteFile({ fileId: oldFileId, userId: safeInstructorId, actorRole: 'Instructor', req })
-        .catch(() => {});
-    }
+    content.mime_type = detectedMime;
+    content.size_bytes = sizeBytes;
   }
 
   await content.save();
@@ -248,9 +234,12 @@ async function deleteContent({ courseId, unitId, contentId, instructorId, req })
 
   if (content.storage_path) {
     const fileId = content.storage_path.split('/').pop();
-    await fileStorage
-      .deleteFile({ fileId, userId: safeInstructorId, actorRole: 'Instructor', req })
-      .catch(() => {});
+    await fileStorage.safeDeleteFile({
+      fileId,
+      userId: safeInstructorId,
+      actorRole: 'Instructor',
+      req,
+    });
   }
 
   await auditService.record({

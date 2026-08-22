@@ -11,6 +11,7 @@ const { rateLimit } = require('../middleware/rateLimiter');
 const { validateBody } = require('../middleware/validate');
 const requireVerifiedIdentity = require('../middleware/requireVerifiedIdentity.middleware');
 const { createMemoryUpload } = require('../middleware/upload.util');
+const { COURSE_CONTENT_POLICY, IMAGE_POLICY } = require('../config/uploadPolicies');
 const {
   courseCreateSchema,
   courseUpdateSchema,
@@ -23,9 +24,8 @@ const {
   reorderContentSchema,
 } = require('../validators/courseSchemas');
 
-const COURSE_CONTENT_MAX_BYTES = 50 * 1024 * 1024;
-const uploadCourseContent = createMemoryUpload(COURSE_CONTENT_MAX_BYTES, 1);
-const uploadImage = createMemoryUpload(5 * 1024 * 1024, 1);
+const uploadCourseContent = createMemoryUpload(COURSE_CONTENT_POLICY.maxFileSizeBytes, 1);
+const uploadImage = createMemoryUpload(IMAGE_POLICY.maxFileSizeBytes, 1);
 
 // --- Course creation / core management ---
 router.post(

@@ -16,7 +16,8 @@
     "prepare": "husky",
     "seed:prod-superadmin": "node scripts/seedProdSuperAdmin.js",
     "seed:dev-users": "node scripts/seedDevUsers.js",
-    "seed:live-demo": "node scripts/seedLiveDemoData.js"
+    "seed:live-demo": "node scripts/seedLiveDemoData.js",
+    "seed:peer-demo": "node scripts/seedPeerDemoData.js"
   },
   "engines": {
     "node": ">=22.0.0"
@@ -43,6 +44,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.5.0",
     "multer": "^2.2.0",
+    "node-cron": "^3.0.3",
     "node-fetch": "2.7.0",
     "qrcode": "^1.5.4",
     "socket.io": "^4.7.5",

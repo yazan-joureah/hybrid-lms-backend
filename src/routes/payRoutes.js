@@ -42,4 +42,15 @@ router.post(
   payController.reviewRefundHandler
 );
 
+router.get('/payments/:paymentId', requireAuth, payController.paymentStatus);
+
+router.get('/my-payments', requireAuth, requireRole(['Student']), payController.myPayments);
+
+router.get(
+  '/refund-requests',
+  requireAuth,
+  requireRole(['Admin', 'SuperAdmin']),
+  payController.refundRequestsList
+);
+
 module.exports = router;

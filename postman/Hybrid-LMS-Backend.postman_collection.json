@@ -1,0 +1,4691 @@
+{
+  "info": {
+    "_postman_id": "d4e5f6a7-0000-4000-8000-000000000000",
+    "name": "Hybrid LMS Backend — AUTH Module",
+    "description": "Curated, representative Postman test suite for the AUTH module of the Hybrid LMS backend (Yazan Jawriyyeh — 174681). Covers every endpoint actually implemented as of this collection's creation date: Health Check, Registration, Email Verification, Guardian Approval, and Login. Requests marked [MANUAL] in their description require a value copied by a human from the running server's console (dev-mode email log) or a real inbox, because raw verification/approval tokens are, by design (DP-08), never returned in any API response. See README.md in this folder for full setup and CI/CD notes.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Collection-wide utility: a fresh unique email + matching NFR-01-compliant",
+          "// password for every request that needs brand-new, never-seen-before test data.",
+          "const ts = Date.now();",
+          "pm.collectionVariables.set('timestamp', ts);",
+          "pm.collectionVariables.set('randomEmail', `postman.dynamic.${ts}@example.com`);",
+          "pm.collectionVariables.set('randomPassword', `Postman-Dynamic-Passphrase-${ts}`);",
+          "",
+          "function isoDateYearsAgo(years, extraDays = 0) {",
+          "  const d = new Date();",
+          "  d.setFullYear(d.getFullYear() - years);",
+          "  d.setDate(d.getDate() - extraDays);",
+          "  return d.toISOString().split('T')[0];",
+          "}",
+          "pm.collectionVariables.set('adultBirthDate', isoDateYearsAgo(30));",
+          "pm.collectionVariables.set('exactly18BirthDate', isoDateYearsAgo(18));",
+          "pm.collectionVariables.set('minorBirthDate', isoDateYearsAgo(17, 364));"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1"
+    },
+    {
+      "key": "instructorAccessToken",
+      "value": ""
+    },
+    {
+      "key": "studentAccessToken",
+      "value": ""
+    },
+    {
+      "key": "anotherStudentAccessToken",
+      "value": ""
+    },
+    {
+      "key": "demoCourseId",
+      "value": ""
+    },
+    {
+      "key": "liveSessionId",
+      "value": ""
+    },
+    {
+      "key": "studentUserId",
+      "value": ""
+    },
+    {
+      "key": "joinToken",
+      "value": ""
+    },
+    {
+      "key": "peerAssignmentId",
+      "value": ""
+    },
+    {
+      "key": "student1AccessToken",
+      "value": ""
+    },
+    {
+      "key": "student1Id",
+      "value": ""
+    },
+    {
+      "key": "student1ReviewId",
+      "value": ""
+    },
+    {
+      "key": "student2AccessToken",
+      "value": ""
+    },
+    {
+      "key": "student2Id",
+      "value": ""
+    },
+    {
+      "key": "student2ReviewId",
+      "value": ""
+    },
+    {
+      "key": "student3AccessToken",
+      "value": ""
+    },
+    {
+      "key": "student3Id",
+      "value": ""
+    },
+    {
+      "key": "student3ReviewId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "item": [
+        {
+          "name": "GET /health — service is up",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('success is true', () => pm.expect(body.success).to.eql(true));",
+                  "pm.test('data.status is ok', () => pm.expect(body.data.status).to.eql('ok'));",
+                  "pm.test('data.timestamp is a valid ISO date', () => {",
+                  "  pm.expect(new Date(body.data.timestamp).toISOString()).to.eql(body.data.timestamp);",
+                  "});",
+                  "pm.test('Content-Type is application/json', () => {",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Liveness check only — does NOT verify DB/Redis connectivity. See README for why this matters when interpreting a green result."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authentication — Registration",
+      "item": [
+        {
+          "name": "Success Cases",
+          "item": [
+            {
+              "name": "Register — Adult Student",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 201', () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "pm.test('success is true', () => pm.expect(body.success).to.eql(true));",
+                      "pm.test('message mentions verification email', () => {",
+                      "  pm.expect(body.data.message.toLowerCase()).to.include('verification email');",
+                      "});",
+                      "pm.test('requires_guardian_approval is NOT present for an adult', () => {",
+                      "  pm.expect(body.data.requires_guardian_approval).to.be.undefined;",
+                      "});",
+                      "pm.test('CSP security header is present (Helmet)', () => {",
+                      "  pm.expect(pm.response.headers.has('Content-Security-Policy')).to.be.true;",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Postman Adult Student\",\n  \"email\": \"{{randomEmail}}\",\n  \"password\": \"{{randomPassword}}\",\n  \"birth_date\": \"{{adultBirthDate}}\",\n  \"role\": \"Student\",\n  \"privacy_consent_version\": \"v1.0\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/register",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "register"
+                  ]
+                },
+                "description": "UC-AUTH-01 adult path. Uses a fresh random email/password generated by the collection-level pre-request script — safe to run repeatedly without collisions."
+              }
+            },
+            {
+              "name": "Register — Minor Student (with guardian_email)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 201', () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "pm.test('requires_guardian_approval is true', () => {",
+                      "  pm.expect(body.data.requires_guardian_approval).to.eql(true);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Postman Minor Student\",\n  \"email\": \"minor.{{timestamp}}@example.com\",\n  \"password\": \"{{randomPassword}}\",\n  \"birth_date\": \"{{minorBirthDate}}\",\n  \"role\": \"Student\",\n  \"privacy_consent_version\": \"v1.0\",\n  \"guardian_email\": \"guardian.{{timestamp}}@example.com\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/register",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "register"
+                  ]
+                },
+                "description": "UC-AUTH-01 minor path — triggers UC-AUTH-02 (Guardian Approval) internally. birth_date is exactly 17 years and 364 days ago (still a minor), computed by the pre-request script."
+              }
+            },
+            {
+              "name": "Register — Instructor",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 201', () => pm.response.to.have.status(201));",
+                      "pm.test('success is true', () => pm.expect(pm.response.json().success).to.eql(true));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Postman Instructor\",\n  \"email\": \"instructor.{{timestamp}}@example.com\",\n  \"password\": \"{{randomPassword}}\",\n  \"birth_date\": \"{{adultBirthDate}}\",\n  \"role\": \"Instructor\",\n  \"privacy_consent_version\": \"v1.0\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/register",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "register"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validation Errors",
+          "item": [
+            {
+              "name": "Register — Password Too Short (NFR-01)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 400', () => pm.response.to.have.status(400));",
+                      "pm.test('success is false', () => pm.expect(pm.response.json().success).to.eql(false));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Too Short Password\",\n  \"email\": \"shortpw.{{timestamp}}@example.com\",\n  \"password\": \"short\",\n  \"birth_date\": \"{{adultBirthDate}}\",\n  \"role\": \"Student\",\n  \"privacy_consent_version\": \"v1.0\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/register",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "register"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Register — Invalid Email Format",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 400', () => pm.response.to.have.status(400));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Invalid Email\",\n  \"email\": \"not-an-email\",\n  \"password\": \"{{randomPassword}}\",\n  \"birth_date\": \"{{adultBirthDate}}\",\n  \"role\": \"Student\",\n  \"privacy_consent_version\": \"v1.0\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/register",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "register"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Register — guardian_email equals email (MUC-AUTH-09)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 400', () => pm.response.to.have.status(400));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Same Guardian Email\",\n  \"email\": \"same.{{timestamp}}@example.com\",\n  \"password\": \"{{randomPassword}}\",\n  \"birth_date\": \"{{minorBirthDate}}\",\n  \"role\": \"Student\",\n  \"privacy_consent_version\": \"v1.0\",\n  \"guardian_email\": \"same.{{timestamp}}@example.com\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/register",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "register"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Register — Missing Required Fields",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 400', () => pm.response.to.have.status(400));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"missing.{{timestamp}}@example.com\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/register",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "register"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Edge Cases",
+          "item": [
+            {
+              "name": "Register — birth_date exactly 18 years ago (adult boundary)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 201 (treated as adult)', () => pm.response.to.have.status(201));",
+                      "pm.test('requires_guardian_approval is NOT present', () => {",
+                      "  pm.expect(pm.response.json().data.requires_guardian_approval).to.be.undefined;",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Exactly Eighteen\",\n  \"email\": \"exactly18.{{timestamp}}@example.com\",\n  \"password\": \"{{randomPassword}}\",\n  \"birth_date\": \"{{exactly18BirthDate}}\",\n  \"role\": \"Student\",\n  \"privacy_consent_version\": \"v1.0\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/register",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "register"
+                  ]
+                },
+                "description": "Boundary test for ageCalculator.isMinor() — turning 18 exactly today must be classified as adult, matching the unit test already covering this in tests/unit/ageCalculator.test.js."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rate Limiting (Android-style backoff)",
+          "item": [
+            {
+              "name": "Register — repeat this request 6x via Collection Runner to trigger 429",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// On the 6th+ run within the window, this assertion is what should pass.",
+                      "// On runs 1-5 it will correctly show as a 'failed' assertion — that is expected,",
+                      "// not a bug. See README section 'Rate limiting test interpretation'.",
+                      "if (pm.response.code === 429) {",
+                      "  pm.test('429 body has error.code=RATE_LIMITED', () => {",
+                      "    pm.expect(pm.response.json().error.code).to.eql('RATE_LIMITED');",
+                      "  });",
+                      "  pm.test('Retry-After header is a positive integer', () => {",
+                      "    const retryAfter = Number(pm.response.headers.get('Retry-After'));",
+                      "    pm.expect(retryAfter).to.be.above(0);",
+                      "  });",
+                      "} else {",
+                      "  pm.test('below threshold — 201 as expected', () => pm.response.to.have.status(201));",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Rate Limit Target\",\n  \"email\": \"rate.limit.target@example.com\",\n  \"password\": \"{{randomPassword}}\",\n  \"birth_date\": \"{{adultBirthDate}}\",\n  \"role\": \"Student\",\n  \"privacy_consent_version\": \"v1.0\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/register",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "register"
+                  ]
+                },
+                "description": "IMPORTANT: uses a FIXED email (not the dynamic {{randomEmail}}) on purpose — the rate limiter keys off the identifier, so repeating this exact request is what accumulates hits. Run via Collection Runner with 6+ iterations, or Newman with -n 6. Because the backoff is escalating and persists 24h (violationsTtlSeconds), flush Redis between full test-suite runs — see README."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Authentication — Email Verification",
+      "item": [
+        {
+          "name": "Verify Email — Invalid Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('error.code is TOKEN_INVALID', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('TOKEN_INVALID');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-email?token=this-token-does-not-exist",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify-email"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "this-token-does-not-exist"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "[MANUAL] Verify Email — Valid Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('manualVerificationToken')) {",
+                  "  pm.test.skip('manualVerificationToken environment variable is empty — see request description');",
+                  "} else {",
+                  "  pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                  "  pm.test('status is active or guardian_pending', () => {",
+                  "    pm.expect(['active', 'guardian_pending']).to.include(pm.response.json().data.status);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-email?token={{manualVerificationToken}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify-email"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{manualVerificationToken}}"
+                }
+              ]
+            },
+            "description": "MANUAL STEP REQUIRED: run 'Register — Adult Student' above first, then copy the token from the '--- DEV EMAIL ---' block printed in the server's terminal (or the real inbox if Gmail is configured), paste it into the 'manualVerificationToken' environment variable, then run this request. This cannot be automated in Newman/CI without a dedicated test-only endpoint — see README."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authentication — Guardian Approval",
+      "item": [
+        {
+          "name": "Placeholder GET (Frontend team's future page)",
+          "item": [
+            {
+              "name": "GET /guardian/approve — without token",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                      "pm.test('token_received is false', () => {",
+                      "  pm.expect(pm.response.json().data.token_received).to.eql(false);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/guardian/approve",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "guardian",
+                    "approve"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "GET /guardian/approve — with token",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                      "pm.test('token_received is true', () => {",
+                      "  pm.expect(pm.response.json().data.token_received).to.eql(true);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/guardian/approve?token=anything",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "guardian",
+                    "approve"
+                  ],
+                  "query": [
+                    {
+                      "key": "token",
+                      "value": "anything"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validation Errors",
+          "item": [
+            {
+              "name": "POST Approve — approve without consent=true",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 400', () => pm.response.to.have.status(400));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"token\": \"irrelevant-fails-validation-first\",\n  \"decision\": \"approve\",\n  \"guardian_full_name\": \"Test Guardian\",\n  \"relationship\": \"parent\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/guardian/approve",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "guardian",
+                    "approve"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "POST Approve — invalid relationship value",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 400', () => pm.response.to.have.status(400));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"token\": \"irrelevant\",\n  \"decision\": \"approve\",\n  \"guardian_full_name\": \"Test Guardian\",\n  \"relationship\": \"uncle\",\n  \"consent\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/guardian/approve",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "guardian",
+                    "approve"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token Error Cases",
+          "item": [
+            {
+              "name": "POST Approve — invalid token (TOKEN_INVALID)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 400', () => pm.response.to.have.status(400));",
+                      "pm.test('error.code is TOKEN_INVALID', () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql('TOKEN_INVALID');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"token\": \"this-token-does-not-exist\",\n  \"decision\": \"approve\",\n  \"guardian_full_name\": \"Test Guardian\",\n  \"relationship\": \"parent\",\n  \"consent\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/guardian/approve",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "guardian",
+                    "approve"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "[MANUAL] Approve — valid token, full flow",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('manualGuardianApprovalToken')) {",
+                  "  pm.test.skip('manualGuardianApprovalToken environment variable is empty — see request description');",
+                  "} else {",
+                  "  pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{manualGuardianApprovalToken}}\",\n  \"decision\": \"approve\",\n  \"guardian_full_name\": \"Test Guardian\",\n  \"relationship\": \"parent\",\n  \"consent\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/guardian/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "guardian",
+                "approve"
+              ]
+            },
+            "description": "MANUAL STEP REQUIRED: run 'Register — Minor Student' above, copy the approval_token from the server console's DEV EMAIL block (subject 'Guardian approval needed...'), paste into 'manualGuardianApprovalToken', then run this."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authentication — Login",
+      "item": [
+        {
+          "name": "Login — Success (no MFA, seeded user)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('access_token is present', () => pm.expect(body.data.access_token).to.be.a('string'));",
+                  "pm.test('redirect_to is /dashboard for a Student', () => {",
+                  "  pm.expect(body.data.user.redirect_to).to.eql('/dashboard');",
+                  "});",
+                  "pm.test('refresh_token cookie is set as HttpOnly', () => {",
+                  "  const setCookie = pm.response.headers.get('Set-Cookie') || '';",
+                  "  pm.expect(setCookie).to.include('refresh_token=');",
+                  "  pm.expect(setCookie).to.include('HttpOnly');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{seededLoginEmail}}\",\n  \"password\": \"{{seededPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "REQUIRES running scripts/seedTestUser.js once against your local database first — see README."
+          }
+        },
+        {
+          "name": "Login — MFA required (seeded MFA user)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('mfa_required is true', () => pm.expect(body.data.mfa_required).to.eql(true));",
+                  "pm.test('mfa_temp_token is present, access_token is NOT', () => {",
+                  "  pm.expect(body.data.mfa_temp_token).to.be.a('string');",
+                  "  pm.expect(body.data.access_token).to.be.undefined;",
+                  "});",
+                  "pm.test('no refresh_token cookie is set before MFA is proven', () => {",
+                  "  pm.expect(pm.response.headers.has('Set-Cookie')).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{seededMfaEmail}}\",\n  \"password\": \"{{seededPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Login — Invalid Credentials (User Enumeration check)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error.code is INVALID_CREDENTIALS', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('INVALID_CREDENTIALS');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"this.account.does.not.exist@example.com\",\n  \"password\": \"{{seededPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Run this AND a request with a real email + wrong password, then diff the two bodies by hand once — they must be byte-identical (see tests/integration/login.test.js for the automated version of this exact check)."
+          }
+        },
+        {
+          "name": "Authentication — MFA (TOTP)",
+          "item": [
+            {
+              "name": "Setup TOTP — returns QR + manual key",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "pm.test('qr_code_data_url is a data URL', () => {",
+                      "  pm.expect(body.data.qr_code_data_url).to.match(/^data:image\\/png;base64,/);",
+                      "});",
+                      "pm.test('manual_entry_key is present (Base32)', () => {",
+                      "  pm.expect(body.data.manual_entry_key).to.be.a('string');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/mfa/totp/setup",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "mfa",
+                    "totp",
+                    "setup"
+                  ]
+                },
+                "description": "manual_entry_key is the raw Base32 TOTP secret — copy it into an authenticator app (or a TOTP code generator) to compute a valid 6-digit code for 'Verify TOTP' below."
+              }
+            },
+            {
+              "name": "Setup TOTP — no Authorization header → 401",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 401', () => pm.response.to.have.status(401));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/mfa/totp/setup",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "mfa",
+                    "totp",
+                    "setup"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Verify TOTP — malformed code (not 6 digits) → 400 Zod",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 400', () => pm.response.to.have.status(400));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"12\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/mfa/totp/verify",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "mfa",
+                    "totp",
+                    "verify"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Verify TOTP — no pending setup → 400 NO_PENDING_SETUP",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 400', () => pm.response.to.have.status(400));",
+                      "pm.test('error.code is NO_PENDING_SETUP', () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql('NO_PENDING_SETUP');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"123456\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/mfa/totp/verify",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "mfa",
+                    "totp",
+                    "verify"
+                  ]
+                },
+                "description": "Fresh user who never called Setup TOTP first — use a NEW account for this specific test, not one that already ran 'Setup TOTP' above."
+              }
+            },
+            {
+              "name": "[MANUAL] Verify TOTP — valid code → enables MFA + backup codes",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.environment.get('manualTotpCode')) {",
+                      "  pm.test.skip('manualTotpCode is empty — compute a live 6-digit code from manual_entry_key using any TOTP tool, paste into the environment variable, then run this within its 30s window');",
+                      "} else {",
+                      "  pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                      "  pm.test('backup_codes is an array of 10', () => {",
+                      "    pm.expect(pm.response.json().data.backup_codes).to.have.lengthOf(10);",
+                      "  });",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"{{manualTotpCode}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/mfa/totp/verify",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "mfa",
+                    "totp",
+                    "verify"
+                  ]
+                },
+                "description": "MANUAL: run 'Setup TOTP' first, compute a live code from manual_entry_key (30-second window, ±1 step tolerance per SF-AUTH-02), set it as environment variable 'manualTotpCode', then run within that window."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Authentication — Session Management",
+          "item": [
+            {
+              "name": "Refresh — no cookies sent → 401 TOKEN_MISSING or 403 CSRF",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 401 or 403', () => pm.expect([401, 403]).to.include(pm.response.code));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/refresh",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "refresh"
+                  ]
+                },
+                "description": "requireCsrfToken runs BEFORE authService.refreshSession, so a request with zero cookies at all is caught by the CSRF layer first (403) — see tests/integration/refresh.test.js for the exact precedence."
+              }
+            },
+            {
+              "name": "Refresh — valid cookie jar (run right after Login) → new access_token",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                      "pm.test('new access_token is present', () => {",
+                      "  pm.expect(pm.response.json().data.access_token).to.be.a('string');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/refresh",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "refresh"
+                  ]
+                },
+                "description": "REQUIRES Postman's cookie jar to already hold refresh_token + csrf_token from a prior 'Login — Success' run in THE SAME session (enable 'Automatically follow redirects' + cookie persistence in Postman settings). Set {{csrfToken}} manually from the csrf_token cookie value shown in Postman's Cookies panel — Postman cannot read a non-HttpOnly cookie into a variable automatically without a small script; see README."
+              }
+            },
+            {
+              "name": "Logout — no Authorization header → 401",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 401', () => pm.response.to.have.status(401));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/logout",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "logout"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Logout — valid token → clears cookies",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                      "pm.test('Set-Cookie clears refresh_token', () => {",
+                      "  const setCookie = pm.response.headers.get('Set-Cookie') || '';",
+                      "  pm.expect(setCookie).to.include('refresh_token=;');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/logout",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "logout"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Authentication — Forgot / Reset Password",
+          "item": [
+            {
+              "name": "Forgot Password — existing email → generic 200",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                      "pm.test('message mentions reset link', () => {",
+                      "  pm.expect(pm.response.json().data.message.toLowerCase()).to.include('reset link');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"{{seededLoginEmail}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/forgot-password",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "forgot-password"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Forgot Password — non-existent email → SAME generic 200 (Enumeration prevention)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 200 — byte-identical shape to the existing-email case', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"definitely.does.not.exist.{{timestamp}}@example.com\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/forgot-password",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "forgot-password"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Reset Password — weak password → 400 before touching token (Zod-level)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 400', () => pm.response.to.have.status(400));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"token\": \"irrelevant-fails-validation-first\",\n  \"new_password\": \"short\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/reset-password",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "reset-password"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Reset Password — invalid token → 400 TOKEN_INVALID",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 400', () => pm.response.to.have.status(400));",
+                      "pm.test('error.code is TOKEN_INVALID', () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql('TOKEN_INVALID');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"token\": \"this-token-does-not-exist\",\n  \"new_password\": \"a-genuinely-long-passphrase-2026\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/reset-password",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "reset-password"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "[MANUAL] Reset Password — valid token → 200, all sessions terminated",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.environment.get('manualResetToken')) {",
+                      "  pm.test.skip('manualResetToken is empty — run \"Forgot Password\" above, copy the token from the DEV EMAIL console log, paste it here');",
+                      "} else {",
+                      "  pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"token\": \"{{manualResetToken}}\",\n  \"new_password\": \"a-brand-new-genuinely-long-passphrase-2026\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/reset-password",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "reset-password"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Authentication — Google OAuth",
+          "item": [
+            {
+              "name": "[MANUAL] GET /google — redirects to Google consent screen",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 302', () => pm.response.to.have.status(302));",
+                      "pm.test('Location points to Google', () => {",
+                      "  pm.expect(pm.response.headers.get('Location')).to.include('accounts.google.com');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/google",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "google"
+                  ]
+                },
+                "description": "MANUAL: Postman will follow the redirect automatically if 'Automatically follow redirects' is on — disable it for this specific test to inspect the 302 itself. The full consent→callback round trip requires a real browser and a real Google account; cannot be automated here."
+              }
+            },
+            {
+              "name": "Callback — invalid/forged state → 403 INVALID_STATE",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 403', () => pm.response.to.have.status(403));",
+                      "pm.test('error.code is INVALID_STATE', () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql('INVALID_STATE');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/google/callback?code=fake&state=this-state-was-never-issued",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "google",
+                    "callback"
+                  ],
+                  "query": [
+                    {
+                      "key": "code",
+                      "value": "fake"
+                    },
+                    {
+                      "key": "state",
+                      "value": "this-state-was-never-issued"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Link Confirm — missing body fields → 400 Zod",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 400', () => pm.response.to.have.status(400));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/google/link/confirm",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "google",
+                    "link",
+                    "confirm"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Register Confirm — malformed birth_date → 400 Zod",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status code is 400', () => pm.response.to.have.status(400));"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"registration_pending_token\": \"irrelevant\",\n  \"birth_date\": \"not-a-date\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/google/register/confirm",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "google",
+                    "register",
+                    "confirm"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "KYC",
+          "item": [
+            {
+              "name": "Setup (Seed Test Users)",
+              "item": [
+                {
+                  "name": "[MANUAL] README — how KYC section works",
+                  "event": [],
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/health",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "health"
+                      ]
+                    },
+                    "description": "KYC endpoints require an authenticated Bearer token AND, for review endpoints, an Admin/SuperAdmin role. Since /auth/register only creates Student/Instructor accounts, this collection relies on the SAME seeded test users used by 'Login — Success' above (seededLoginEmail/seededPassword), PLUS a seeded Admin account (seededAdminEmail/seededAdminPassword) that must exist in your local DB — see scripts/seedTestUser.js. Run 'Login as Student' and 'Login as Admin' below FIRST to populate the {{studentAccessToken}} and {{adminAccessToken}} collection variables used by every other request in this folder."
+                  }
+                },
+                {
+                  "name": "Login as Student (populates studentAccessToken)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                          "const body = pm.response.json();",
+                          "pm.collectionVariables.set('studentAccessToken', body.data.access_token);",
+                          "pm.test('studentAccessToken captured', () => {",
+                          "  pm.expect(pm.collectionVariables.get('studentAccessToken')).to.be.a('string');",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"email\": \"{{seededLoginEmail}}\",\n  \"password\": \"{{seededPassword}}\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/auth/login",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "auth",
+                        "login"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Login as Admin (populates adminAccessToken)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                          "const body = pm.response.json();",
+                          "pm.collectionVariables.set('adminAccessToken', body.data.access_token);",
+                          "pm.test('adminAccessToken captured', () => {",
+                          "  pm.expect(pm.collectionVariables.get('adminAccessToken')).to.be.a('string');",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"email\": \"{{seededAdminEmail}}\",\n  \"password\": \"{{seededAdminPassword}}\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/auth/login",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "auth",
+                        "login"
+                      ]
+                    },
+                    "description": "Requires a seeded Admin account with MFA already enabled (UC-AUTH-05 enforces MFA for Admin role) — if login returns mfa_required=true instead of access_token, this seeded account isn't configured for MFA-less testing. See README for the recommended seed script update."
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Submit KYC Request (UC-KYC-01)",
+              "item": [
+                {
+                  "name": "Submit — Student, valid PNG files → 201",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('status code is 201', () => pm.response.to.have.status(201));",
+                          "pm.test('success is true', () => pm.expect(pm.response.json().success).to.eql(true));"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{studentAccessToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "formdata",
+                      "formdata": [
+                        {
+                          "key": "idDocumentType",
+                          "value": "national_id",
+                          "type": "text"
+                        },
+                        {
+                          "key": "id_document",
+                          "type": "file",
+                          "src": []
+                        },
+                        {
+                          "key": "selfie",
+                          "type": "file",
+                          "src": []
+                        }
+                      ]
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/kyc/requests",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "kyc",
+                        "requests"
+                      ]
+                    },
+                    "description": "MANUAL: attach two small PNG files locally to the 'id_document' and 'selfie' form fields before running (Postman does not let a collection JSON embed real binary files — see README). Any real PNG under 5MB works."
+                  }
+                },
+                {
+                  "name": "Submit — no Authorization header → 401",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('status code is 401', () => pm.response.to.have.status(401));"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [],
+                    "body": {
+                      "mode": "formdata",
+                      "formdata": [
+                        {
+                          "key": "idDocumentType",
+                          "value": "national_id",
+                          "type": "text"
+                        }
+                      ]
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/kyc/requests",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "kyc",
+                        "requests"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Submit — missing selfie file → 400 MISSING_FILES",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('status code is 400', () => pm.response.to.have.status(400));",
+                          "pm.test('error.code is MISSING_FILES', () => {",
+                          "  pm.expect(pm.response.json().error.code).to.eql('MISSING_FILES');",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{studentAccessToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "formdata",
+                      "formdata": [
+                        {
+                          "key": "idDocumentType",
+                          "value": "national_id",
+                          "type": "text"
+                        },
+                        {
+                          "key": "id_document",
+                          "type": "file",
+                          "src": []
+                        }
+                      ]
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/kyc/requests",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "kyc",
+                        "requests"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Submit — invalid idDocumentType → 400 VALIDATION_ERROR",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('status code is 400', () => pm.response.to.have.status(400));",
+                          "pm.test('error.code is VALIDATION_ERROR', () => {",
+                          "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{studentAccessToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "formdata",
+                      "formdata": [
+                        {
+                          "key": "idDocumentType",
+                          "value": "drivers_license",
+                          "type": "text"
+                        },
+                        {
+                          "key": "id_document",
+                          "type": "file",
+                          "src": []
+                        },
+                        {
+                          "key": "selfie",
+                          "type": "file",
+                          "src": []
+                        }
+                      ]
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/kyc/requests",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "kyc",
+                        "requests"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Submit — repeat 3x to observe rate limiting (kyc-submit bucket)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "// Threshold is env.rateLimit.maxAttempts (default 5) within the 10-min window.",
+                          "// Run via Collection Runner 6+ times with the SAME studentAccessToken to trigger 429.",
+                          "if (pm.response.code === 429) {",
+                          "  pm.test('429 body has error.code=RATE_LIMITED', () => {",
+                          "    pm.expect(pm.response.json().error.code).to.eql('RATE_LIMITED');",
+                          "  });",
+                          "} else {",
+                          "  pm.test('below threshold — 201 or 400 as expected', () => {",
+                          "    pm.expect([201, 400]).to.include(pm.response.code);",
+                          "  });",
+                          "}"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{studentAccessToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "formdata",
+                      "formdata": [
+                        {
+                          "key": "idDocumentType",
+                          "value": "national_id",
+                          "type": "text"
+                        },
+                        {
+                          "key": "id_document",
+                          "type": "file",
+                          "src": []
+                        },
+                        {
+                          "key": "selfie",
+                          "type": "file",
+                          "src": []
+                        }
+                      ]
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/kyc/requests",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "kyc",
+                        "requests"
+                      ]
+                    },
+                    "description": "rateLimit('kyc-submit', by user id) — keyed off the Bearer token's user, so this must be run with the SAME studentAccessToken repeatedly, not a fresh login each time."
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Review KYC Requests (UC-KYC-02) — Admin only",
+              "item": [
+                {
+                  "name": "requireRole enforcement",
+                  "item": [
+                    {
+                      "name": "List pending — Student token → 403 FORBIDDEN",
+                      "event": [
+                        {
+                          "listen": "test",
+                          "script": {
+                            "type": "text/javascript",
+                            "exec": [
+                              "pm.test('status code is 403', () => pm.response.to.have.status(403));",
+                              "pm.test('error.code is FORBIDDEN', () => {",
+                              "  pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN');",
+                              "});"
+                            ]
+                          }
+                        }
+                      ],
+                      "request": {
+                        "method": "GET",
+                        "header": [
+                          {
+                            "key": "Authorization",
+                            "value": "Bearer {{studentAccessToken}}"
+                          }
+                        ],
+                        "url": {
+                          "raw": "{{baseUrl}}/kyc/requests",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "kyc",
+                            "requests"
+                          ]
+                        },
+                        "description": "Proves the OWASP A01 fix (requireRole middleware) holds at the HTTP layer — see tests/integration/kycRoutes.test.js for the automated equivalent."
+                      }
+                    },
+                    {
+                      "name": "List pending — Admin token → 200",
+                      "event": [
+                        {
+                          "listen": "test",
+                          "script": {
+                            "type": "text/javascript",
+                            "exec": [
+                              "pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                              "const body = pm.response.json();",
+                              "pm.test('data.requests is an array', () => {",
+                              "  pm.expect(body.data.requests).to.be.an('array');",
+                              "});",
+                              "if (body.data.requests.length > 0) {",
+                              "  pm.collectionVariables.set('lastKycRequestId', body.data.requests[0]._id);",
+                              "}"
+                            ]
+                          }
+                        }
+                      ],
+                      "request": {
+                        "method": "GET",
+                        "header": [
+                          {
+                            "key": "Authorization",
+                            "value": "Bearer {{adminAccessToken}}"
+                          }
+                        ],
+                        "url": {
+                          "raw": "{{baseUrl}}/kyc/requests",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "kyc",
+                            "requests"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "name": "Get request detail — Admin",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "if (!pm.collectionVariables.get('lastKycRequestId')) {",
+                          "  pm.test.skip('lastKycRequestId is empty — run \"List pending — Admin token\" first');",
+                          "} else {",
+                          "  pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                          "  pm.test('applicant data is present', () => {",
+                          "    pm.expect(pm.response.json().data.applicant.email).to.be.a('string');",
+                          "  });",
+                          "}"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{adminAccessToken}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/kyc/requests/{{lastKycRequestId}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "kyc",
+                        "requests",
+                        "{{lastKycRequestId}}"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Get document image — Admin (id_document)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "if (!pm.collectionVariables.get('lastKycRequestId')) {",
+                          "  pm.test.skip('lastKycRequestId is empty — run \"List pending — Admin token\" first');",
+                          "} else {",
+                          "  pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                          "  pm.test('Content-Type is an image type', () => {",
+                          "    pm.expect(pm.response.headers.get('Content-Type')).to.match(/^image\\//);",
+                          "  });",
+                          "  pm.test('Cache-Control is no-store', () => {",
+                          "    pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store');",
+                          "  });",
+                          "}"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{adminAccessToken}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/kyc/requests/{{lastKycRequestId}}/documents/id_document",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "kyc",
+                        "requests",
+                        "{{lastKycRequestId}}",
+                        "documents",
+                        "id_document"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Approve — green tier (matching birth dates) → outcome=verified",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "if (!pm.collectionVariables.get('lastKycRequestId')) {",
+                          "  pm.test.skip('lastKycRequestId is empty — run \"List pending — Admin token\" first');",
+                          "} else {",
+                          "  pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                          "  pm.test('outcome is verified', () => {",
+                          "    pm.expect(pm.response.json().data.outcome).to.eql('verified');",
+                          "  });",
+                          "}"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{adminAccessToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"documentBirthDate\": \"{{adultBirthDate}}\",\n  \"optionalNote\": \"Verified via Postman manual test\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/kyc/requests/{{lastKycRequestId}}/approve",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "kyc",
+                        "requests",
+                        "{{lastKycRequestId}}",
+                        "approve"
+                      ]
+                    },
+                    "description": "Uses {{adultBirthDate}} (set by the collection-wide pre-request script) to match the seeded student's actual birth_date — a 0-year discrepancy, EXT-KYC-01 green tier."
+                  }
+                },
+                {
+                  "name": "Approve — red tier (>2yr discrepancy) → outcome=age_flagged",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "if (!pm.collectionVariables.get('lastKycRequestId')) {",
+                          "  pm.test.skip('lastKycRequestId is empty — submit a NEW request and re-run \"List pending\" first (previous request is already verified/closed)');",
+                          "} else {",
+                          "  pm.test('status code is 200', () => pm.response.to.have.status(200));",
+                          "  pm.test('outcome is age_flagged', () => {",
+                          "    pm.expect(pm.response.json().data.outcome).to.eql('age_flagged');",
+                          "  });",
+                          "}"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{adminAccessToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"documentBirthDate\": \"1990-01-01\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/kyc/requests/{{lastKycRequestId}}/approve",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "kyc",
+                        "requests",
+                        "{{lastKycRequestId}}",
+                        "approve"
+                      ]
+                    },
+                    "description": "MANUAL PRE-STEP: submit a fresh KYC request (this one requires a request still in review_pending — run 'Submit — Student, valid PNG files' again, then 'List pending — Admin token' to refresh lastKycRequestId), since the previous test already closed the first request as 'verified'."
+                  }
+                },
+                {
+                  "name": "Reject — invalid rejectionReason → 400",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('status code is 400', () => pm.response.to.have.status(400));"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{adminAccessToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"rejectionReason\": \"MADE_UP_REASON\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/kyc/requests/{{lastKycRequestId}}/reject",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "kyc",
+                        "requests",
+                        "{{lastKycRequestId}}",
+                        "reject"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Reject — Student token attempts approve → 403 (state unchanged)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('status code is 403', () => pm.response.to.have.status(403));"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{studentAccessToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"documentBirthDate\": \"{{adultBirthDate}}\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/kyc/requests/{{lastKycRequestId}}/approve",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "kyc",
+                        "requests",
+                        "{{lastKycRequestId}}",
+                        "approve"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Security & Headers",
+      "item": [
+        {
+          "name": "Security headers present on any response",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Content-Security-Policy is present', () => {",
+                  "  pm.expect(pm.response.headers.has('Content-Security-Policy')).to.be.true;",
+                  "});",
+                  "pm.test('X-Content-Type-Options is nosniff', () => {",
+                  "  pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.eql('nosniff');",
+                  "});",
+                  "pm.test('X-Powered-By is NOT exposed', () => {",
+                  "  pm.expect(pm.response.headers.has('X-Powered-By')).to.be.false;",
+                  "});",
+                  "pm.test('Strict-Transport-Security is present (Helmet default — see README caveat)', () => {",
+                  "  pm.expect(pm.response.headers.has('Strict-Transport-Security')).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          }
+        },
+        {
+          "name": "CORS preflight (OPTIONS /auth/register)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 204', () => pm.response.to.have.status(204));",
+                  "pm.test('Access-Control-Allow-Origin is present', () => {",
+                  "  pm.expect(pm.response.headers.has('Access-Control-Allow-Origin')).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "OPTIONS",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "Access-Control-Request-Method",
+                "value": "POST"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Error Handling",
+      "item": [
+        {
+          "name": "GET /nonexistent — 404 Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status code is 404', () => pm.response.to.have.status(404));",
+                  "const raw = pm.response.text();",
+                  "pm.test('no stack trace leaked', () => {",
+                  "  pm.expect(raw).to.not.match(/at .+\\.js:\\d+/);",
+                  "  pm.expect(raw).to.not.include('node_modules');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/nonexistent-route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nonexistent-route"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Live Sessions & Attendance (LIVE + ATT)",
+      "item": [
+        {
+          "name": "0) Setup (run once)",
+          "item": [
+            {
+              "name": "README — run these two commands first in your terminal",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/health",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "health"
+                  ]
+                },
+                "description": "قبل تشغيل أي طلب في هذا المجلد:\n\n1. npm run seed:dev-users   → ينشئ instructor@dev.local و student@dev.local\n2. npm run seed:live-demo   → ينشئ كورساً وتسجيلاً فعلياً، ويطبع instructorAccessToken و studentAccessToken و demoCourseId في الطرفية\n\nالصقي القيم الثلاث المطبوعة في متغيرات هذه المجموعة (Collection Variables): instructorAccessToken, studentAccessToken, demoCourseId.\n\nالتوكنات صالحة 15 دقيقة فقط — أعيدي تشغيل seed:live-demo عند انتهائها."
+              }
+            }
+          ],
+          "description": "خطوات تجهيز البيانات والتوكنات قبل اختبار وحدتي LIVE وATT."
+        },
+        {
+          "name": "1) Pre-Session Management",
+          "item": [
+            {
+              "name": "UC-LIVE-01 — Create/Schedule Session",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions"
+                  ]
+                },
+                "description": "غيّري startTime/endTime لتكونا في المستقبل القريب (دقيقة أو دقيقتين من الآن) قبل تشغيل هذا الطلب فعلياً، كي تنجح اختبارات UC-LIVE-04 لاحقاً ضمن نفس الجلسة.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"courseId\": \"{{demoCourseId}}\",\n  \"title\": \"Week 1 — Introduction\",\n  \"meetingLink\": \"https://meet.jit.si/hybrid-lms-demo-room\",\n  \"startTime\": \"2026-08-10T10:00:00.000Z\",\n  \"endTime\": \"2026-08-10T11:00:00.000Z\",\n  \"lobbyEnabled\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "pm.collectionVariables.set('liveSessionId', body.data.session._id);",
+                      "pm.test('sessionId captured', () => pm.expect(pm.collectionVariables.get('liveSessionId')).to.be.a('string'));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "UC-LIVE-02 — Edit Session",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Week 1 — Introduction (Updated)\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "UC-LIVE-02 — Cancel Session",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/cancel",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "cancel"
+                  ]
+                },
+                "description": "شغّلي هذا الطلب على جلسة تجريبية منفصلة كي لا تُلغي الجلسة المستخدمة في بقية الاختبارات.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Instructor is unavailable — testing cancel flow\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "UC-LIVE-03 — View Live Schedule (Student)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-LIVE-03 — View Live Schedule (Instructor)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions"
+                  ]
+                },
+                "description": ""
+              }
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "2) Join & Access Control",
+          "item": [
+            {
+              "name": "UC-LIVE-04 — Join Live Session (Student)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/join",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "join"
+                  ]
+                },
+                "description": "يجب أن يكون الوقت الحالي ضمن [startTime, endTime] للجلسة، وإلا يرجع 400 SESSION_NOT_STARTED / SESSION_ENDED — راجعي ملاحظة الطلب السابق."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (!body.data.waiting) {",
+                      "  pm.collectionVariables.set('joinToken', body.data.joinToken);",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "UC-LIVE-05 — List Lobby Requests (Instructor)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/lobby",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "lobby"
+                  ]
+                },
+                "description": "مفيد فقط إذا أُنشئت الجلسة بـ lobbyEnabled=true."
+              }
+            },
+            {
+              "name": "UC-LIVE-05 — Admit One Participant",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/lobby/{{studentUserId}}/admit",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "lobby",
+                    "{{studentUserId}}",
+                    "admit"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-LIVE-05 — Admit All Participants",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/lobby/admit-all",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "lobby",
+                    "admit-all"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-LIVE-05 — Deny Participant",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/lobby/{{studentUserId}}/deny",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "lobby",
+                    "{{studentUserId}}",
+                    "deny"
+                  ]
+                },
+                "description": ""
+              }
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "3) In-Session Interactions",
+          "item": [
+            {
+              "name": "UC-LIVE-06 — Send Chat Message",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/chat",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "chat"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"messageType\": \"text\",\n  \"text\": \"هل يمكنكم سماعي بوضوح؟\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "UC-LIVE-06 — Raise Hand",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/chat",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "chat"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"messageType\": \"raise_hand\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "UC-LIVE-06 — Get Chat History",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/chat",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "chat"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-LIVE-07 — Mute Participant",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/moderation/mute/{{studentUserId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "moderation",
+                    "mute",
+                    "{{studentUserId}}"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-LIVE-07 — Unmute Participant",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/moderation/unmute/{{studentUserId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "moderation",
+                    "unmute",
+                    "{{studentUserId}}"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-LIVE-07 — Mute All",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/moderation/mute-all",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "moderation",
+                    "mute-all"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-LIVE-07 — Start Screen Share (Instructor)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/screen-share",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "screen-share"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"isSharing\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "UC-LIVE-07 — Stop Screen Share (Instructor)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/screen-share",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "screen-share"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"isSharing\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "UC-LIVE-07 — Remove Participant",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/moderation/remove/{{studentUserId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "moderation",
+                    "remove",
+                    "{{studentUserId}}"
+                  ]
+                },
+                "description": "مدمِّر — يُبقيه آخر طلب في هذا المجلد كي لا يعطّل الطلبات السابقة."
+              }
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "4) Post-Session & Analytics",
+          "item": [
+            {
+              "name": "UC-ATT-01 (support) — Leave Session",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/leave",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "leave"
+                  ]
+                },
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "pm.test('durationSeconds is a number', () => pm.expect(body.data.durationSeconds).to.be.a('number'));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "UC-LIVE-08 — End Session",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/end",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "end"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-LIVE-08 — Attach Recording URL",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/recording",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "recording"
+                  ]
+                },
+                "description": "شغّليه فقط بعد End Session (400 SESSION_NOT_ENDED إن لم تُنهَ الجلسة أولاً).",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"recordingUrl\": \"https://storage.example.com/recordings/session-demo.mp4\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "UC-ATT-02 — Session Attendance Report (JSON)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/attendance/sessions/{{liveSessionId}}/report",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "attendance",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "report"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "UC-ATT-02 — Session Attendance Export (CSV download)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/attendance/sessions/{{liveSessionId}}/export.csv",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "attendance",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "export.csv"
+                  ]
+                },
+                "description": "استجابة CSV مباشرة — استخدمي زر 'Save Response > Save to a file' في Postman."
+              }
+            },
+            {
+              "name": "UC-ATT-02 — Course Attendance Summary",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/attendance/courses/{{demoCourseId}}/summary",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "attendance",
+                    "courses",
+                    "{{demoCourseId}}",
+                    "summary"
+                  ]
+                },
+                "description": ""
+              }
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "5) Key Failure Cases",
+          "item": [
+            {
+              "name": "Join — before session start time → 400 SESSION_NOT_STARTED",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/join",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "join"
+                  ]
+                },
+                "description": "أنشئي جلسة بـ startTime في المستقبل البعيد لتجربة هذه الحالة تحديداً."
+              }
+            },
+            {
+              "name": "Join — student not enrolled → 403 NOT_ENROLLED",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{anotherStudentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions/{{liveSessionId}}/join",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions",
+                    "{{liveSessionId}}",
+                    "join"
+                  ]
+                },
+                "description": "استخدمي توكن طالب آخر غير مسجَّل بالكورس (سجّليه يدوياً أو عبر Register)."
+              }
+            },
+            {
+              "name": "Create Session — Student role → 403 FORBIDDEN",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{studentAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"courseId\": \"{{demoCourseId}}\",\n  \"title\": \"Should be rejected\",\n  \"meetingLink\": \"https://meet.jit.si/x\",\n  \"startTime\": \"2026-08-10T10:00:00.000Z\",\n  \"endTime\": \"2026-08-10T11:00:00.000Z\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Create Session — overlapping time → 409 SESSION_TIME_CONFLICT",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/live/sessions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "live",
+                    "sessions"
+                  ]
+                },
+                "description": "شغّلي هذا مباشرة بعد إنشاء الجلسة الأولى بنفس التوقيت تماماً.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"courseId\": \"{{demoCourseId}}\",\n  \"title\": \"Overlapping session\",\n  \"meetingLink\": \"https://meet.jit.si/x\",\n  \"startTime\": \"2026-08-10T10:00:00.000Z\",\n  \"endTime\": \"2026-08-10T11:00:00.000Z\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "description": ""
+        }
+      ],
+      "description": "UC-LIVE-01..08 + UC-ATT-01..02 — راجعي مجلد '0) Setup' أولاً. متغيرات المجموعة الجديدة المطلوبة: instructorAccessToken, studentAccessToken, demoCourseId, liveSessionId (تُملأ تلقائياً), studentUserId, joinToken (تُملأ تلقائياً), anotherStudentAccessToken (اختياري، لحالات الفشل)."
+    },
+    {
+      "name": "Peer Assessment (PEER)",
+      "item": [
+        {
+          "name": "0) Setup (run once)",
+          "item": [
+            {
+              "name": "README — run this command first in your terminal",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/health",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "health"
+                  ]
+                },
+                "description": "قبل تشغيل أي طلب في هذا المجلد:\n\nnpm run seed:peer-demo\n\nيطبع في الطرفية: instructorAccessToken, demoCourseId, student1AccessToken/student1Id, student2AccessToken/student2Id, student3AccessToken/student3Id.\n\nالصقي كل القيم في Collection Variables (⋮ → Edit → Variables) ثم Ctrl+S.\n\nالتوكنات صالحة 15 دقيقة فقط — أعيدي تشغيل الأمر عند انتهائها."
+              }
+            }
+          ],
+          "description": "خطوات تجهيز البيانات والتوكنات قبل اختبار وحدة PEER."
+        },
+        {
+          "name": "1) Assignment Management (Instructor)",
+          "item": [
+            {
+              "name": "UC-PEER-01 — Create Assignment",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments"
+                  ]
+                },
+                "description": "غيّري submissionDeadline لتكون دقيقتين من الآن، وreviewDeadline لتكون 5 دقائق من الآن، قبل الإرسال الفعلي — كي تنجح اختبارات التسليم/التوزيع لاحقاً ضمن نفس الجلسة. مجموع أوزان الـ rubric يجب أن يساوي 1 بالضبط.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"courseId\": \"{{demoCourseId}}\",\n  \"title\": \"Assignment 1 — Peer Code Review\",\n  \"description\": \"راجعي حل زميلك وفق سلّم التقييم المرفق.\",\n  \"rubric\": [\n    {\n      \"criterion\": \"Correctness\",\n      \"maxScore\": 10,\n      \"weight\": 0.6\n    },\n    {\n      \"criterion\": \"Code Style\",\n      \"maxScore\": 10,\n      \"weight\": 0.4\n    }\n  ],\n  \"submissionDeadline\": \"2026-08-10T10:02:00.000Z\",\n  \"reviewDeadline\": \"2026-08-10T10:05:00.000Z\",\n  \"reviewersPerSubmission\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "pm.collectionVariables.set('peerAssignmentId', body.data.assignment._id);",
+                      "pm.test('assignmentId captured', () => pm.expect(pm.collectionVariables.get('peerAssignmentId')).to.be.a('string'));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "View Assignments (Instructor)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "View Assignments (Student)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments"
+                  ]
+                },
+                "description": ""
+              }
+            },
+            {
+              "name": "Assignment Details",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}"
+                  ]
+                },
+                "description": ""
+              }
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "2) Submission Phase (3 Students)",
+          "item": [
+            {
+              "name": "Student 1 — Submit",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/submit",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "submit"
+                  ]
+                },
+                "description": "يمكن أيضاً إرفاق ملف عبر حقل form-data باسم 'file' بدل/مع النص.",
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "textContent",
+                      "value": "Student 1 solution goes here.",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 201', () => pm.response.to.have.status(201));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Student 2 — Submit",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student2AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/submit",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "submit"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "textContent",
+                      "value": "Student 2 solution goes here.",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 201', () => pm.response.to.have.status(201));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Student 3 — Submit",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student3AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/submit",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "submit"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "textContent",
+                      "value": "Student 3 solution goes here.",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 201', () => pm.response.to.have.status(201));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Student 1 — My Submission",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/my-submission",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "my-submission"
+                  ]
+                },
+                "description": ""
+              }
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "3) Distribution (manual fallback — normally automatic via Cron)",
+          "item": [
+            {
+              "name": "UC-PEER-02 — Distribute Reviews",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/distribute",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "distribute"
+                  ]
+                },
+                "description": "شغّليه فقط بعد انتظار انتهاء submissionDeadline فعلياً (400 SUBMISSION_STILL_OPEN إن استعجلتِ). يعمل تلقائياً أيضاً عبر Cron كل دقيقتين — هذا مسار احتياطي للتسريع."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "pm.test('3 reviews created', () => pm.expect(body.data.reviewCount).to.equal(3));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "4) Review Phase (each student reviews an anonymized peer)",
+          "item": [
+            {
+              "name": "Student 1 — My Review Tasks",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/my-reviews",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "my-reviews"
+                  ]
+                },
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.data.reviews.length > 0) {",
+                      "  pm.collectionVariables.set('student1ReviewId', body.data.reviews[0].reviewId);",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Student 1 — View Submission To Review (anonymized)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/reviews/{{student1ReviewId}}/submission",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "reviews",
+                    "{{student1ReviewId}}",
+                    "submission"
+                  ]
+                },
+                "description": "لاحظي: الاستجابة تحتوي displaySequentialId فقط — أبداً هوية صاحب العمل الحقيقية."
+              }
+            },
+            {
+              "name": "Student 1 — Submit Review",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/reviews/{{student1ReviewId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "reviews",
+                    "{{student1ReviewId}}"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"scores\": [\n    {\n      \"criterion\": \"Correctness\",\n      \"score\": 8\n    },\n    {\n      \"criterion\": \"Code Style\",\n      \"score\": 9\n    }\n  ],\n  \"feedbackText\": \"Clean solution, minor style improvements possible.\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Student 2 — My Review Tasks",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student2AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/my-reviews",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "my-reviews"
+                  ]
+                },
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "if (body.data.reviews.length > 0) {",
+                      "  pm.collectionVariables.set('student2ReviewId', body.data.reviews[0].reviewId);",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Student 2 — Submit Review",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student2AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/reviews/{{student2ReviewId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "reviews",
+                    "{{student2ReviewId}}"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"scores\": [\n    {\n      \"criterion\": \"Correctness\",\n      \"score\": 7\n    },\n    {\n      \"criterion\": \"Code Style\",\n      \"score\": 8\n    }\n  ],\n  \"feedbackText\": \"Good attempt, logic could be simplified.\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Student 3 — My Review Tasks",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student3AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/my-reviews",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "my-reviews"
+                  ]
+                },
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "if (body.data.reviews.length > 0) {",
+                      "  pm.collectionVariables.set('student3ReviewId', body.data.reviews[0].reviewId);",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Student 3 — Submit Review",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student3AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/reviews/{{student3ReviewId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "reviews",
+                    "{{student3ReviewId}}"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"scores\": [\n    {\n      \"criterion\": \"Correctness\",\n      \"score\": 9\n    },\n    {\n      \"criterion\": \"Code Style\",\n      \"score\": 9\n    }\n  ],\n  \"feedbackText\": \"Excellent work!\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "5) Grading (manual fallback — normally automatic via Cron)",
+          "item": [
+            {
+              "name": "UC-PEER-04 — Calculate Final Grades",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/calculate-grades",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "calculate-grades"
+                  ]
+                },
+                "description": "شغّليه بعد انتظار انتهاء reviewDeadline فعلياً (400 REVIEW_STILL_OPEN إن استعجلتِ)."
+              }
+            },
+            {
+              "name": "Student 1 — My Final Grade",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/grades",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "grades"
+                  ]
+                },
+                "description": "الاستجابة تحوي finalScore + ملاحظات المراجعين بلا هوياتهم إطلاقاً."
+              }
+            },
+            {
+              "name": "Instructor — Full Grades Breakdown",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/grades",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "grades"
+                  ]
+                },
+                "description": ""
+              }
+            }
+          ],
+          "description": ""
+        },
+        {
+          "name": "6) Key Failure Cases",
+          "item": [
+            {
+              "name": "Create Assignment — Student role → 403 FORBIDDEN",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"courseId\": \"{{demoCourseId}}\",\n  \"title\": \"Assignment 1 — Peer Code Review\",\n  \"description\": \"راجعي حل زميلك وفق سلّم التقييم المرفق.\",\n  \"rubric\": [\n    {\n      \"criterion\": \"Correctness\",\n      \"maxScore\": 10,\n      \"weight\": 0.6\n    },\n    {\n      \"criterion\": \"Code Style\",\n      \"maxScore\": 10,\n      \"weight\": 0.4\n    }\n  ],\n  \"submissionDeadline\": \"2026-08-10T10:02:00.000Z\",\n  \"reviewDeadline\": \"2026-08-10T10:05:00.000Z\",\n  \"reviewersPerSubmission\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Create Assignment — rubric weights don't sum to 1 → 400",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"courseId\": \"{{demoCourseId}}\",\n  \"title\": \"Bad rubric\",\n  \"rubric\": [\n    {\n      \"criterion\": \"Only one\",\n      \"maxScore\": 10,\n      \"weight\": 0.5\n    }\n  ],\n  \"submissionDeadline\": \"2026-08-10T10:02:00.000Z\",\n  \"reviewDeadline\": \"2026-08-10T10:05:00.000Z\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Distribute — before submission deadline → 400 SUBMISSION_STILL_OPEN",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{instructorAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/assignments/{{peerAssignmentId}}/distribute",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "assignments",
+                    "{{peerAssignmentId}}",
+                    "distribute"
+                  ]
+                },
+                "description": "جرّبيه فوراً بعد إنشاء مهمة جديدة، دون الانتظار."
+              }
+            },
+            {
+              "name": "Submit Review — missing rubric criterion → 400 INCOMPLETE_RUBRIC",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{student1AccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/peer/reviews/{{student1ReviewId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "peer",
+                    "reviews",
+                    "{{student1ReviewId}}"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"scores\": [\n    {\n      \"criterion\": \"Correctness\",\n      \"score\": 5\n    }\n  ],\n  \"feedbackText\": \"Partial\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "description": ""
+        }
+      ],
+      "description": "UC-PEER-01..04 (+ مرحلة التسليم) — راجعي مجلد '0) Setup' أولاً. متغيرات المجموعة الجديدة المطلوبة: instructorAccessToken, demoCourseId, student1AccessToken/Id..student3AccessToken/Id, peerAssignmentId (تُملأ تلقائياً), student1ReviewId..student3ReviewId (تُملأ تلقائياً)."
+    }
+  ]
+}

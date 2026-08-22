@@ -6,10 +6,11 @@ const courseProgressEventSchema = new Schema(
   {
     course_id: { type: Schema.Types.ObjectId, ref: 'Course', required: true },
     student_id: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    unit_id: { type: Schema.Types.ObjectId, ref: 'CourseUnit', required: true },
+    // Optional now: peer_assignment events are not necessarily linked to a unit.
+    unit_id: { type: Schema.Types.ObjectId, ref: 'CourseUnit', default: null },
 
-    // DEVIATION/SECURITY: تحقق مطّبق — source_type يحدد أي حقل من الاثنين مطلوب،
-    // بدل جدولين منفصلين، اتساقًا مع "الأبسط دائمًا" في Abstraction v2.0 §1
+    // DEVIATION/SECURITY: Enforced validation — source_type determines which of the two fields is required,
+    // instead of two separate tables, consistent with "simpler is always better" in Abstraction v2.0 §1.
     content_id: {
       type: Schema.Types.ObjectId,
       ref: 'CourseContent',
@@ -18,7 +19,7 @@ const courseProgressEventSchema = new Schema(
         validator: function (v) {
           return this.source_type === 'content' ? Boolean(v) : v === null;
         },
-        message: 'content_id مطلوب فقط عندما source_type = content.',
+        message: 'content_id is required only when source_type = content.',
       },
     },
     session_id: {
@@ -29,19 +30,35 @@ const courseProgressEventSchema = new Schema(
         validator: function (v) {
           return this.source_type === 'live_session' ? Boolean(v) : v === null;
         },
-        message: 'session_id مطلوب فقط عندما source_type = live_session.',
+        message: 'session_id is required only when source_type = live_session.',
+      },
+    },
+    peer_assignment_id: {
+      type: Schema.Types.ObjectId,
+      ref: 'PeerAssignment',
+      default: null,
+      validate: {
+        validator: function (v) {
+          return this.source_type === 'peer_assignment' ? Boolean(v) : v === null;
+        },
+        message: 'peer_assignment_id is required only when source_type = peer_assignment.',
       },
     },
     source_type: {
       type: String,
-      enum: ['content', 'live_session'],
+      enum: ['content', 'live_session', 'peer_assignment'],
       required: true,
-      default: 'content', // القيمة الافتراضية تحافظ على توافق السجلات القديمة
+      default: 'content', // Default maintains compatibility with old records.
     },
 
     event_type: {
       type: String,
-      enum: ['video_completed', 'lesson_completed', 'live_session_attended'],
+      enum: [
+        'video_completed',
+        'lesson_completed',
+        'live_session_attended',
+        'peer_assignment_completed',
+      ],
       required: true,
     },
     idempotency_key: { type: String, required: true, unique: true },
@@ -57,9 +74,10 @@ const courseProgressEventSchema = new Schema(
 applyReferentialIntegrity(courseProgressEventSchema, [
   { path: 'course_id', ref: 'Course', required: true },
   { path: 'student_id', ref: 'User', required: true },
-  { path: 'unit_id', ref: 'CourseUnit', required: true },
+  { path: 'unit_id', ref: 'CourseUnit', required: false },
   { path: 'content_id', ref: 'CourseContent', required: false },
   { path: 'session_id', ref: 'LiveSession', required: false },
+  { path: 'peer_assignment_id', ref: 'PeerAssignment', required: false },
 ]);
 
 module.exports = mongoose.model('CourseProgressEvent', courseProgressEventSchema);
