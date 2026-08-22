@@ -14,6 +14,7 @@ const liveRoutes = require('./routes/liveRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
 const peerRoutes = require('./routes/peerRoutes');
 const payRoutes = require('./routes/payRoutes');
+const aiRoutes = require('./routes/aiRoutes');
 
 const env = require('./config/env');
 
@@ -56,6 +57,7 @@ app.use('/api/v1/live', liveRoutes);
 app.use('/api/v1/attendance', attendanceRoutes);
 app.use('/api/v1/peer', peerRoutes);
 app.use('/api/v1/pay', payRoutes);
+app.use('/api/v1/ai', aiRoutes);
 // ── 404 + Error handling (must be last) ──────────────────────────────────
 
 app.use(notFoundHandler);
