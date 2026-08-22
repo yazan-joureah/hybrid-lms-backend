@@ -72,4 +72,10 @@ module.exports = {
     currency: 'usd',
     refundWindowDays: 10,
   },
+
+  certSigning: {
+    privateKeyPem: required('CERT_SIGNING_PRIVATE_KEY_PEM'),
+    publicKeyPem: required('CERT_SIGNING_PUBLIC_KEY_PEM'),
+    keyVersion: process.env.CERT_SIGNING_KEY_VERSION || 'v1',
+  },
 };

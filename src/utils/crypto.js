@@ -107,13 +107,13 @@ function decryptSecret(encryptedBase64) {
 // (which already exists as a Foreign Key).
 
 const HKDF_SALT = Buffer.from('hybrid-lms-kyc-hkdf-salt-v1', 'utf8'); // ثابت على مستوى التطبيق، وليس سرياً بذاته
-const HKDF_KEY_LENGTH = 32; // 256 بت لـ AES-256
+const HKDF_KEY_LENGTH = 32;
 
-function deriveUserKey(userId) {
+function deriveUserKey(userId, purpose = 'kyc-document-key') {
   if (!userId) {
     throw new Error('deriveUserKey requires a non-empty userId');
   }
-  const info = Buffer.from(`kyc-document-key:${String(userId)}`, 'utf8');
+  const info = Buffer.from(`${purpose}:${String(userId)}`, 'utf8');
   const derived = nodeCrypto.hkdfSync(
     'sha256',
     getEncryptionKey(),
@@ -121,24 +121,24 @@ function deriveUserKey(userId) {
     info,
     HKDF_KEY_LENGTH
   );
-  return Buffer.from(derived); // hkdfSync returns an ArrayBuffer, we convert it to a Buffer explicitly
+  return Buffer.from(derived);
 }
 
 /**
  * Version of encryptSecret but using a user-specific derived key instead of the global key.
  * Same GCM logic (random 12-byte IV + AuthTag), just a different key.
  */
-function encryptForUser(plaintextBuffer, userId) {
-  const key = deriveUserKey(userId);
+function encryptForUser(plaintextBuffer, userId, purpose = 'kyc-document-key') {
+  const key = deriveUserKey(userId, purpose);
   const iv = nodeCrypto.randomBytes(GCM_IV_BYTES);
   const cipher = nodeCrypto.createCipheriv(ENCRYPTION_ALGORITHM, key, iv);
   const ciphertext = Buffer.concat([cipher.update(plaintextBuffer), cipher.final()]);
   const authTag = cipher.getAuthTag();
-  return Buffer.concat([iv, authTag, ciphertext]); // Raw Buffer, not Base64 — will be stored as BinData in Mongo directly
+  return Buffer.concat([iv, authTag, ciphertext]);
 }
 
-function decryptForUser(encryptedBuffer, userId) {
-  const key = deriveUserKey(userId);
+function decryptForUser(encryptedBuffer, userId, purpose = 'kyc-document-key') {
+  const key = deriveUserKey(userId, purpose);
   const iv = encryptedBuffer.subarray(0, GCM_IV_BYTES);
   const authTag = encryptedBuffer.subarray(GCM_IV_BYTES, GCM_IV_BYTES + 16);
   const ciphertext = encryptedBuffer.subarray(GCM_IV_BYTES + 16);

@@ -55,6 +55,26 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # NEW — يولّد زوج مفاتيح Ed25519 (خاص + عام) لتوقيع الشهادات، صالح
+      # لبيئة الاختبار فقط. المفتاح العام مُشتق من نفس الخاص عبر
+      # `openssl pkey -pubout` كي يتطابقا فعلياً (وليس زوجاً عشوائياً
+      # غير مترابط، الذي قد يمر تحميل الوحدات لكنه سيفشل أي اختبار
+      # يحاول فعلياً توقيع/تحقق شهادة).
+      - name: Generate ephemeral cert signing keypair (test-only)
+        run: |
+          openssl genpkey -algorithm ed25519 -out /tmp/cert_signing_key.pem
+          openssl pkey -in /tmp/cert_signing_key.pem -pubout -out /tmp/cert_signing_pub.pem
+          {
+            echo "CERT_SIGNING_PRIVATE_KEY_PEM<<CERT_PRIVATE_KEY_EOF"
+            cat /tmp/cert_signing_key.pem
+            echo "CERT_PRIVATE_KEY_EOF"
+          } >> "$GITHUB_ENV"
+          {
+            echo "CERT_SIGNING_PUBLIC_KEY_PEM<<CERT_PUBLIC_KEY_EOF"
+            cat /tmp/cert_signing_pub.pem
+            echo "CERT_PUBLIC_KEY_EOF"
+          } >> "$GITHUB_ENV"
+
       - name: Run tests with coverage
         run: npm run test:coverage -- --runInBand --forceExit
         env:
@@ -65,6 +85,10 @@ jobs:
           ENCRYPTION_MASTER_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          # CERT_SIGNING_PRIVATE_KEY_PEM / CERT_SIGNING_PUBLIC_KEY_PEM already
+          # exported to the job environment by the "Generate ephemeral cert
+          # signing keypair" step above via GITHUB_ENV — GitHub Actions makes
+          # them available to every subsequent step in this job automatically.
 
       - name: Dependency vulnerability audit
       # DEVIATION: GHSA-mh99-v99m-4gvg (brace-expansion) has no

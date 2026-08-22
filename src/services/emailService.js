@@ -158,6 +158,34 @@ async function sendInvoiceEmail(to, { invoiceNumber, courseTitle, amount, curren
   });
 }
 
+async function sendCertificateIssuedEmail(to, { courseTitle, certificateId }) {
+  return sendMail({
+    to,
+    subject: 'Your certificate has been issued',
+    html: `
+      <p>Congratulations! Your certificate for <strong>${courseTitle}</strong> has been issued successfully.</p>
+      <p><strong>Certificate ID:</strong> ${certificateId}</p>
+      <p>You can view and download it, along with its QR verification code, from your "My Certificates" page.</p>
+    `,
+  });
+}
+
+async function sendCertificatePendingVerificationEmail(
+  to,
+  { courseTitle, missingKyc, missingMfa }
+) {
+  const steps = [];
+  if (missingKyc) steps.push('complete your identity verification (KYC)');
+  if (missingMfa) steps.push('enable multi-factor authentication (MFA)');
+  const stepsText = steps.join(' and ');
+
+  return sendMail({
+    to,
+    subject: 'Your certificate is ready — one more step',
+    html: `<p>You've completed <strong>${courseTitle}</strong>! Your certificate is ready to be issued, but first you need to ${stepsText}.</p><p>Once done, your certificate will be issued automatically.</p>`,
+  });
+}
+
 module.exports = {
   sendVerificationEmail,
   sendGuardianApprovalEmail,
@@ -167,4 +195,6 @@ module.exports = {
   createMimeMessage,
   sendGoogleAccountLinkedNotice,
   sendInvoiceEmail,
+  sendCertificateIssuedEmail,
+  sendCertificatePendingVerificationEmail,
 };

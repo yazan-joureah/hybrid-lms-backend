@@ -16,6 +16,7 @@ const peerRoutes = require('./routes/peerRoutes');
 const payRoutes = require('./routes/payRoutes');
 const quizRoutes = require('./routes/quizRoutes');
 const userRoutes = require('./routes/userRoutes');
+const certRoutes = require('./routes/certRoutes');
 
 const env = require('./config/env');
 
@@ -62,6 +63,7 @@ app.use('/api/v1/peer', peerRoutes);
 app.use('/api/v1/pay', payRoutes);
 app.use('/api/v1/quizzes', quizRoutes);
 app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/certificates', certRoutes);
 
 // ── 404 + Error handling (must be last) ──────────────────────────────────
 
