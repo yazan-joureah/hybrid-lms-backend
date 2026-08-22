@@ -17,7 +17,8 @@
     "seed:prod-superadmin": "node scripts/seedProdSuperAdmin.js",
     "seed:dev-users": "node scripts/seedDevUsers.js",
     "seed:live-demo": "node scripts/seedLiveDemoData.js",
-    "seed:peer-demo": "node scripts/seedPeerDemoData.js"
+    "seed:peer-demo": "node scripts/seedPeerDemoData.js",
+    "seed:ai-demo": "node scripts/seedAIDemoData.js"
   },
   "engines": {
     "node": ">=22.0.0"
