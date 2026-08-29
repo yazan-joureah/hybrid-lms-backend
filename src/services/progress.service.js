@@ -212,6 +212,7 @@ async function recordLiveSessionCompletion({ studentId, courseId, unitId, sessio
   const safeStudentId = toObjectId(studentId, 'studentId');
   const safeCourseId = toObjectId(courseId, 'courseId');
   const safeSessionId = toObjectId(sessionId, 'sessionId');
+  const safeUnitId = unitId ? toObjectId(unitId, 'unitId') : null;
 
   const enrollment = await Enrollment.findOne({
     course_id: safeCourseId,
@@ -227,7 +228,7 @@ async function recordLiveSessionCompletion({ studentId, courseId, unitId, sessio
     await CourseProgressEvent.create({
       course_id: safeCourseId,
       student_id: safeStudentId,
-      unit_id: toObjectId(unitId, 'unitId'),
+      unit_id: safeUnitId,
       session_id: safeSessionId,
       source_type: 'live_session',
       event_type: 'live_session_attended',

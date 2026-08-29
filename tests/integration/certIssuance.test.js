@@ -130,7 +130,7 @@ describe('UC-CERT-01 — issueCertificate: identity gate', () => {
     expect(certs).toHaveLength(0);
   });
 
-  it('SUCCEEDS and produces a validly signed, encrypted certificate when all gates pass', async () => {
+  it('SUCCEEDS and produces a certificate record (without stored signature) when all gates pass', async () => {
     const instructor = await createInstructor();
     const course = await createCourse(instructor._id);
     const student = await createUser({ kyc_status: 'verified', mfa_enabled: true });
@@ -147,8 +147,9 @@ describe('UC-CERT-01 — issueCertificate: identity gate', () => {
     expect(cert.status).toBe('active');
     expect(cert.student_id.toString()).toBe(String(student._id));
     expect(cert.qr_code_image).toBeInstanceOf(Buffer);
-    expect(cert.signature).toEqual(expect.any(String));
-    expect(cert.encrypted_content).toBeInstanceOf(Buffer);
+    // REMOVED: signature and encrypted_content expectations – no longer stored
+    // expect(cert.signature).toEqual(expect.any(String));
+    // expect(cert.encrypted_content).toBeInstanceOf(Buffer);
 
     const auditEntry = await AuditLog.findOne({ action: 'CERTIFICATE_ISSUED' });
     expect(auditEntry).not.toBeNull();

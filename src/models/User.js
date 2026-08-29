@@ -44,7 +44,8 @@ const userSchema = new Schema(
     email: { type: String, default: null, lowercase: true, trim: true },
     password_hash: { type: String, default: null }, // null for OAuth-only accounts
     birth_date: { type: Date, default: null },
-
+    phone: { type: String, default: null, trim: true },
+    bio: { type: String, default: null, trim: true, maxlength: 500 },
     role: {
       type: String,
       enum: ['Student', 'Instructor', 'Admin', 'SuperAdmin'],

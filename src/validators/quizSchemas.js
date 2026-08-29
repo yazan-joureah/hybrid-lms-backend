@@ -44,10 +44,7 @@ const quizCreateSchema = quizMutableFieldsSchema
     message: 'end_time must be after start_time',
     path: ['end_time'],
   })
-  .refine((data) => data.quiz_type !== 'exam' || (!!data.start_time && !!data.end_time), {
-    message: 'start_time and end_time are required for exam quizzes',
-    path: ['start_time'],
-  })
+
   .refine((data) => data.quiz_type !== 'quiz' || !!data.unit_id, {
     message: 'unit_id is required when quiz_type is "quiz"',
     path: ['unit_id'],

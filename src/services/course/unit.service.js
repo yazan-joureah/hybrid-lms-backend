@@ -11,7 +11,6 @@ const { triggerReviewOnPublishedEdit } = require('./reviewState.service');
 const { toObjectId } = require('../../utils/objectId.util');
 const { loadOwnedCourse } = require('./courseAccess.util');
 const fileStorage = require('../fileStorage.service');
-const { getLiveSessionsForUnit } = require('../live/session.service');
 
 async function addUnit({ courseId, instructorId, unitData, req }) {
   const { course, safeCourseId, safeInstructorId } = await loadOwnedCourse({
@@ -252,7 +251,7 @@ async function listUnitsForUser({ userId, role, courseId }) {
 }
 
 /** Enrolled-student progress overlay: completion flags + attendance status. */
-async function buildEnrolledProgressExtras({ courseId, unitId, studentId, liveSessions }) {
+async function buildEnrolledProgressExtras({ courseId, unitId, studentId, liveSessions = [] }) {
   const [completedContentIds, completedSessionIds] = await Promise.all([
     CourseProgressEvent.distinct('content_id', {
       course_id: courseId,
@@ -339,27 +338,18 @@ async function getUnitDetails({ userId, role, courseId, unitId }) {
     }
   }
 
-  // --- live sessions linked to this unit (read-only integration with the live module) ---
-  const liveSessions = await getLiveSessionsForUnit({
-    courseId: safeCourseId,
-    unitId: safeUnitId,
-  });
-
   // --- progress enrichment, enrolled students only ---
   let completedSet = new Set();
-  let completedSessionSet = new Set();
-  let attendanceStatusMap = new Map();
   let navigationExtras = {};
 
   if (isEnrolled) {
-    ({ completedSet, completedSessionSet, attendanceStatusMap } = await buildEnrolledProgressExtras(
-      {
-        courseId: safeCourseId,
-        unitId: unit._id,
-        studentId: safeUserId,
-        liveSessions,
-      }
-    ));
+    // تمرير مصفوفة فارغة بدلاً من liveSessions لإلغاء تضمين الجلسات المباشرة
+    ({ completedSet } = await buildEnrolledProgressExtras({
+      courseId: safeCourseId,
+      unitId: unit._id,
+      studentId: safeUserId,
+      liveSessions: [], // لا نريد جلسات مباشرة
+    }));
     navigationExtras = await buildNavigationExtras({
       courseId: safeCourseId,
       unitOrder: unit.order,
@@ -379,38 +369,13 @@ async function getUnitDetails({ userId, role, courseId, unitId }) {
     ...(isEnrolled ? { completed: completedSet.has(c._id.toString()) } : {}),
   }));
 
-  // Live sessions are surfaced read-only alongside content — no storage_path,
-  // no upload logic; only session_id/title/schedule/status/attendance.
-  const formattedLiveSessions = liveSessions.map((s) => ({
-    _id: s.session_id,
-    content_type: 'live_session',
-    title: s.title,
-    desc: null,
-    order: null,
-    scheduled_start: s.scheduled_start,
-    scheduled_end: s.scheduled_end,
-    status: s.status,
-    content_data: null,
-    download_url: null,
-    mime_type: null,
-    size_bytes: null,
-    ...(isEnrolled
-      ? {
-          completed: completedSessionSet.has(s.session_id.toString()),
-          my_attendance_status: attendanceStatusMap.get(s.session_id.toString()) || null,
-        }
-      : {}),
-  }));
-
-  const allContent = [...formattedContent, ...formattedLiveSessions];
-
   return {
     success: true,
     data: {
       unit: {
         ...unit,
-        content: allContent,
-        content_count: allContent.length,
+        content: formattedContent,
+        content_count: formattedContent.length,
         ...navigationExtras,
       },
       is_preview: !isEnrolled && !isStaff,

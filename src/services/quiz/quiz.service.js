@@ -4,6 +4,7 @@ const Course = require('../../models/Course');
 const User = require('../../models/User');
 const CourseUnit = require('../../models/CourseUnit');
 const Enrollment = require('../../models/Enrollment');
+const QuizAttempt = require('../../models/quizAttempt.model');
 const auditService = require('../auditService');
 const { AppError } = require('../../middleware/errorHandler');
 const { toObjectId } = require('../../utils/objectId.util');
@@ -308,7 +309,24 @@ async function listAvailableQuizzesForStudent({ studentId, courseId }) {
     .sort({ start_time: 1 })
     .lean();
 
-  return { success: true, data: { quizzes } };
+  const quizIds = quizzes.map((q) => q._id);
+  const bestAttempts = await QuizAttempt.aggregate([
+    { $match: { quiz_id: { $in: quizIds }, student_id: safeStudentId, status: 'graded' } },
+    { $sort: { score_percent: -1 } },
+    { $group: { _id: '$quiz_id', best: { $first: '$$ROOT' } } },
+  ]);
+
+  const bestByQuiz = new Map(bestAttempts.map((b) => [b._id.toString(), b.best]));
+
+  const enriched = quizzes.map((q) => {
+    const best = bestByQuiz.get(q._id.toString());
+    return {
+      ...q,
+      last_result: best ? { passed: best.passed, score_percent: best.score_percent } : null,
+    };
+  });
+
+  return { success: true, data: { quizzes: enriched } };
 }
 
 async function listQuizzesForCourseReview({ courseId }) {

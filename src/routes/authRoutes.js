@@ -15,6 +15,9 @@ const {
   totpVerifySchema,
   mfaLoginVerifySchema,
   googleGuardianEmailSchema,
+  requestOwnDeletionSchema,
+  restoreRequestSchema,
+  restoreConfirmSchema,
 } = require('../validators/authSchemas');
 const { requireAuth } = require('../middleware/authMiddleware');
 const { requireCsrfToken } = require('../middleware/csrfProtection');
@@ -128,6 +131,36 @@ router.post(
   // rateLimit('google-guardian-email', (req) => req.ip),
   validateBody(googleGuardianEmailSchema),
   authController.googleGuardianEmail
+);
+
+// UC-AUTH-08.6 — self-service deletion request. Behind requireAuth (the
+// account is still active/reachable at this point).
+router.delete(
+  '/account',
+  requireAuth,
+  rateLimit('account-self-delete', (req) => req.user.id),
+  validateBody(requestOwnDeletionSchema),
+  authController.requestOwnDeletion
+);
+
+// Account Restore — step 1. Deliberately NOT behind requireAuth (see
+// accountSelfService.controller.js docstring: a deleted account holds
+// no valid session to authenticate with — same reasoning as
+// forgot-password). Rate-limited by email, mirroring forgotPassword.
+router.post(
+  '/account/restore/request',
+  rateLimit('account-restore-request', (req) => req.body?.email || 'unknown'),
+  validateBody(restoreRequestSchema),
+  authController.requestRestore
+);
+
+// Account Restore — step 2. No separate rate limiter, matching
+// reset-password's own confirm step: AuthToken.attempt_count (MAX=5)
+// already throttles brute-forcing the 6-digit code internally.
+router.post(
+  '/account/restore/confirm',
+  validateBody(restoreConfirmSchema),
+  authController.confirmRestore
 );
 
 module.exports = router;

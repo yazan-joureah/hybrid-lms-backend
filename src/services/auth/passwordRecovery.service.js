@@ -3,6 +3,7 @@
  * Covers: UC-AUTH-06 (Reset Password) + FR-03b (Session Revocation).
  */
 const User = require('../../models/User');
+const Session = require('../../models/Session');
 const AuthToken = require('../../models/AuthToken');
 const RefreshToken = require('../../models/RefreshToken');
 const { hashPassword, generateNumericOtp, sha256 } = require('../../utils/crypto');
@@ -99,6 +100,11 @@ async function resetPassword({ email, code, newPassword, req }) {
   await RefreshToken.updateMany(
     { user_id: user._id, revoked_at: null },
     { $set: { revoked_at: new Date() } }
+  );
+
+  await Session.updateMany(
+    { user_id: user._id, status: 'active' },
+    { $set: { status: 'revoked' } }
   );
 
   await auditService.record({

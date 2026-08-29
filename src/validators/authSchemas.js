@@ -100,6 +100,7 @@ const googleLinkConfirmSchema = z.object({
 const googleRegisterConfirmSchema = z.object({
   registration_pending_token: z.string().min(1),
   birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  role: z.enum(['Student', 'Instructor']),
 });
 
 // authSchemas.js
@@ -117,6 +118,19 @@ const resendVerificationSchema = z.object({
   email: z.string().email(),
 });
 
+const requestOwnDeletionSchema = z.object({
+  reason: z.string().trim().min(1, 'reason is required').max(500),
+});
+
+const restoreRequestSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+});
+
+const restoreConfirmSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  code: z.string().regex(/^\d{6}$/, 'Code must be exactly 6 digits'),
+});
+
 module.exports = {
   registerSchema,
   isBlocklisted,
@@ -131,4 +145,7 @@ module.exports = {
   googleLinkConfirmSchema,
   googleRegisterConfirmSchema,
   googleGuardianEmailSchema,
+  requestOwnDeletionSchema,
+  restoreRequestSchema,
+  restoreConfirmSchema,
 };

@@ -46,6 +46,10 @@ const attachRecordingSchema = z.object({
   recordingUrl: z.string().trim().url('Invalid recording URL'),
 });
 
+const toggleStudentsAccessSchema = z.object({
+  allowed: z.boolean(),
+});
+
 module.exports = {
   createSessionSchema,
   updateSessionSchema,
@@ -53,4 +57,5 @@ module.exports = {
   chatMessageSchema,
   screenShareSchema,
   attachRecordingSchema,
+  toggleStudentsAccessSchema,
 };

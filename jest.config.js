@@ -8,10 +8,13 @@ module.exports = {
     '!src/config/redis.js',
   ],
   transformIgnorePatterns: [
-    // This tells Jest: "Ignore everything in node_modules EXCEPT otplib, @otplib, and @scure"
+    // Ignore everything in node_modules EXCEPT these ESM packages
     '/node_modules/(?!(@scure|otplib|@otplib|@noble)/)',
   ],
-  setupFiles: ['<rootDir>/tests/setup/disableRealGmail.js'],
+  setupFiles: [
+    '<rootDir>/tests/setup/disableRealGmail.js',
+    '<rootDir>/tests/setup/globalMocks.js', // NEW: global mock for jose and other ESM-only modules
+  ],
   coverageThreshold: {
     global: {
       branches: 60,

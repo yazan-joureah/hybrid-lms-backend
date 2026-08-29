@@ -16,7 +16,9 @@ async function listMyCertificates({ studentId, req }) {
   await retryPendingIssuances({ studentId: safeStudentId, req });
 
   const certificates = await Certificate.find({ student_id: safeStudentId })
-    .select('certificate_id course_id course_title_snapshot issued_at status superseded_by')
+    .select(
+      'certificate_id course_id course_title_snapshot student_name_snapshot issued_at status superseded_by'
+    )
     .sort({ issued_at: -1 })
     .lean();
 
@@ -56,7 +58,6 @@ async function retryPendingIssuances({ studentId, req }) {
       status: 'active',
     });
     if (alreadyIssued) continue;
-
     // eslint-disable-next-line no-await-in-loop
     await issueCertificate({ studentId, courseId: enrollment.course_id, req }).catch((err) => {
       auditService.record({

@@ -164,9 +164,11 @@ describe('POST /auth/google/register/confirm — adult path', () => {
 
     const token = extractTokenFromUrl(callbackRes.headers.location);
 
-    const res = await request(app)
-      .post('/api/v1/auth/google/register/confirm')
-      .send({ registration_pending_token: token, birth_date: '1995-06-20' });
+    const res = await request(app).post('/api/v1/auth/google/register/confirm').send({
+      registration_pending_token: token,
+      birth_date: '1995-06-20',
+      role: 'Student', // ← ADDED
+    });
 
     expect(res.status).toBe(200);
     expect(res.body.data.access_token).toBeTruthy();
@@ -202,6 +204,7 @@ describe('POST /auth/google/register/confirm — minor path (UC-AUTH-12 uncondit
     const res = await request(app).post('/api/v1/auth/google/register/confirm').send({
       registration_pending_token: token,
       birth_date: '2012-01-01',
+      role: 'Student', // ← ADDED
     });
 
     expect(res.status).toBe(200);

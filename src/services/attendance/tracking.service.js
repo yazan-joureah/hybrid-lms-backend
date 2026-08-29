@@ -74,13 +74,13 @@ async function recordAttendanceLeave({ studentId, sessionId, req }) {
   await record.save();
 
   // DEVIATION: غير حرج عمداً — فشل تسجيل حدث التقدّم لا يجب أن يمنع تسجيل الحضور نفسه.
-  if (record.status === 'present' && session?.unit_id) {
+  if (session && record.status === 'present') {
     try {
       const { recordLiveSessionCompletion } = require('../progress.service');
       await recordLiveSessionCompletion({
         studentId,
         courseId: session.courseId,
-        unitId: session.unit_id,
+        unitId: session.unit_id || null,
         sessionId,
         req,
       });
@@ -93,4 +93,79 @@ async function recordAttendanceLeave({ studentId, sessionId, req }) {
   return { success: true, data: record };
 }
 
-module.exports = { recordAttendanceAutomatically, recordAttendanceLeave, PRESENT_THRESHOLD_RATIO };
+/**
+ * UC-LIVE-08 (تمديد) — تُستدعى من endSession() لحسم أي سجل حضور "مفتوح"
+ * (leftAt: null) وقت إنهاء الجلسة.
+ *
+ * نقطة أساسية (واقعية): المرجع لحساب نسبة الحضور هو "المدة الفعلية التي
+ * انعقدت فيها المحاضرة"، وليس المدة المجدولة دائماً:
+ *   - إنهاء طبيعي (now >= endTime): المرجع = endTime - startTime (كالمعتاد).
+ *   - إنهاء مبكر (now < endTime): المرجع = now - startTime (أي المدة
+ *     الفعلية التي حاضر فيها المحاضر)، وليس الوقت المجدول أصلاً — طالب
+ *     حضر من البداية للحظة الإنهاء الفعلي هو "حاضر كاملاً"، حتى لو
+ *     المحاضرة انتهت أقصر من المخطط.
+ *
+ * الاحتساب بالتقدّم: كل سجل يُغلق هنا (present أو partial) يُحتسب "مكتمل"
+ * بتقدّم الكورس — بخلاف recordAttendanceLeave العادية (التي تحتسب present
+ * فقط)، لأن هنا الجلسة انتهت نهائياً ولا توجد فرصة أخرى للطالب ليحضر أكثر؛
+ * القرار بيد المحاضر لا الطالب.
+ */
+async function finalizeSessionAttendance({ sessionId, req }) {
+  const LiveSession = require('../../models/liveSession.model');
+  const { recordLiveSessionCompletion } = require('../progress.service');
+
+  const session = await LiveSession.findById(sessionId)
+    .select('startTime endTime unit_id courseId')
+    .lean();
+  if (!session) return { closedCount: 0, endedEarly: false };
+
+  const now = new Date();
+  const scheduledStart = new Date(session.startTime);
+  const scheduledEnd = new Date(session.endTime);
+  const endedEarly = now < scheduledEnd;
+
+  // المرجع الفعلي لطول المحاضرة المُنجزة فعلياً — وليس المخطط له بالضرورة.
+  const effectiveDurationSeconds = endedEarly
+    ? Math.max(1, Math.round((now - scheduledStart) / 1000))
+    : Math.max(1, Math.round((scheduledEnd - scheduledStart) / 1000));
+
+  const openRecords = await Attendance.find({ sessionId, leftAt: null });
+
+  for (const record of openRecords) {
+    const durationSeconds = Math.max(0, Math.round((now - record.joinedAt) / 1000));
+    record.leftAt = now;
+    record.durationSeconds = durationSeconds;
+
+    const ratio = durationSeconds / effectiveDurationSeconds;
+    record.status = ratio >= PRESENT_THRESHOLD_RATIO ? 'present' : 'partial';
+    await record.save();
+
+    // الجلسة انتهت نهائياً هنا (مبكراً أو بموعدها) — أي حالة حضور مسجَّلة
+    // (present أو partial) تُحتسب مكتملة بالتقدّم، لأن الطالب لا يملك أي
+    // فرصة إضافية ليحضر أكثر مما حضر.
+    try {
+      await recordLiveSessionCompletion({
+        studentId: record.studentId,
+        courseId: session.courseId,
+        unitId: session.unit_id || null,
+        sessionId,
+        req,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console -- سيُستبدل بـ logger.js لاحقاً
+      console.error(
+        'Live session progress recording failed on finalize (non-critical):',
+        err.message
+      );
+    }
+  }
+
+  return { closedCount: openRecords.length, endedEarly };
+}
+
+module.exports = {
+  recordAttendanceAutomatically,
+  recordAttendanceLeave,
+  finalizeSessionAttendance,
+  PRESENT_THRESHOLD_RATIO,
+};

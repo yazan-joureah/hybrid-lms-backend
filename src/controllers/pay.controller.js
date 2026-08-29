@@ -1,3 +1,4 @@
+// src/controllers/pay.controller.js
 const {
   initiatePayment,
   requestRefund,
@@ -7,8 +8,10 @@ const {
   getPaymentStatus,
   listMyPayments,
   listRefundRequests,
+  listAllPayments,
 } = require('../services/payService');
 const { AppError } = require('../middleware/errorHandler');
+const User = require('../models/User');
 
 /** UC-PAY-01/02: student-initiated payment for a pending enrollment. */
 async function initiate(req, res, next) {
@@ -78,7 +81,12 @@ async function webhook(req, res, next) {
 
 async function paymentStatus(req, res, next) {
   try {
-    const isAdmin = ['Admin', 'SuperAdmin'].includes(req.user.role);
+    // ⚠️ req.user فقط { id, sessionId } — authMiddleware.js عمداً ما بيحط
+    // role جوا التوكن (FR-34: role هو server-side truth من الـ DB، مو من
+    // التوكن). هاد الراوت مشترك بين الطالب والأدمن (بدون requireRole قبله)
+    // فلازم نستعلم عن الدور هون مباشرة، متل ما requireRole.js بالضبط بيعمل.
+    const user = await User.findById(req.user.id).select('role').lean();
+    const isAdmin = ['Admin', 'SuperAdmin'].includes(user?.role);
     const result = await getPaymentStatus({
       studentId: req.user.id,
       paymentId: req.params.paymentId,
@@ -107,6 +115,17 @@ async function refundRequestsList(req, res, next) {
     return next(err);
   }
 }
+
+/** Admin browsing of all payments on the platform. */
+async function adminListPayments(req, res, next) {
+  try {
+    const result = await listAllPayments({ queryParams: req.query });
+    return res.status(200).json({ success: true, data: result.data });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 module.exports = {
   initiate,
   requestRefundHandler,
@@ -115,4 +134,5 @@ module.exports = {
   paymentStatus,
   myPayments,
   refundRequestsList,
+  adminListPayments,
 };

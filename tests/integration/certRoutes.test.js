@@ -14,7 +14,7 @@ const User = require('../../src/models/User');
 const Course = require('../../src/models/Course');
 const Enrollment = require('../../src/models/Enrollment');
 const Certificate = require('../../src/models/certificate.model');
-const CertificateTemplate = require('../../src/models/certificateTemplate.model');
+// REMOVED: const CertificateTemplate = require('../../src/models/certificateTemplate.model');
 const redisClient = require('../../src/config/redis');
 const { signAccessToken } = require('../../src/utils/jwt');
 const { issueCertificate } = require('../../src/services/cert/certificate.service');
@@ -60,7 +60,7 @@ beforeEach(async () => {
     Course.deleteMany({}),
     Enrollment.deleteMany({}),
     Certificate.deleteMany({}),
-    CertificateTemplate.deleteMany({}),
+    // REMOVED: CertificateTemplate.deleteMany({}),
   ]);
   await redisClient.flushdb();
 });
@@ -180,43 +180,4 @@ describe('GET /api/v1/certificates/download/:courseId — requires auth + role +
   });
 });
 
-describe('Certificate Templates routes — SuperAdmin only', () => {
-  it('Admin (not SuperAdmin) attempting to create a template → 403', async () => {
-    const admin = await createUser({ role: 'Admin' });
-    const res = await request(app)
-      .post('/api/v1/certificates/templates')
-      .set('Authorization', `Bearer ${tokenFor(admin)}`)
-      .send({ name: 'X', layout_key: 'x' });
-    expect(res.status).toBe(403);
-  });
-
-  it('SuperAdmin creates, lists, updates, and deletes a template through the real HTTP routes', async () => {
-    const superAdmin = await createUser({ role: 'SuperAdmin' });
-    const authHeader = `Bearer ${tokenFor(superAdmin)}`;
-
-    const createRes = await request(app)
-      .post('/api/v1/certificates/templates')
-      .set('Authorization', authHeader)
-      .send({ name: 'Modern', layout_key: 'modern-v1' });
-    expect(createRes.status).toBe(201);
-    const templateId = createRes.body.data.template._id;
-
-    const listRes = await request(app)
-      .get('/api/v1/certificates/templates')
-      .set('Authorization', authHeader);
-    expect(listRes.status).toBe(200);
-    expect(listRes.body.data.templates).toHaveLength(1);
-
-    const updateRes = await request(app)
-      .put(`/api/v1/certificates/templates/${templateId}`)
-      .set('Authorization', authHeader)
-      .send({ name: 'Modern v2' });
-    expect(updateRes.status).toBe(200);
-    expect(updateRes.body.data.template.name).toBe('Modern v2');
-
-    const deleteRes = await request(app)
-      .delete(`/api/v1/certificates/templates/${templateId}`)
-      .set('Authorization', authHeader);
-    expect(deleteRes.status).toBe(200);
-  });
-});
+// ===== REMOVED: Entire "Certificate Templates routes — SuperAdmin only" describe block =====

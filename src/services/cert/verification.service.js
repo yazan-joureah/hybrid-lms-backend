@@ -2,24 +2,21 @@
 // UC-CERT-04 — Verify Certificate via QR (public, no login required)
 
 const Certificate = require('../../models/certificate.model');
+const Course = require('../../models/Course');
 const { AppError } = require('../../middleware/errorHandler');
 const auditService = require('../auditService');
-const { recomputeVerificationHash } = require('./qrGeneration.service');
-const { verifyCertificateSignature } = require('./signing.service');
+const { issueCredentialJwt } = require('./credential.service');
 
-//UC-CERT-04 — Verify Certificate via QR
 async function verifyCertificate({ certificateId, req }) {
   if (!certificateId || typeof certificateId !== 'string') {
     throw new AppError(400, 'INVALID_CERTIFICATE_ID', 'A valid certificate ID is required.');
   }
 
-  // Query certificate data and status.
   const certificate = await Certificate.findOne({ certificate_id: certificateId }).lean();
   if (!certificate) {
     return { success: true, data: { status: 'not_found' } };
   }
 
-  // check Revocation List status.
   if (certificate.status === 'revoked') {
     return {
       success: true,
@@ -36,47 +33,26 @@ async function verifyCertificate({ certificateId, req }) {
     };
   }
 
-  // extract stored hash, recompute from current data, compare.
-  const recomputedHash = recomputeVerificationHash({
-    certificateId: certificate.certificate_id,
-    studentNameSnapshot: certificate.student_name_snapshot,
-    courseTitleSnapshot: certificate.course_title_snapshot,
-    issuedAt: certificate.issued_at,
+  const course = await Course.findById(certificate.course_id)
+    .select('certificate_criteria description')
+    .lean();
+
+  const { token } = await issueCredentialJwt({
+    certificate,
+    criteriaNarrative: course?.certificate_criteria,
+    courseDescription: course?.description,
   });
 
-  if (recomputedHash !== certificate.verification_hash) {
-    await auditService.record({
-      actorId: null,
-      actorRole: 'System',
-      action: 'CERTIFICATE_VERIFICATION_HASH_MISMATCH',
-      resourceType: 'Certificate',
-      resourceId: certificate.certificate_id,
-      metadata: {},
-      req,
-    });
-    return { success: true, data: { status: 'tampered' } };
-  }
-
-  // verify the digital signature with the public key.
-  const signatureValid = verifyCertificateSignature({
-    verificationHash: certificate.verification_hash,
-    signatureBase64: certificate.signature,
+  await auditService.record({
+    actorId: null,
+    actorRole: 'System',
+    action: 'CERTIFICATE_VERIFIED',
+    resourceType: 'Certificate',
+    resourceId: certificate.certificate_id,
+    metadata: {},
+    req,
   });
 
-  if (!signatureValid) {
-    await auditService.record({
-      actorId: null,
-      actorRole: 'System',
-      action: 'CERTIFICATE_VERIFICATION_SIGNATURE_INVALID',
-      resourceType: 'Certificate',
-      resourceId: certificate.certificate_id,
-      metadata: {},
-      req,
-    });
-    return { success: true, data: { status: 'untrusted' } };
-  }
-
-  // display the final result to the user.
   return {
     success: true,
     data: {
@@ -87,6 +63,7 @@ async function verifyCertificate({ certificateId, req }) {
         course_title: certificate.course_title_snapshot,
         issued_at: certificate.issued_at,
       },
+      credential_jwt: token,
     },
   };
 }

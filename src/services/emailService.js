@@ -186,6 +186,22 @@ async function sendCertificatePendingVerificationEmail(
   });
 }
 
+async function sendAdminAccountCreatedEmail(to, code) {
+  return sendMail({
+    to,
+    subject: 'Your Hybrid LMS Admin account has been created',
+    html: `<p>An administrator account has been created for you on Hybrid LMS.</p><p>Use this code to set your password and activate your account:</p><p style="font-size:28px;font-weight:bold;letter-spacing:4px;">${code}</p><p>This code expires in 15 minutes.</p>`,
+  });
+}
+
+async function sendAccountRestoreEmail(to, code) {
+  return sendMail({
+    to,
+    subject: 'Restore your Hybrid LMS account',
+    html: `<p>Use this code to restore your deleted account:</p><p style="font-size:28px;font-weight:bold;letter-spacing:4px;">${code}</p><p>This code expires in 15 minutes. If you didn't request this, you can safely ignore this email.</p>`,
+  });
+}
+
 module.exports = {
   sendVerificationEmail,
   sendGuardianApprovalEmail,
@@ -197,4 +213,6 @@ module.exports = {
   sendInvoiceEmail,
   sendCertificateIssuedEmail,
   sendCertificatePendingVerificationEmail,
+  sendAdminAccountCreatedEmail,
+  sendAccountRestoreEmail,
 };

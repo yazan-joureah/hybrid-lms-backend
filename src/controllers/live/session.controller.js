@@ -127,6 +127,28 @@ async function attachRecording(req, res, next) {
   }
 }
 
+/** POST /api/v1/live/sessions/:sessionId/students-access */
+async function toggleStudentsAccess(req, res, next) {
+  try {
+    const instructorId = req.user.id;
+    const { sessionId } = req.params;
+    const { allowed } = req.validatedBody;
+    const result = await liveService.toggleStudentsAccess({
+      instructorId,
+      sessionId,
+      allowed,
+      req,
+    });
+    return res.status(200).json({
+      success: true,
+      message: allowed ? 'تم فتح الحصة للطلاب.' : 'تم قفل دخول الطلاب.',
+      data: result.data,
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 module.exports = {
   createSession,
   updateSession,
@@ -136,4 +158,5 @@ module.exports = {
   endSession,
   attachRecording,
   getSession,
+  toggleStudentsAccess,
 };

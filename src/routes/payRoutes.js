@@ -53,4 +53,11 @@ router.get(
   payController.refundRequestsList
 );
 
+router.get(
+  '/admin/payments',
+  requireAuth,
+  requireRole(['Admin', 'SuperAdmin']),
+  payController.adminListPayments
+);
+
 module.exports = router;
