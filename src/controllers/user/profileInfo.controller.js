@@ -9,4 +9,17 @@ async function getMe(req, res, next) {
   }
 }
 
-module.exports = { getMe };
+async function updateMe(req, res, next) {
+  try {
+    const userData = await userService.updateUserProfile({
+      userId: req.user.id,
+      updates: req.validatedBody,
+      req,
+    });
+    return res.status(200).json({ success: true, data: userData });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { getMe, updateMe };

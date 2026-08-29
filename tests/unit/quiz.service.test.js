@@ -4,6 +4,9 @@ jest.mock('../../src/models/Course');
 jest.mock('../../src/models/User');
 jest.mock('../../src/models/CourseUnit');
 jest.mock('../../src/models/Enrollment');
+// ===== ADD missing mock for QuizAttempt (prevents aggregate timeout) =====
+jest.mock('../../src/models/quizAttempt.model');
+// ======================================================================
 jest.mock('../../src/services/auditService', () => ({ record: jest.fn().mockResolvedValue() }));
 jest.mock('../../src/middleware/errorHandler', () => {
   class AppError extends Error {
@@ -26,6 +29,9 @@ const Course = require('../../src/models/Course');
 const User = require('../../src/models/User');
 const CourseUnit = require('../../src/models/CourseUnit');
 const Enrollment = require('../../src/models/Enrollment');
+// ===== ADD missing import =====
+const QuizAttempt = require('../../src/models/quizAttempt.model');
+// =============================
 const auditService = require('../../src/services/auditService');
 const {
   createQuiz,
@@ -298,12 +304,16 @@ describe('listAvailableQuizzesForStudent', () => {
     Enrollment.findOne.mockResolvedValue({ _id: oid() });
     const select = jest.fn().mockReturnThis();
     const sort = jest.fn().mockReturnThis();
-    const lean = jest.fn().mockResolvedValue([{ title: 'Q1' }]);
+    const quizId = oid(); // create a real ObjectId for the mock
+    const lean = jest.fn().mockResolvedValue([{ _id: quizId, title: 'Q1' }]);
     Quiz.find.mockReturnValue({ select, sort, lean });
+    // Mock aggregate to return empty (no best attempts)
+    QuizAttempt.aggregate.mockResolvedValue([]);
 
     const result = await listAvailableQuizzesForStudent({ studentId: oid(), courseId: oid() });
     expect(select).toHaveBeenCalledWith(expect.not.stringContaining('questions'));
-    expect(result.data.quizzes).toEqual([{ title: 'Q1' }]);
+    // Updated expectation: includes _id and last_result: null
+    expect(result.data.quizzes).toEqual([{ _id: quizId, title: 'Q1', last_result: null }]);
   });
 });
 

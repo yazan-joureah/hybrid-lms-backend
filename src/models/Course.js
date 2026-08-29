@@ -37,6 +37,7 @@ const courseSchema = new Schema(
     rejection_reason: { type: String, default: null },
     published_at: { type: Date, default: null },
     suspended_by: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    certificate_criteria: { type: String, default: null, maxlength: 2000 },
   },
   {
     timestamps: true,

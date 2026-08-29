@@ -1,6 +1,12 @@
 // src/models/certificate.model.js
-// UC-CERT-01 (Issue) | UC-CERT-02 (QR) | UC-CERT-03 (Sign & Encrypt)
-// UC-CERT-04 (Verify) | UC-CERT-05 (Re-issue on data change)
+// UC-CERT-01 (Issue) | UC-CERT-02 (QR) | UC-CERT-04 (Verify via VC-JWT)
+// UC-CERT-05 (Re-issue on data change)
+//
+// No signature/hash fields are stored here anymore — the Open Badges
+// credential (and its EdDSA signature) is built and signed on-demand at
+// verification/download time from these snapshot fields, via
+// credential.service.js. This means revocation is reflected instantly
+// everywhere without ever needing to re-sign or update stored bytes.
 
 const mongoose = require('mongoose');
 const crypto = require('crypto');
@@ -8,7 +14,6 @@ const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.uti
 
 const certificateSchema = new mongoose.Schema(
   {
-    // Opaque UUID — the only identifier exposed in the QR/public verification
     certificate_id: {
       type: String,
       required: true,
@@ -42,18 +47,9 @@ const certificateSchema = new mongoose.Schema(
       index: true,
     },
 
-    // Set only on re-issue (UC-CERT-05) — points to the new certificate_id
-    // that replaced this one, not the Mongo _id.
     superseded_by: { type: String, default: null },
 
     qr_code_image: { type: Buffer, required: true },
-    verification_hash: { type: String, required: true },
-
-    signature: { type: String, required: true },
-
-    signing_key_version: { type: String, required: true },
-
-    encrypted_content: { type: Buffer, required: true },
   },
   {
     timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },

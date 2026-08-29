@@ -100,9 +100,6 @@ async function findConflictingSession({ courseId, startTime, endTime, excludeSes
 /**
  * UC-LIVE-01 — Create/Schedule Session
  */
-/**
- * UC-LIVE-01 — Create/Schedule Session
- */
 async function createSession({ instructorId, sessionData, req }) {
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
   const safeCourseId = toObjectId(sessionData.courseId, 'courseId');
@@ -296,6 +293,8 @@ async function getSessionById({ userId, role, sessionId }) {
   const safeSessionId = toObjectId(sessionId, 'sessionId');
   let session = await LiveSession.findById(safeSessionId)
     .populate('instructorId', 'full_name email')
+    .populate('courseId', 'title')
+    .populate('unit_id', 'title')
     .lean();
   if (!session) throw new AppError(404, 'SESSION_NOT_FOUND');
 
@@ -350,7 +349,11 @@ async function listSessionsForViewer({ userId, role, queryParams = {} }) {
     filter.courseId = { $in: courseIds };
   }
 
-  const sessions = await LiveSession.find(filter).sort({ startTime: 1 }).lean();
+  const sessions = await LiveSession.find(filter)
+    .populate('courseId', 'title')
+    .populate('unit_id', 'title')
+    .sort({ startTime: 1 })
+    .lean();
   return { success: true, data: { sessions } };
 }
 
@@ -371,6 +374,7 @@ async function startSession({ instructorId, sessionId, req }) {
 
   session.status = 'ongoing';
   session.startedAt = new Date();
+  session.studentsAllowed = false;
   await session.save();
 
   await auditService.record({
@@ -385,9 +389,6 @@ async function startSession({ instructorId, sessionId, req }) {
   return { success: true, data: { session } };
 }
 
-/**
- * UC-LIVE-08 — End Session
- */
 /**
  * UC-LIVE-08 — End Session
  */
@@ -420,6 +421,20 @@ async function endSession({ instructorId, sessionId, req }) {
     metadata: {},
     req,
   });
+
+  // إشعار أي طالب متصل حالياً بغرفة Jitsi بأن المحاضر أنهى المحاضرة فعلياً —
+  // بنفس نمط toggleStudentsAccess (emitToSession)، حتى تُطرَد الواجهة فوراً
+  // بدل ما يضل الطالب على شاشة بث مقطوعة بصمت.
+  const { emitToSession } = require('../../sockets/liveSocketEmitter');
+  emitToSession(session._id.toString(), 'session:ended', {});
+
+  try {
+    const { finalizeSessionAttendance } = require('../attendance/tracking.service');
+    await finalizeSessionAttendance({ sessionId: session._id, req });
+  } catch (err) {
+    // eslint-disable-next-line no-console -- سيُستبدل بـ logger.js لاحقاً
+    console.error('finalizeSessionAttendance failed (non-critical):', err.message);
+  }
 
   try {
     const CourseProgressEvent = require('../../models/CourseProgressEvent');
@@ -455,6 +470,41 @@ async function endSession({ instructorId, sessionId, req }) {
     // eslint-disable-next-line no-console -- سيُستبدل بـ logger.js لاحقاً
     console.error('Post-end completion re-check failed (non-critical):', err.message);
   }
+
+  return { success: true, data: { session } };
+}
+
+async function toggleStudentsAccess({ instructorId, sessionId, allowed, req }) {
+  const safeInstructorId = toObjectId(instructorId, 'instructorId');
+  const session = await assertInstructorOwnsSession({
+    instructorId: safeInstructorId,
+    sessionId,
+    req,
+  });
+
+  if (session.status !== 'ongoing') {
+    throw new AppError(400, 'SESSION_NOT_ONGOING', 'يمكن فتح/قفل الدخول فقط أثناء بث الحصة.');
+  }
+
+  session.studentsAllowed = Boolean(allowed);
+  await session.save();
+
+  await auditService.record({
+    actorId: safeInstructorId,
+    actorRole: 'Instructor',
+    action: session.studentsAllowed
+      ? 'LIVE_SESSION_STUDENTS_UNLOCKED'
+      : 'LIVE_SESSION_STUDENTS_LOCKED',
+    resourceType: 'LiveSession',
+    resourceId: session._id.toString(),
+    metadata: {},
+    req,
+  });
+
+  const { emitToSession } = require('../../sockets/liveSocketEmitter');
+  emitToSession(session._id.toString(), 'students:access-changed', {
+    allowed: session.studentsAllowed,
+  });
 
   return { success: true, data: { session } };
 }
@@ -575,4 +625,5 @@ module.exports = {
   getSessionById,
   getLiveSessionsForUnit,
   assertUnitBelongsToCourseIfProvided,
+  toggleStudentsAccess,
 };

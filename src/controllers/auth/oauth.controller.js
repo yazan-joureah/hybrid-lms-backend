@@ -133,6 +133,7 @@ async function googleRegisterConfirm(req, res, next) {
     const result = await authService.confirmGoogleRegistration({
       rawToken: req.validatedBody.registration_pending_token,
       birthDate: req.validatedBody.birth_date,
+      role: req.validatedBody.role,
       req,
     });
 

@@ -51,6 +51,11 @@ async function validateSessionAccessAndGenerateJoinToken({ studentId, sessionId,
   if (session.status !== 'ongoing') {
     throw new AppError(400, 'SESSION_NOT_LIVE', 'الجلسة غير متاحة للانضمام حالياً.');
   }
+
+  if (!session.studentsAllowed) {
+    throw new AppError(403, 'STUDENTS_NOT_ALLOWED_YET', 'لم يفتح المحاضر الحصة للطلاب بعد.');
+  }
+
   // إبقاء فحص endTime كطبقة أمان إضافية (احتياطي فقط)
   if (now > session.endTime) {
     throw new AppError(400, 'SESSION_ENDED', 'انتهت هذه الجلسة.');

@@ -13,6 +13,13 @@ const { validateBody } = require('../middleware/validate');
 const adminController = require('../controllers/adminController');
 const { courseReviewSchema, courseStatusSchema } = require('../validators/courseSchemas');
 const { kycApproveSchema, kycRejectSchema } = require('../validators/kycSchemas');
+const {
+  setAccountStatusSchema,
+  createAdminAccountSchema,
+  deleteAccountSchema,
+  reviewDeletionRequestSchema,
+} = require('../validators/adminSchemas');
+const { rateLimit } = require('../middleware/rateLimiter');
 
 // --- Course moderation ---
 router.get(
@@ -82,6 +89,71 @@ router.post(
   requireRole(['Admin', 'SuperAdmin']),
   validateBody(kycRejectSchema),
   adminController.rejectKyc
+);
+
+// --- Account Management (UC-AUTH-08 + UC-AUTH-14) ---
+
+// Listing/search — Admin or SuperAdmin (read-only, no fine-grained target check needed)
+router.get(
+  '/accounts',
+  requireAuth,
+  requireRole(['Admin', 'SuperAdmin']),
+  adminController.listAccountsHandler
+);
+
+// 08.1 + 08.2 — suspend/activate. Fine-grained target-role check happens
+// INSIDE the service (assertCanManageTarget) — route only gates the floor.
+router.patch(
+  '/accounts/:id/status',
+  requireAuth,
+  requireRole(['Admin', 'SuperAdmin']),
+  validateBody(setAccountStatusSchema),
+  adminController.setAccountStatusHandler
+);
+
+// 08.3 — create Admin. Coarse gate IS the fine gate here: SuperAdmin-only,
+// no target-role ambiguity possible (there is no target yet).
+router.post(
+  '/accounts',
+  requireAuth,
+  requireRole(['SuperAdmin']),
+  rateLimit('admin-create-account', (req) => req.user.id),
+  validateBody(createAdminAccountSchema),
+  adminController.createAdminAccountHandler
+);
+
+// 08.4 + 08.5 — delete. Same fine-grained pattern as status.
+router.delete(
+  '/accounts/:id',
+  requireAuth,
+  requireRole(['Admin', 'SuperAdmin']),
+  validateBody(deleteAccountSchema),
+  adminController.deleteAccountHandler
+);
+
+// Admin-triggered restore — same permission shape as delete (mirrors it).
+router.patch(
+  '/accounts/:id/deletion',
+  requireAuth,
+  requireRole(['Admin', 'SuperAdmin']),
+  adminController.adminRestoreAccountHandler
+);
+
+// SuperAdmin-only review queue — 08.6 approval is explicitly SuperAdmin-only
+// in the UC text, so the coarse gate is sufficient here too.
+router.get(
+  '/deletion-requests',
+  requireAuth,
+  requireRole(['SuperAdmin']),
+  adminController.listDeletionRequestsHandler
+);
+
+router.post(
+  '/deletion-requests/:id/review',
+  requireAuth,
+  requireRole(['SuperAdmin']),
+  validateBody(reviewDeletionRequestSchema),
+  adminController.reviewDeletionRequestHandler
 );
 
 module.exports = router;

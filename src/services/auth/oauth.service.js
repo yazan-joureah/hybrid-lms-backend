@@ -187,7 +187,7 @@ async function confirmGoogleLink({ rawToken, password, req }) {
   return completeLoginForLinkedUser({ userId: user._id, req });
 }
 
-async function confirmGoogleRegistration({ rawToken, birthDate, req }) {
+async function confirmGoogleRegistration({ rawToken, birthDate, role, req }) {
   let decoded;
   try {
     decoded = verifyOAuthRegistrationPendingToken(rawToken);
@@ -207,7 +207,7 @@ async function confirmGoogleRegistration({ rawToken, birthDate, req }) {
     email: decoded.sub,
     password_hash: null,
     birth_date: new Date(birthDate),
-    role: 'Student',
+    role: role,
     status: minor ? 'guardian_pending' : 'active',
     email_verified_at: new Date(),
     privacy_consent: {
@@ -227,7 +227,7 @@ async function confirmGoogleRegistration({ rawToken, birthDate, req }) {
 
   await auditService.record({
     actorId: user._id,
-    actorRole: 'Student',
+    actorRole: role,
     action: 'USER_REGISTERED_GOOGLE',
     resourceType: 'user',
     resourceId: user._id,

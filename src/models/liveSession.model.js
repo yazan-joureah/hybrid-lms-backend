@@ -80,6 +80,11 @@ const liveSessionSchema = new mongoose.Schema(
       default: false,
     },
 
+    studentsAllowed: {
+      type: Boolean,
+      default: false,
+    },
+
     // UC-LIVE-07 — التحكم بالصلاحيات والأداء (الحالة اللحظية الحالية للجلسة)
     mutedParticipantIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     allMuted: {

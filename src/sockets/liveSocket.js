@@ -3,9 +3,11 @@
 const { verifyJoinToken } = require('../utils/joinToken.util');
 const { recordAttendanceLeave } = require('../services/attendance/tracking.service');
 const logger = require('../utils/logger');
+const { setLiveNamespace } = require('./liveSocketEmitter');
 
 function registerLiveSocket(io) {
   const nsp = io.of('/live');
+  setLiveNamespace(nsp);
 
   nsp.use((socket, next) => {
     try {
@@ -22,6 +24,7 @@ function registerLiveSocket(io) {
   nsp.on('connection', (socket) => {
     const { userId, sessionId } = socket.data.identity;
     logger.info('Live socket connected', { userId, sessionId });
+    socket.join(`session:${sessionId}`);
 
     socket.on('disconnect', async () => {
       logger.info('Live socket disconnected', { userId, sessionId });

@@ -8,6 +8,9 @@ const { createMemoryUpload } = require('../middleware/upload.util');
 const { rateLimit } = require('../middleware/rateLimiter');
 const { IMAGE_POLICY } = require('../config/uploadPolicies');
 
+const { updateProfileSchema } = require('../validators/userSchemas');
+const { validateBody } = require('../middleware/validate');
+
 const uploadImage = createMemoryUpload(IMAGE_POLICY.maxFileSizeBytes, 1);
 
 router.patch(
@@ -21,5 +24,7 @@ router.patch(
 router.get('/:userId/profile-picture', userController.stream);
 
 router.get('/me', requireAuth, userController.getMe);
+
+router.patch('/me', requireAuth, validateBody(updateProfileSchema), userController.updateMe);
 
 module.exports = router;

@@ -11,6 +11,7 @@ const {
   updateSessionSchema,
   cancelSessionSchema,
   attachRecordingSchema,
+  toggleStudentsAccessSchema,
 } = require('../validators/liveSchemas');
 
 const router = express.Router();
@@ -68,6 +69,13 @@ router.post(
   requireRole(['Instructor']),
   validateBody(attachRecordingSchema),
   liveController.attachRecording
+);
+
+router.post(
+  '/sessions/:sessionId/students-access',
+  requireRole(['Instructor']),
+  validateBody(toggleStudentsAccessSchema),
+  liveController.toggleStudentsAccess
 );
 
 module.exports = router;

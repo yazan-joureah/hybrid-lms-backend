@@ -114,6 +114,7 @@ async function setupSyncCourseWithUnitAndSession({ courseStatus = 'published' } 
     startTime: new Date(Date.now() - 60 * 60 * 1000),
     endTime: new Date(Date.now() + 60 * 60 * 1000), // نافذة 120 دقيقة إجمالاً
     status: 'ongoing',
+    studentsAllowed: true,
   });
 
   // متطلب checkAllQuizzesPassed: كورس متزامن يحتاج امتحاناً نهائياً منشوراً
