@@ -9,10 +9,21 @@ const requireVerifiedIdentity = require('../middleware/requireVerifiedIdentity.m
 const verificationController = require('../controllers/cert/verification.controller');
 const certificateListController = require('../controllers/cert/certificateList.controller');
 
-const openCors = cors({ origin: true, credentials: false });
+// ✅ صريح تمامًا: origin '*' الحرفية (مو boolean true) + credentials: false
+// — هذا الراوت عام بالكامل (يُفتح من طرف ثالث مجهول عبر مسح QR)، ولا يجب
+// أن يحمل أي دلالة على كوكيز/جلسة. الفرونت (certService.ts) بدوره يستدعي
+// هذا الـ endpoint بـ withCredentials: false — التطابق بين الطرفين هو ما
+// يمنع تضارب هيدرز CORS اللي كان يسبب رفض المتصفح للاستجابة.
+const publicCors = cors({ origin: '*', credentials: false });
+
+// يمنع أي تخزين مؤقت للاستجابة أو لهيدرز CORS تبعها.
+function noStore(req, res, next) {
+  res.set('Cache-Control', 'no-store');
+  next();
+}
 
 // public — returns status + (when valid) the signed VC-JWT in one call
-router.get('/verify/:certificateId', openCors, verificationController.verify);
+router.get('/verify/:certificateId', publicCors, noStore, verificationController.verify);
 
 router.get(
   '/my-certificates',

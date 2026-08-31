@@ -29,7 +29,7 @@ function assertCourseEditable(course) {
  * If the course is currently published, flips it to pending_review
  *  and opens a new CourseReviewRequest.
  */
-async function triggerReviewOnPublishedEdit({
+async function revertToDraftOnPublishedEdit({
   course,
   instructorId,
   changeType,
@@ -37,32 +37,24 @@ async function triggerReviewOnPublishedEdit({
   req,
 }) {
   if (course.status !== 'published') {
-    return null;
+    return false;
   }
 
-  course.status = 'pending_review';
+  course.status = 'draft';
 
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
-
-  const reviewRequest = new CourseReviewRequest({
-    course_id: course._id,
-    requested_by: safeInstructorId,
-    status: 'pending_review',
-    changes_snapshot: { change_type: changeType, ...changesSnapshot },
-  });
-  await reviewRequest.save();
 
   await auditService.record({
     actorId: safeInstructorId,
     actorRole: 'Instructor',
-    action: 'COURSE_REVIEW_REQUESTED',
-    resourceType: 'CourseReviewRequest',
-    resourceId: reviewRequest._id.toString(),
-    metadata: { course_id: course._id.toString(), change_type: changeType },
+    action: 'COURSE_REVERTED_TO_DRAFT_ON_EDIT',
+    resourceType: 'Course',
+    resourceId: course._id.toString(),
+    metadata: { change_type: changeType, ...changesSnapshot },
     req,
   });
 
-  return reviewRequest;
+  return true;
 }
 
 /** Cancels an active pending review request and reverts the course to draft. */
@@ -108,6 +100,6 @@ async function cancelReviewRequest({ courseId, instructorId, req }) {
 
 module.exports = {
   assertCourseEditable,
-  triggerReviewOnPublishedEdit,
+  revertToDraftOnPublishedEdit,
   cancelReviewRequest,
 };

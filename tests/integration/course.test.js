@@ -10,6 +10,7 @@ const User = require('../../src/models/User');
 const Course = require('../../src/models/Course');
 const Session = require('../../src/models/Session');
 const CourseReviewRequest = require('../../src/models/CourseReviewRequest');
+const AuditLog = require('../../src/models/AuditLog');
 const { hashPassword } = require('../../src/utils/crypto');
 const redisClient = require('../../src/config/redis');
 const { signAccessToken } = require('../../src/utils/jwt');
@@ -32,6 +33,7 @@ beforeEach(async () => {
     Course.deleteMany({}),
     Session.deleteMany({}),
     CourseReviewRequest.deleteMany({}),
+    AuditLog.deleteMany({}),
     CourseUnit.deleteMany({}),
     Quiz.deleteMany({}),
     CourseContent.deleteMany({}),
@@ -517,7 +519,7 @@ describe('POST /api/v1/courses/:courseId/units/:unitId/content (Add Content)', (
 });
 
 describe('Review-state machine: published course edits trigger re-review', () => {
-  it('updateCourse on a published course with a sensitive field change → pending_review + new CourseReviewRequest', async () => {
+  it('updateCourse on a published course with a sensitive field change → reverts to draft (audit-logged), no auto CourseReviewRequest', async () => {
     const { accessToken, user } = await createInstructorAndLogin();
     const course = await Course.create({
       ...validCoursePayload,
@@ -534,14 +536,25 @@ describe('Review-state machine: published course edits trigger re-review', () =>
       .send({ price: 49.99, course_type: 'paid' });
 
     expect(res.status).toBe(200);
-    expect(res.body.data.course.status).toBe('pending_review');
+    // revertToDraftOnPublishedEdit() only demotes to 'draft' + writes an
+    // AuditLog entry — it deliberately does NOT auto-open a
+    // CourseReviewRequest; the instructor must explicitly re-submit via
+    // POST /courses/:id/submit-review, same as any other draft course.
+    expect(res.body.data.course.status).toBe('draft');
 
     const reviewRequest = await CourseReviewRequest.findOne({ course_id: course._id });
-    expect(reviewRequest).not.toBeNull();
-    expect(reviewRequest.changes_snapshot.change_type).toBe('FIELDS_UPDATED');
+    expect(reviewRequest).toBeNull();
+
+    const auditEntry = await AuditLog.findOne({
+      resource_type: 'Course',
+      resource_id: course._id.toString(),
+      action: 'COURSE_REVERTED_TO_DRAFT_ON_EDIT',
+    });
+    expect(auditEntry).not.toBeNull();
+    expect(auditEntry.metadata.change_type).toBe('FIELDS_UPDATED');
   });
 
-  it('addUnit on a published course → triggers pending_review with change_type=UNIT_ADDED', async () => {
+  it('addUnit on a published course → reverts to draft (audit-logged) with change_type=UNIT_ADDED', async () => {
     const { accessToken, user } = await createInstructorAndLogin();
     const course = await Course.create({
       ...validCoursePayload,
@@ -559,10 +572,15 @@ describe('Review-state machine: published course edits trigger re-review', () =>
 
     expect(res.status).toBe(201);
     const updatedCourse = await Course.findById(course._id);
-    expect(updatedCourse.status).toBe('pending_review');
+    expect(updatedCourse.status).toBe('draft');
 
-    const reviewRequest = await CourseReviewRequest.findOne({ course_id: course._id });
-    expect(reviewRequest.changes_snapshot.change_type).toBe('UNIT_ADDED');
+    const auditEntry = await AuditLog.findOne({
+      resource_type: 'Course',
+      resource_id: course._id.toString(),
+      action: 'COURSE_REVERTED_TO_DRAFT_ON_EDIT',
+    });
+    expect(auditEntry).not.toBeNull();
+    expect(auditEntry.metadata.change_type).toBe('UNIT_ADDED');
   });
 });
 
@@ -843,7 +861,7 @@ describe('PUT /api/v1/courses/:courseId/units/:unitId (Update Unit)', () => {
     expect(res.body.error.code).toBe('COURSE_NOT_EDITABLE');
   });
 
-  it('triggers re-review when updating unit on a published course', async () => {
+  it('reverts to draft (audit-logged) when updating unit on a published course', async () => {
     const { accessToken, course, unit } = await setupCourseWithUnit({ courseStatus: 'published' });
 
     const res = await request(app)
@@ -855,12 +873,16 @@ describe('PUT /api/v1/courses/:courseId/units/:unitId (Update Unit)', () => {
     expect(res.body.data.unit.title).toBe('Updated Title on Published Course');
 
     const updatedCourse = await Course.findById(course._id);
-    expect(updatedCourse.status).toBe('pending_review');
+    expect(updatedCourse.status).toBe('draft');
 
-    const reviewRequest = await CourseReviewRequest.findOne({ course_id: course._id });
-    expect(reviewRequest).not.toBeNull();
-    expect(reviewRequest.changes_snapshot.change_type).toBe('UNIT_UPDATED');
-    expect(reviewRequest.changes_snapshot.new_title).toBe('Updated Title on Published Course');
+    const auditEntry = await AuditLog.findOne({
+      resource_type: 'Course',
+      resource_id: course._id.toString(),
+      action: 'COURSE_REVERTED_TO_DRAFT_ON_EDIT',
+    });
+    expect(auditEntry).not.toBeNull();
+    expect(auditEntry.metadata.change_type).toBe('UNIT_UPDATED');
+    expect(auditEntry.metadata.new_title).toBe('Updated Title on Published Course');
   });
 
   it('requires KYC verification for unit update', async () => {

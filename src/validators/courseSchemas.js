@@ -92,7 +92,7 @@ const reorderContentSchema = z.object({
 });
 
 const courseStatusSchema = z.object({
-  status: z.enum(['suspended', 'archived']),
+  status: z.enum(['suspended', 'archived', 'published']),
 });
 
 module.exports = {

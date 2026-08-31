@@ -143,7 +143,11 @@ describe('requireRole enforcement على مسارات المراجعة', () => {
   });
 
   it('Admin يصل لقائمة الطلبات المعلَّقة بنجاح → 200', async () => {
-    const admin = await createUser({ role: 'Admin', kyc_status: 'not_submitted' });
+    const admin = await createUser({
+      role: 'Admin',
+      kyc_status: 'not_submitted',
+      mfa_enabled: true,
+    });
     const otherStudent = await createUser();
     await KYCRequest.create({
       user_id: otherStudent._id,
@@ -165,7 +169,7 @@ describe('requireRole enforcement على مسارات المراجعة', () => {
 describe('المسار الكامل: تقديم → مراجعة → قبول عبر HTTP بالكامل', () => {
   it('Student يُقدِّم، Admin يوافق، الحالتان تُحدَّثان معاً', async () => {
     const student = await createUser({ birth_date: new Date('2000-01-01') });
-    const admin = await createUser({ role: 'Admin' });
+    const admin = await createUser({ role: 'Admin', mfa_enabled: true });
 
     const submitRes = await request(app)
       .post('/api/v1/kyc/requests')

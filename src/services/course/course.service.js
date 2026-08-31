@@ -8,7 +8,7 @@ const CourseReviewRequest = require('../../models/CourseReviewRequest');
 const Quiz = require('../../models/quiz.model');
 const auditService = require('../auditService');
 const { AppError } = require('../../middleware/errorHandler');
-const { triggerReviewOnPublishedEdit } = require('./reviewState.service');
+const { revertToDraftOnPublishedEdit } = require('./reviewState.service');
 const { toObjectId } = require('../../utils/objectId.util');
 const { loadOwnedCourse, paginateQuery } = require('./courseAccess.util');
 
@@ -78,9 +78,9 @@ async function updateCourse({ courseId, instructorId, updateData, req }) {
     }
   });
 
-  let reviewRequest = null;
+  let revertedToDraft = false;
   if (sensitiveChangeDetected) {
-    reviewRequest = await triggerReviewOnPublishedEdit({
+    revertedToDraft = await revertToDraftOnPublishedEdit({
       course,
       instructorId: safeInstructorId,
       changeType: 'FIELDS_UPDATED',
@@ -90,7 +90,7 @@ async function updateCourse({ courseId, instructorId, updateData, req }) {
   }
 
   Object.assign(course, updateData);
-  await course.save();
+  await course.save(); // حفظ واحد فقط الآن — لا حاجة لحفظَين منفصلَين
 
   await auditService.record({
     actorId: safeInstructorId,
@@ -102,7 +102,7 @@ async function updateCourse({ courseId, instructorId, updateData, req }) {
       status_changed_to: course.status,
       sensitive_change: sensitiveChangeDetected,
       changes: changesSnapshot,
-      review_request_id: reviewRequest?._id?.toString() || null,
+      reverted_to_draft: revertedToDraft, // بدل review_request_id
     },
     req,
   });

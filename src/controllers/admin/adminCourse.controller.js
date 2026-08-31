@@ -46,7 +46,10 @@ async function setCourseStatusHandler(req, res, next) {
 
     return res.status(200).json({
       success: true,
-      message: `Course status updated to ${status}.`,
+      message:
+        status === 'published'
+          ? 'Course reactivated and published successfully.'
+          : `Course status updated to ${status}.`,
       data: { course: result.data.course },
     });
   } catch (err) {

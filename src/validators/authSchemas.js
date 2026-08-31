@@ -46,6 +46,13 @@ const registerSchema = z
   .refine((data) => !isMinor(data.birth_date) || !!data.guardian_email, {
     message: 'guardian_email is required for users under 18',
     path: ['guardian_email'],
+  })
+  // SECURITY: قاصر لا يجوز أن يسجّل كـ Instructor مهما توفّرت موافقة ولي
+  // الأمر — صلاحيات المدرّس (نشر محتوى، أهلية دفع، KYC مستقل) لا تناسب
+  // حساباً خاضعاً أصلاً لإشراف ولي أمر (منع تجاوز عبر role في الطلب).
+  .refine((data) => !(isMinor(data.birth_date) && data.role === 'Instructor'), {
+    message: 'Instructors must be 18 years or older. Minors may register as Student only.',
+    path: ['role'],
   });
 
 const guardianApproveSchema = z
@@ -103,7 +110,6 @@ const googleRegisterConfirmSchema = z.object({
   role: z.enum(['Student', 'Instructor']),
 });
 
-// authSchemas.js
 const googleGuardianEmailSchema = z.object({
   guardian_pending_token: z.string().min(1),
   guardian_email: z.string().trim().toLowerCase().email(),
@@ -131,6 +137,15 @@ const restoreConfirmSchema = z.object({
   code: z.string().regex(/^\d{6}$/, 'Code must be exactly 6 digits'),
 });
 
+const guardianManageResendSchema = z.object({
+  token: z.string().min(1),
+});
+
+const guardianManageUpdateEmailSchema = z.object({
+  token: z.string().min(1),
+  guardian_email: z.string().trim().toLowerCase().email(),
+});
+
 module.exports = {
   registerSchema,
   isBlocklisted,
@@ -148,4 +163,6 @@ module.exports = {
   requestOwnDeletionSchema,
   restoreRequestSchema,
   restoreConfirmSchema,
+  guardianManageResendSchema,
+  guardianManageUpdateEmailSchema,
 };

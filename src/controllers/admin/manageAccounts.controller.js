@@ -45,7 +45,10 @@ async function createAdminAccountHandler(req, res, next) {
       fullName: req.validatedBody.fullName,
       req,
     });
-    return res.status(201).json({ success: true, data: { adminId: result.adminId } });
+    return res.status(201).json({
+      success: true,
+      data: { adminId: result.adminId, email: req.validatedBody.email },
+    });
   } catch (err) {
     return next(err);
   }

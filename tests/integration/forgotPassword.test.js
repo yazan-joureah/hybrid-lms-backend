@@ -208,10 +208,6 @@ describe('CAPSTONE — full lifecycle: Login → Forgot → Reset → old sessio
     const oldRefreshCookie = loginRes.headers['set-cookie']
       .find((c) => c.startsWith('refresh_token='))
       .split(';')[0];
-    const oldCsrfCookie = loginRes.headers['set-cookie']
-      .find((c) => c.startsWith('csrf_token='))
-      .split(';')[0];
-    const oldCsrfValue = oldCsrfCookie.split('=')[1];
 
     const sessionsBeforeReset = await RefreshToken.countDocuments({
       user_id: user._id,
@@ -236,8 +232,8 @@ describe('CAPSTONE — full lifecycle: Login → Forgot → Reset → old sessio
 
     const refreshWithOldCookie = await request(app)
       .post('/api/v1/auth/refresh')
-      .set('Cookie', [oldRefreshCookie, oldCsrfCookie])
-      .set('X-CSRF-Token', oldCsrfValue);
+      .set('Cookie', [oldRefreshCookie])
+      .set('Origin', 'http://localhost:5173');
 
     expect(refreshWithOldCookie.status).toBe(401);
     expect(refreshWithOldCookie.body.error.code).toBe('TOKEN_INVALID');

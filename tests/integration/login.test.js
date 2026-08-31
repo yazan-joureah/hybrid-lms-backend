@@ -3,11 +3,24 @@
  *
  * Testing strategy note: the network-level rate limiter (rateLimiter.js)
  * and the account-level lockout (User.failed_login_count) are BOTH set
- * to a threshold of 5, but are independent mechanisms with different
- * storage backends (Redis vs MongoDB). Driving 6 real failed HTTP
- * requests to observe the account lock would actually surface the
- * network rate limiter's 429 first (since it counts every request,
- * success or failure). To test each layer in true isolation:
+ * to a threshold of 5, and are independent mechanisms with different
+ * storage backends (Redis vs MongoDB).
+ *
+ * UPDATED (fix/AUTH-BE-15): the network-level limiter no longer counts
+ * every request — it now only counts requests that recordFailure()
+ * classifies as a genuine credential-guessing failure (see
+ * login.controller.js). A successful login is NEVER charged against the
+ * Redis budget (see "network-level rate limiter" describe block below,
+ * which is the regression test for the exact UX problem this fix
+ * addresses: repeated successful logins — e.g. switching roles during a
+ * live demo — must never trip the lockout).
+ *
+ * Because both layers now key off "failed" outcomes and share the same
+ * threshold (5), driving repeated real wrong-password HTTP requests
+ * against the SAME real account will still eventually surface both
+ * layers in sequence (account lock first, then the network lock on the
+ * request after that — see the dedicated describe block below for the
+ * exact sequence). To test each layer in true isolation:
  *   - The account-lockout ESCALATION logic is exercised by calling
  *     authService.loginUser() directly (bypassing Express/Redis entirely).
  *   - The controller's handling of an ALREADY-locked account is tested
@@ -252,5 +265,114 @@ describe('POST /auth/login — auto-unlock after lock window passes (UC-AUTH-04 
     const updated = await User.findOne({ email: 'login.test@example.com' });
     expect(updated.status).toBe('active');
     expect(updated.failed_login_count).toBe(0);
+  });
+});
+
+describe('POST /auth/login — network-level rate limiter, decoupled from success (fix/AUTH-BE-15)', () => {
+  it('never locks out a user who logs in successfully many times in a row — the core regression this fix targets (e.g. switching roles repeatedly during a live demo)', async () => {
+    const user = await createActiveUser();
+
+    // Deliberately MORE than env.rateLimit.maxAttempts (5) — if success
+    // were still being charged against the budget (the pre-fix bug),
+    // this loop would start returning 429 on the 6th call.
+    const statuses = [];
+    for (let i = 0; i < 8; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: user.email, password: PLAIN_PASSWORD });
+      statuses.push(res.status);
+    }
+
+    expect(statuses).toEqual(new Array(8).fill(200));
+
+    // Direct proof at the storage layer, not just the HTTP symptom: the
+    // hits key for the identifier axis must never have been created.
+    const hits = await redisClient.get(`rl:hits:login:id:${user.email}`);
+    expect(hits).toBeNull();
+  });
+
+  it('resets the hit counter on a genuine success, so earlier near-misses do not carry into the next window', async () => {
+    const user = await createActiveUser();
+
+    // 3 wrong-password attempts — comfortably under the threshold (5) on
+    // its own, purely to arm the counter.
+    for (let i = 0; i < 3; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: user.email, password: 'wrong-password-attempt' });
+    }
+
+    const hitsBeforeSuccess = await redisClient.get(`rl:hits:login:id:${user.email}`);
+    expect(Number(hitsBeforeSuccess)).toBe(3);
+
+    const successRes = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: user.email, password: PLAIN_PASSWORD });
+    expect(successRes.status).toBe(200);
+
+    const hitsAfterSuccess = await redisClient.get(`rl:hits:login:id:${user.email}`);
+    expect(hitsAfterSuccess).toBeNull();
+  });
+
+  it('still blocks with 429 after exceeding maxAttempts CONSECUTIVE FAILURES from the same IP — proves recordFailure/checkLock are wired correctly, isolated from any single account via distinct nonexistent emails', async () => {
+    // Distinct, nonexistent emails on every call — this means the
+    // IDENTIFIER axis (keyed per-email) never itself crosses the
+    // threshold, and User.failed_login_count (account-level lockout,
+    // MongoDB-backed) never engages at all, since no such User document
+    // exists. What we ARE isolating and proving here is the IP axis:
+    // Redis rl:hits:login:ip:<ip> is shared across all these distinct
+    // identifiers, exactly like it will be shared across the whole
+    // grading committee's logins from one room/IP.
+    const statuses = [];
+    for (let i = 0; i < 7; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await request(app)
+        .post('/api/v1/auth/login')
+        .send({
+          email: `nonexistent.ratelimit.${i}@example.com`,
+          password: 'irrelevant-wrong-password',
+        });
+      statuses.push(res.status);
+    }
+
+    // Requests 1-6: each one is evaluated for its OWN outcome BEFORE the
+    // failure is recorded (checkLock is read-only, recordFailure runs
+    // AFTER the controller already decided the response body) — so even
+    // the 6th request, which is the one that pushes the counter past the
+    // threshold and arms the lock, still returns the real business error.
+    expect(statuses.slice(0, 6)).toEqual(new Array(6).fill(401));
+
+    // Request 7 is the first one checkLock actually rejects, since the
+    // lock was armed by request 6's recordFailure call.
+    expect(statuses[6]).toBe(429);
+  });
+
+  it('sequences account-level lockout (Mongo) and network-level lockout (Redis) correctly against the SAME real account', async () => {
+    const user = await createActiveUser();
+
+    const statuses = [];
+    for (let i = 0; i < 7; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: user.email, password: 'wrong-password-attempt' });
+      statuses.push(res.status);
+    }
+
+    // Requests 1-5: plain wrong-password failures (account counter climbing).
+    expect(statuses.slice(0, 5)).toEqual(new Array(5).fill(401));
+    // Request 6: the account crossed ITS OWN threshold on attempt 5, so
+    // the SERVICE now short-circuits with ACCOUNT_LOCKED before ever
+    // touching Argon2id again — and recordFailure still counts this as a
+    // failure (see login.controller.js), which is what arms the network
+    // lock for the NEXT request.
+    expect(statuses[5]).toBe(423);
+    // Request 7: network-level lock (Redis) now rejects it outright.
+    expect(statuses[6]).toBe(429);
+
+    const updatedUser = await User.findOne({ email: user.email });
+    expect(updatedUser.status).toBe('temporary_locked');
   });
 });

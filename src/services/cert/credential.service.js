@@ -152,7 +152,9 @@ async function issueCredentialJwt({ certificate, criteriaNarrative, courseDescri
  * the certificate's CURRENT status is at scan time.
  */
 async function generateCertificateQrCode(certificateId) {
-  const verificationUrl = `${env.appUrl}/verify/${certificateId}`;
+  // ✅ لازم يشاور على صفحة الفرونت (اللي فيها عرض بصري للطرف الثالث)،
+  // مو مباشرة على الـ API endpoint (اللي بيرجع JSON خام).
+  const verificationUrl = `${env.frontUrl}/verify/${certificateId}`;
   try {
     const qrCodeImage = await QRCode.toBuffer(verificationUrl, {
       type: 'png',

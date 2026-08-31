@@ -581,7 +581,7 @@ describe('PATCH /api/v1/admin/courses/:courseId/status', () => {
       ...baseCoursePayload,
       is_synchronous: false,
       owner_instructor_id: instructor.user._id,
-      status: 'published',
+      status: 'draft',
     });
 
     const res = await request(app)
@@ -616,7 +616,30 @@ describe('PATCH /api/v1/admin/courses/:courseId/status', () => {
     expect(res.body.error.code).toBe('COURSE_ARCHIVED');
   });
 
-  it('rejects an invalid status value at the Zod layer', async () => {
+  it('rejects reactivation to published when the course is not currently suspended → 409 INVALID_TRANSITION', async () => {
+    const admin = await createUserAndLogin({
+      role: 'Admin',
+      kyc_status: 'not_submitted',
+      mfa_enabled: true,
+    });
+    const instructor = await createUserAndLogin({ role: 'Instructor' });
+    const course = await Course.create({
+      ...baseCoursePayload,
+      is_synchronous: false,
+      owner_instructor_id: instructor.user._id,
+      status: 'draft',
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/admin/courses/${course._id}/status`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ status: 'published' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('INVALID_TRANSITION');
+  });
+
+  it('rejects a genuinely invalid status value at the Zod layer → 400 VALIDATION_ERROR', async () => {
     const admin = await createUserAndLogin({
       role: 'Admin',
       kyc_status: 'not_submitted',
@@ -633,9 +656,10 @@ describe('PATCH /api/v1/admin/courses/:courseId/status', () => {
     const res = await request(app)
       .patch(`/api/v1/admin/courses/${course._id}/status`)
       .set('Authorization', `Bearer ${admin.accessToken}`)
-      .send({ status: 'published' }); // not settable via this endpoint
+      .send({ status: 'not_a_real_status' });
 
     expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
   it('returns 404 when an ALREADY-enrolled student attempts to access a suspended course', async () => {

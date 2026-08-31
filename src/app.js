@@ -17,6 +17,7 @@ const payRoutes = require('./routes/payRoutes');
 const quizRoutes = require('./routes/quizRoutes');
 const userRoutes = require('./routes/userRoutes');
 const certRoutes = require('./routes/certRoutes');
+const { AppError } = require('./middleware/errorHandler');
 
 const env = require('./config/env');
 
@@ -30,15 +31,21 @@ app.use(
   })
 );
 
-const allowedOrigins = [env.appUrl, 'http://localhost:5173'];
-if (env.nodeEnv !== 'production' && process.env.DEMO_FRONTEND_ORIGIN) {
+// ✅ localhost:8443/5173 مقيّدة الآن بالتطوير فقط — كانت مكتوبة بشكل
+// ثابت بدون شرط بيئة، يعني كانت مسموحة حتى بالإنتاج (ثغرة CORS).
+const allowedOrigins = [env.appUrl];
+if (env.nodeEnv !== 'production') {
+  allowedOrigins.push('http://localhost:8443', 'http://localhost:5173');
+}
+if (process.env.DEMO_FRONTEND_ORIGIN) {
   allowedOrigins.push(process.env.DEMO_FRONTEND_ORIGIN);
 }
+
 app.use(
   cors({
     origin(origin, callback) {
       if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error('Not allowed by CORS'));
+      return callback(new AppError(403, 'CORS_NOT_ALLOWED', 'Cross-origin request blocked.'));
     },
     credentials: true,
   })

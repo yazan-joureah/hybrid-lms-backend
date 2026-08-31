@@ -186,11 +186,11 @@ async function sendCertificatePendingVerificationEmail(
   });
 }
 
-async function sendAdminAccountCreatedEmail(to, code) {
+async function sendAdminAccountCreatedEmail(to, code, activationLink) {
   return sendMail({
     to,
     subject: 'Your Hybrid LMS Admin account has been created',
-    html: `<p>An administrator account has been created for you on Hybrid LMS.</p><p>Use this code to set your password and activate your account:</p><p style="font-size:28px;font-weight:bold;letter-spacing:4px;">${code}</p><p>This code expires in 15 minutes.</p>`,
+    html: `<p>An administrator account has been created for you on Hybrid LMS.</p><p><a href="${activationLink}" style="display:inline-block;background:#7c3aed;color:#ffffff;text-decoration:none;padding:10px 22px;border-radius:8px;font-weight:bold;">Activate your account</a></p><p>Or open this link directly:</p><p><a href="${activationLink}">${activationLink}</a></p><p>Then use this code to set your password:</p><p style="font-size:28px;font-weight:bold;letter-spacing:4px;">${code}</p><p>This code expires in 15 minutes.</p>`,
   });
 }
 

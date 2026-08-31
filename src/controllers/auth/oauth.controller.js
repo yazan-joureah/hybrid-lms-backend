@@ -25,6 +25,10 @@ const OAUTH_ERRORS = {
   },
   GUARDIAN_PENDING: { status: 403, message: 'Waiting for guardian approval.' },
   TOKEN_INVALID: { status: 401, message: 'Invalid or expired token.' },
+  MINOR_CANNOT_BE_INSTRUCTOR: {
+    status: 403,
+    message: 'Instructors must be 18 years or older. Please register as a Student instead.',
+  },
 };
 
 /** Shared response shaping for AJAX POST flows that end in a completed/challenged login. */
@@ -62,6 +66,16 @@ async function googleCallback(req, res) {
       state: req.query.state,
       req,
     });
+
+    // ✅ حالة خاصة: الحساب guardian_pending لكن معه guardianManageToken
+    // (مُدوَّر لتوّه من oauth.service.js) — نوجّه المستخدم مباشرة لخطوة
+    // "guardian-pending" بصفحة /login بدل رسالة خطأ عامة، بنفس نمط باقي
+    // خطوات oauth_step (mfa / google-register / google-link).
+    if (result.error === 'GUARDIAN_PENDING' && result.guardianManageToken) {
+      return res.redirect(
+        `${frontendUrl}/login?oauth_step=guardian-pending&token=${encodeURIComponent(result.guardianManageToken)}`
+      );
+    }
 
     if (result.error) {
       const info = OAUTH_ERRORS[result.error] || { message: 'Google authentication failed.' };

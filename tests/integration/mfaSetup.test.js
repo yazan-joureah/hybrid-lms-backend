@@ -182,3 +182,106 @@ describe('POST /auth/mfa/totp/verify — error cases', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('POST /auth/mfa/totp/verify — network-level rate limiter, decoupled from success (fix/AUTH-BE-15)', () => {
+  it('does not lock a genuinely correct code, and blocks 429 after 6 consecutive wrong codes', async () => {
+    const accessToken = await createActiveUserAndLogin();
+    await request(app)
+      .post('/api/v1/auth/mfa/totp/setup')
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    const statuses = [];
+    for (let i = 0; i < 6; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await request(app)
+        .post('/api/v1/auth/mfa/totp/verify')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ code: '000000' }); // deliberately wrong, 6 times
+
+      statuses.push(res.status);
+    }
+
+    // First 5 wrong codes: normal 400 INVALID_CODE.
+    expect(statuses.slice(0, 5)).toEqual(new Array(5).fill(400));
+    // 6th wrong code: still 400 (recordFailure arms the lock AFTER this
+    // response is already decided — same timing as the login test above).
+    expect(statuses[5]).toBe(400);
+
+    // 7th attempt — even with the CORRECT code this time — must be
+    // rejected by checkLock before Argon2/TOTP comparison ever runs.
+    // NOTE: the correct code is unknowable from the setup response alone
+    // in this describe block (setupTotp only returns manual_entry_key,
+    // which WAS captured in the sibling 'success path' describe block
+    // above, not here) — so we decrypt the persisted secret directly via
+    // decryptSecret(), the real exported function from crypto.js.
+    const { decryptSecret } = require('../../src/utils/crypto');
+    const user = await User.findOne({ email: 'mfa.test@example.com' });
+    const config = await MFAConfiguration.findOne({ user_id: user._id });
+    const validCode = generateTotpCode(decryptSecret(config.secret_encrypted));
+    const seventh = await request(app)
+      .post('/api/v1/auth/mfa/totp/verify')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ code: validCode });
+
+    expect(seventh.status).toBe(429);
+  });
+});
+
+describe('POST /auth/mfa/login/verify — network-level rate limiter, decoupled from success (fix/AUTH-BE-15)', () => {
+  it('does not block repeated genuine login MFA challenges, and blocks 429 after 6 consecutive wrong codes on one challenge', async () => {
+    const passwordHash = await hashPassword(PLAIN_PASSWORD);
+    const user = await User.create({
+      full_name: 'MFA Login Verify Test User',
+      email: 'mfa.login.verify.test@example.com',
+      password_hash: passwordHash,
+      birth_date: new Date('1995-06-20'),
+      role: 'Student',
+      status: 'active',
+      email_verified_at: new Date(),
+      mfa_enabled: true,
+      privacy_consent: {
+        policy_version: 'v1.0',
+        accepted_at: new Date(),
+        ip: '127.0.0.1',
+        user_agent: 'jest',
+      },
+    });
+    // generateEncryptedTotpSecret() returns BOTH the raw secret (for us
+    // to compute a valid code with, exactly like an authenticator app
+    // would) AND its encrypted form (what actually gets persisted) —
+    // there is no standalone "generate raw only" function in totp.js.
+    const { generateEncryptedTotpSecret } = require('../../src/utils/totp');
+    const { rawSecret, encryptedSecret } = generateEncryptedTotpSecret();
+    await MFAConfiguration.create({
+      user_id: user._id,
+      method: 'TOTP',
+      secret_encrypted: encryptedSecret,
+      enabled: true,
+      verified_at: new Date(),
+    });
+
+    const loginRes = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: user.email, password: PLAIN_PASSWORD });
+    expect(loginRes.body.data.mfa_required).toBe(true);
+    const { mfa_temp_token: mfaTempToken } = loginRes.body.data;
+
+    const statuses = [];
+    for (let i = 0; i < 6; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await request(app)
+        .post('/api/v1/auth/mfa/login/verify')
+        .send({ mfaTempToken, code: '000000' });
+      statuses.push(res.status);
+    }
+    expect(statuses.slice(0, 6)).toEqual(new Array(6).fill(400));
+
+    const validCode = generateTotpCode(rawSecret);
+    const seventh = await request(app)
+      .post('/api/v1/auth/mfa/login/verify')
+      .send({ mfaTempToken, code: validCode });
+
+    // 429 — locked before the (otherwise valid) code is even checked.
+    expect(seventh.status).toBe(429);
+  });
+});

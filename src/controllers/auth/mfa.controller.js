@@ -2,6 +2,11 @@ const QRCode = require('qrcode');
 const authService = require('../../services/authService');
 const { issueSessionCookies } = require('../../utils/sessionCookies.util');
 const { AppError } = require('../../middleware/errorHandler');
+const { recordFailure, recordSuccess } = require('../../middleware/rateLimiter');
+const {
+  mfaLoginVerifyIdentifier,
+  mfaTotpVerifyIdentifier,
+} = require('../../utils/rateLimitIdentifiers');
 
 // POST /auth/mfa/totp/setup
 async function setupTotp(req, res, next) {
@@ -43,9 +48,16 @@ async function verifyTotp(req, res, next) {
     });
 
     if (result.error) {
+      // SECURITY: only INVALID_CODE is a genuine guessing failure.
+      // NO_PENDING_SETUP / ALREADY_ENABLED are state errors, not guesses.
+      if (result.error === 'INVALID_CODE') {
+        await recordFailure(req, 'mfa-verify', mfaTotpVerifyIdentifier);
+      }
       const info = TOTP_VERIFY_ERRORS[result.error];
       throw new AppError(info.status, result.error, info.message);
     }
+
+    await recordSuccess(req, 'mfa-verify', mfaTotpVerifyIdentifier);
 
     return res.status(200).json({
       success: true,
@@ -75,9 +87,17 @@ async function verifyMfaLogin(req, res, next) {
     const result = await authService.completeMfaLogin({ ...req.validatedBody, req });
 
     if (result.error) {
+      // SECURITY: only INVALID_CODE is a genuine guessing failure against
+      // the mfaTempToken axis. MFA_CHALLENGE_EXPIRED / _INVALID mean the
+      // challenge token itself is stale/unknown — not a wrong-code guess.
+      if (result.error === 'INVALID_CODE') {
+        await recordFailure(req, 'mfa-login-verify', mfaLoginVerifyIdentifier);
+      }
       const info = MFA_LOGIN_VERIFY_ERRORS[result.error];
       throw new AppError(info.status, result.error, info.message);
     }
+
+    await recordSuccess(req, 'mfa-login-verify', mfaLoginVerifyIdentifier);
 
     issueSessionCookies(res, result.refreshTokenRaw);
 
