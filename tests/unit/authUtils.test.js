@@ -178,27 +178,28 @@ function mockRes() {
 }
 
 describe('sessionCookies.util.js', () => {
-  it('issues refresh_token (HttpOnly) and csrf_token (readable) cookies', () => {
+  it('issues refresh_token as HttpOnly + Secure + SameSite=None (cross-origin deployment)', () => {
     const res = mockRes();
     issueSessionCookies(res, 'raw-refresh-token');
 
     expect(res.cookie).toHaveBeenCalledWith(
       'refresh_token',
       'raw-refresh-token',
-      expect.objectContaining({ httpOnly: true, sameSite: 'lax' })
+      expect.objectContaining({ httpOnly: true, secure: true, sameSite: 'none' })
     );
-    expect(res.cookie).toHaveBeenCalledWith(
-      'csrf_token',
-      expect.any(String),
-      expect.objectContaining({ httpOnly: false })
-    );
+    // csrf_token لم يعد يُصدَر — الحماية من CSRF انتقلت لآلية Origin-header
+    // allow-listing (requireTrustedOrigin) — راجع توثيق csrfProtection.js
+    expect(res.cookie).toHaveBeenCalledTimes(1);
   });
 
-  it('clearSessionCookies clears both cookies with matching attributes', () => {
+  it('clearSessionCookies clears refresh_token with matching attributes', () => {
     const res = mockRes();
     clearSessionCookies(res);
-    expect(res.clearCookie).toHaveBeenCalledWith('refresh_token', expect.any(Object));
-    expect(res.clearCookie).toHaveBeenCalledWith('csrf_token', expect.any(Object));
+    expect(res.clearCookie).toHaveBeenCalledWith(
+      'refresh_token',
+      expect.objectContaining({ httpOnly: true, secure: true, sameSite: 'none' })
+    );
+    expect(res.clearCookie).toHaveBeenCalledTimes(1);
   });
 });
 

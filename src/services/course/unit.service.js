@@ -7,7 +7,7 @@ const CourseProgressEvent = require('../../models/CourseProgressEvent');
 const Attendance = require('../../models/attendance.model');
 const { AppError } = require('../../middleware/errorHandler');
 const auditService = require('../auditService');
-const { triggerReviewOnPublishedEdit } = require('./reviewState.service');
+const { revertToDraftOnPublishedEdit } = require('./reviewState.service');
 const { toObjectId } = require('../../utils/objectId.util');
 const { loadOwnedCourse } = require('./courseAccess.util');
 const fileStorage = require('../fileStorage.service');
@@ -31,9 +31,9 @@ async function addUnit({ courseId, instructorId, unitData, req }) {
   });
   await unit.save();
 
-  let reviewRequest = null;
+  let revertedToDraft = false;
   if (course.status === 'published') {
-    reviewRequest = await triggerReviewOnPublishedEdit({
+    revertedToDraft = await revertToDraftOnPublishedEdit({
       course,
       instructorId: safeInstructorId,
       changeType: 'UNIT_ADDED',
@@ -53,7 +53,7 @@ async function addUnit({ courseId, instructorId, unitData, req }) {
       course_id: safeCourseId,
       title: unit.title,
       order: unit.order,
-      review_request_id: reviewRequest?._id?.toString() || null,
+      reverted_to_draft: revertedToDraft,
     },
     req,
   });
@@ -80,9 +80,9 @@ async function updateUnit({ courseId, unitId, instructorId, updateData, req }) {
   if (updateData.desc !== undefined) unit.desc = updateData.desc;
   await unit.save();
 
-  let reviewRequest = null;
+  let revertedToDraft = false;
   if (course.status === 'published') {
-    reviewRequest = await triggerReviewOnPublishedEdit({
+    revertedToDraft = await revertToDraftOnPublishedEdit({
       course,
       instructorId: safeInstructorId,
       changeType: 'UNIT_UPDATED',
@@ -104,7 +104,7 @@ async function updateUnit({ courseId, unitId, instructorId, updateData, req }) {
     resourceId: unit._id.toString(),
     metadata: {
       course_id: safeCourseId,
-      review_request_id: reviewRequest?._id?.toString() || null,
+      reverted_to_draft: revertedToDraft,
     },
     req,
   });
@@ -153,9 +153,9 @@ async function deleteUnit({ courseId, unitId, instructorId, req }) {
     })
   );
 
-  let reviewRequest = null;
+  let revertedToDraft = false;
   if (course.status === 'published') {
-    reviewRequest = await triggerReviewOnPublishedEdit({
+    revertedToDraft = await revertToDraftOnPublishedEdit({
       course,
       instructorId: safeInstructorId,
       changeType: 'UNIT_DELETED',
@@ -174,7 +174,7 @@ async function deleteUnit({ courseId, unitId, instructorId, req }) {
     metadata: {
       course_id: safeCourseId,
       deleted_content_count: contents.length,
-      review_request_id: reviewRequest?._id?.toString() || null,
+      reverted_to_draft: revertedToDraft,
     },
     req,
   });

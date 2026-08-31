@@ -104,7 +104,7 @@ function tokenFor(user) {
 
 describe('PATCH /admin/accounts/:id/status — privilege escalation guards', () => {
   it('Admin cannot suspend another Admin (SuperAdmin-only) → 403', async () => {
-    const actorAdmin = await createUser({ role: 'Admin' });
+    const actorAdmin = await createUser({ role: 'Admin', mfa_enabled: true });
     const targetAdmin = await createUser({ role: 'Admin' });
 
     const res = await request(app)
@@ -117,7 +117,7 @@ describe('PATCH /admin/accounts/:id/status — privilege escalation guards', () 
   });
 
   it('nobody can manage a SuperAdmin target through this endpoint → 403', async () => {
-    const actorAdmin = await createUser({ role: 'SuperAdmin' });
+    const actorAdmin = await createUser({ role: 'SuperAdmin', mfa_enabled: true });
     const targetSuperAdmin = await createUser({ role: 'SuperAdmin' });
 
     const res = await request(app)
@@ -129,7 +129,7 @@ describe('PATCH /admin/accounts/:id/status — privilege escalation guards', () 
   });
 
   it('actor cannot suspend/activate their own account → 403 FORBIDDEN', async () => {
-    const admin = await createUser({ role: 'Admin' });
+    const admin = await createUser({ role: 'Admin', mfa_enabled: true });
 
     const res = await request(app)
       .patch(`/api/v1/admin/accounts/${admin._id}/status`)
@@ -141,7 +141,7 @@ describe('PATCH /admin/accounts/:id/status — privilege escalation guards', () 
   });
 
   it('suspending a Student revokes all sessions, refresh tokens, and OAuth links', async () => {
-    const admin = await createUser({ role: 'Admin' });
+    const admin = await createUser({ role: 'Admin', mfa_enabled: true });
     const student = await createUser({ role: 'Student' });
 
     await Session.create({
@@ -177,7 +177,7 @@ describe('PATCH /admin/accounts/:id/status — privilege escalation guards', () 
   });
 
   it('rejects a no-op status change (already suspended) → 409 STATUS_UNCHANGED', async () => {
-    const admin = await createUser({ role: 'Admin' });
+    const admin = await createUser({ role: 'Admin', mfa_enabled: true });
     const student = await createUser({ role: 'Student', status: 'suspended' });
 
     const res = await request(app)
@@ -190,7 +190,7 @@ describe('PATCH /admin/accounts/:id/status — privilege escalation guards', () 
   });
 
   it('missing reason → 400 VALIDATION_ERROR (Zod enforces mandatory reason)', async () => {
-    const admin = await createUser({ role: 'Admin' });
+    const admin = await createUser({ role: 'Admin', mfa_enabled: true });
     const student = await createUser({ role: 'Student' });
 
     const res = await request(app)
@@ -205,7 +205,7 @@ describe('PATCH /admin/accounts/:id/status — privilege escalation guards', () 
 
 describe('POST /admin/accounts — SuperAdmin-only Admin creation', () => {
   it('Admin (not SuperAdmin) → 403, even though Admin passes elsewhere', async () => {
-    const admin = await createUser({ role: 'Admin' });
+    const admin = await createUser({ role: 'Admin', mfa_enabled: true });
 
     const res = await request(app)
       .post('/api/v1/admin/accounts')
@@ -216,7 +216,7 @@ describe('POST /admin/accounts — SuperAdmin-only Admin creation', () => {
   });
 
   it('SuperAdmin creates a password-less Admin account, seeds a PASSWORD_RESET AuthToken', async () => {
-    const superAdmin = await createUser({ role: 'SuperAdmin' });
+    const superAdmin = await createUser({ role: 'SuperAdmin', mfa_enabled: true });
 
     const res = await request(app)
       .post('/api/v1/admin/accounts')
@@ -233,7 +233,7 @@ describe('POST /admin/accounts — SuperAdmin-only Admin creation', () => {
   });
 
   it('duplicate email → 409 EMAIL_ALREADY_REGISTERED', async () => {
-    const superAdmin = await createUser({ role: 'SuperAdmin' });
+    const superAdmin = await createUser({ role: 'SuperAdmin', mfa_enabled: true });
     await createUser({ email: 'dup@example.com' });
 
     const res = await request(app)
@@ -248,7 +248,7 @@ describe('POST /admin/accounts — SuperAdmin-only Admin creation', () => {
 
 describe('DELETE /admin/accounts/:id — admin-initiated deletion', () => {
   it('actor cannot delete their own account via this route → 403 FORBIDDEN', async () => {
-    const admin = await createUser({ role: 'Admin' });
+    const admin = await createUser({ role: 'Admin', mfa_enabled: true });
 
     const res = await request(app)
       .delete(`/api/v1/admin/accounts/${admin._id}`)
@@ -260,7 +260,7 @@ describe('DELETE /admin/accounts/:id — admin-initiated deletion', () => {
   });
 
   it('deletes a Student with no active enrollments → 200, soft-deleted, 30-day window', async () => {
-    const admin = await createUser({ role: 'Admin' });
+    const admin = await createUser({ role: 'Admin', mfa_enabled: true });
     const student = await createUser({ role: 'Student' });
 
     const res = await request(app)
@@ -280,7 +280,7 @@ describe('DELETE /admin/accounts/:id — admin-initiated deletion', () => {
   (Enrollment ? it : it.skip)(
     'blocks deleting a Student with active enrollments → 409 STUDENT_HAS_ACTIVE_ENROLLMENTS',
     async () => {
-      const admin = await createUser({ role: 'Admin' });
+      const admin = await createUser({ role: 'Admin', mfa_enabled: true });
       const student = await createUser({ role: 'Student' });
       // Create a dummy course to get a valid course_id
       const course = await Course.create({
@@ -311,7 +311,7 @@ describe('DELETE /admin/accounts/:id — admin-initiated deletion', () => {
   (Course ? it : it.skip)(
     'blocks deleting an Instructor with non-archived courses → 409 INSTRUCTOR_HAS_ACTIVE_COURSES',
     async () => {
-      const admin = await createUser({ role: 'Admin' });
+      const admin = await createUser({ role: 'Admin', mfa_enabled: true });
       const instructor = await createUser({ role: 'Instructor' });
       await Course.create({
         owner_instructor_id: instructor._id,
@@ -335,7 +335,7 @@ describe('DELETE /admin/accounts/:id — admin-initiated deletion', () => {
 
 describe('PATCH /admin/accounts/:id/deletion — admin-triggered restore', () => {
   it('restores a deleted account within the 30-day window', async () => {
-    const admin = await createUser({ role: 'Admin' });
+    const admin = await createUser({ role: 'Admin', mfa_enabled: true });
     const deletedUser = await createUser({
       role: 'Student',
       status: 'deleted',
@@ -351,7 +351,7 @@ describe('PATCH /admin/accounts/:id/deletion — admin-triggered restore', () =>
   });
 
   it('rejects restore past the 30-day window → 410 RESTORE_WINDOW_EXPIRED', async () => {
-    const admin = await createUser({ role: 'Admin' });
+    const admin = await createUser({ role: 'Admin', mfa_enabled: true });
     const deletedUser = await createUser({
       role: 'Student',
       status: 'deleted',
@@ -369,7 +369,7 @@ describe('PATCH /admin/accounts/:id/deletion — admin-triggered restore', () =>
 
 describe('GET /admin/accounts — listing/search', () => {
   it('filters by role and respects pageSize', async () => {
-    const admin = await createUser({ role: 'Admin' });
+    const admin = await createUser({ role: 'Admin', mfa_enabled: true });
     await createUser({ role: 'Student' });
     await createUser({ role: 'Student' });
     await createUser({ role: 'Student' });
@@ -440,7 +440,7 @@ describe('DELETE /auth/account — self-service deletion request', () => {
 
 describe('POST /admin/deletion-requests/:id/review — SuperAdmin decision', () => {
   it('approve → target account soft-deleted and all sessions revoked', async () => {
-    const superAdmin = await createUser({ role: 'SuperAdmin' });
+    const superAdmin = await createUser({ role: 'SuperAdmin', mfa_enabled: true });
     const instructor = await createUser({ role: 'Instructor' });
     const deletionRequest = await AccountDeletionRequest.create({
       user_id: instructor._id,
@@ -459,7 +459,7 @@ describe('POST /admin/deletion-requests/:id/review — SuperAdmin decision', () 
   });
 
   it('reject without decisionReason → 400 VALIDATION_ERROR (conditionally required)', async () => {
-    const superAdmin = await createUser({ role: 'SuperAdmin' });
+    const superAdmin = await createUser({ role: 'SuperAdmin', mfa_enabled: true });
     const instructor = await createUser({ role: 'Instructor' });
     const deletionRequest = await AccountDeletionRequest.create({
       user_id: instructor._id,
@@ -477,7 +477,7 @@ describe('POST /admin/deletion-requests/:id/review — SuperAdmin decision', () 
   });
 
   it('reviewing an already-decided request → 409 REQUEST_ALREADY_DECIDED', async () => {
-    const superAdmin = await createUser({ role: 'SuperAdmin' });
+    const superAdmin = await createUser({ role: 'SuperAdmin', mfa_enabled: true });
     const instructor = await createUser({ role: 'Instructor' });
     const deletionRequest = await AccountDeletionRequest.create({
       user_id: instructor._id,
@@ -496,7 +496,7 @@ describe('POST /admin/deletion-requests/:id/review — SuperAdmin decision', () 
   });
 
   it('Admin (not SuperAdmin) cannot access the review queue → 403', async () => {
-    const admin = await createUser({ role: 'Admin' });
+    const admin = await createUser({ role: 'Admin', mfa_enabled: true });
 
     const res = await request(app)
       .get('/api/v1/admin/deletion-requests')

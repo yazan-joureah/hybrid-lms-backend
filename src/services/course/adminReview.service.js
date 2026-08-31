@@ -127,14 +127,18 @@ async function listAllCoursesForAdmin({ queryParams = {} }) {
   return { success: true, data: { courses, meta } };
 }
 
-const SETTABLE_ADMIN_STATUSES = ['suspended', 'archived'];
+const SETTABLE_ADMIN_STATUSES = ['suspended', 'archived', 'published'];
 
 async function setCourseStatus({ adminId, courseId, status, req }) {
   const safeCourseId = toObjectId(courseId, 'courseId');
   const safeAdminId = toObjectId(adminId, 'adminId');
 
   if (!SETTABLE_ADMIN_STATUSES.includes(status)) {
-    throw new AppError(400, 'INVALID_STATUS', 'status must be either suspended or archived.');
+    throw new AppError(
+      400,
+      'INVALID_STATUS',
+      'status must be one of: suspended, archived, published.'
+    );
   }
 
   const course = await Course.findById(safeCourseId);
@@ -152,6 +156,20 @@ async function setCourseStatus({ adminId, courseId, status, req }) {
     throw new AppError(409, 'ALREADY_IN_STATUS', `Course is already ${status}.`);
   }
 
+  // إعادة التفعيل (unsuspend) مسار خاص — مسموح فقط من suspended إلى
+  // published، عشان ما ينكسر منطق "publish الأصلي" (assertContentCompleteForPublish
+  // إلخ) اللي بينفّذ فقط ضمن reviewCourse. هون إحنا بس عم نعكس تعليق سابق.
+  if (status === 'published') {
+    if (course.status !== 'suspended') {
+      throw new AppError(
+        409,
+        'INVALID_TRANSITION',
+        'Only a suspended course can be reactivated back to published.'
+      );
+    }
+    course.suspended_by = null;
+  }
+
   course.status = status;
   if (status === 'suspended') {
     course.suspended_by = safeAdminId;
@@ -161,7 +179,7 @@ async function setCourseStatus({ adminId, courseId, status, req }) {
   await auditService.record({
     actorId: safeAdminId,
     actorRole: 'Admin',
-    action: `COURSE_${status.toUpperCase()}`,
+    action: status === 'published' ? 'COURSE_REACTIVATED' : `COURSE_${status.toUpperCase()}`,
     resourceType: 'Course',
     resourceId: safeCourseId.toString(),
     req,

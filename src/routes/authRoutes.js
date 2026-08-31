@@ -3,7 +3,12 @@ const router = express.Router();
 
 const authController = require('../controllers/authController');
 const { validateBody } = require('../middleware/validate');
-const { rateLimit } = require('../middleware/rateLimiter');
+const { rateLimit, checkLock } = require('../middleware/rateLimiter');
+const {
+  loginIdentifier,
+  mfaLoginVerifyIdentifier,
+  mfaTotpVerifyIdentifier,
+} = require('../utils/rateLimitIdentifiers');
 const {
   registerSchema,
   guardianApproveSchema,
@@ -18,9 +23,11 @@ const {
   requestOwnDeletionSchema,
   restoreRequestSchema,
   restoreConfirmSchema,
+  guardianManageResendSchema,
+  guardianManageUpdateEmailSchema,
 } = require('../validators/authSchemas');
 const { requireAuth } = require('../middleware/authMiddleware');
-const { requireCsrfToken } = require('../middleware/csrfProtection');
+const { requireTrustedOrigin } = require('../middleware/csrfProtection');
 
 router.post(
   '/register',
@@ -42,7 +49,7 @@ router.post(
 
 router.post(
   '/login',
-  rateLimit('login', (req) => req.body?.email || 'unknown'),
+  checkLock('login', loginIdentifier),
   validateBody(loginSchema),
   authController.login
 );
@@ -52,7 +59,7 @@ router.post('/logout', requireAuth, authController.logout);
 router.post(
   '/refresh',
   // rateLimit('refresh', (req) => req.ip),
-  requireCsrfToken,
+  requireTrustedOrigin,
   authController.refresh
 );
 
@@ -82,14 +89,14 @@ router.post(
 router.post(
   '/mfa/totp/verify',
   requireAuth,
-  rateLimit('mfa-verify', (req) => req.user.id),
+  checkLock('mfa-verify', mfaTotpVerifyIdentifier),
   validateBody(totpVerifySchema),
   authController.verifyTotp
 );
 
 router.post(
   '/mfa/login/verify',
-  rateLimit('mfa-login-verify', (req) => req.body?.mfaTempToken || 'anonymous'),
+  checkLock('mfa-login-verify', mfaLoginVerifyIdentifier),
   validateBody(mfaLoginVerifySchema),
   authController.verifyMfaLogin
 );
@@ -125,7 +132,6 @@ router.post(
   authController.googleRegisterConfirm
 );
 
-// authRoutes.js
 router.post(
   '/google/guardian-email',
   // rateLimit('google-guardian-email', (req) => req.ip),
@@ -161,6 +167,22 @@ router.post(
   '/account/restore/confirm',
   validateBody(restoreConfirmSchema),
   authController.confirmRestore
+);
+
+router.get('/guardian/manage', authController.getStatus);
+
+router.post(
+  '/guardian/manage/resend',
+  rateLimit('guardian-manage-resend', (req) => req.body?.token || req.ip),
+  validateBody(guardianManageResendSchema),
+  authController.resend
+);
+
+router.post(
+  '/guardian/manage/update-email',
+  rateLimit('guardian-manage-update-email', (req) => req.body?.token || req.ip),
+  validateBody(guardianManageUpdateEmailSchema),
+  authController.updateEmail
 );
 
 module.exports = router;

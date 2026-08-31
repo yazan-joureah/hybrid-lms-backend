@@ -1,8 +1,7 @@
 /**
- * Integration test for the Double-Submit Cookie CSRF protection on
- * POST /auth/refresh — the only endpoint in this module that
- * authenticates via cookie alone (see csrfProtection.js docstring for
- * why every other route is exempt).
+ * Integration test for Origin-based CSRF protection on POST /auth/refresh
+ * (requireTrustedOrigin) — replaces the old Double-Submit Cookie test.
+ * See csrfProtection.js docstring for the full rationale.
  */
 const request = require('supertest');
 const mongoose = require('mongoose');
@@ -13,6 +12,7 @@ const { hashPassword } = require('../../src/utils/crypto');
 const redisClient = require('../../src/config/redis');
 
 const PLAIN_PASSWORD = 'a-genuinely-long-passphrase-2026';
+const TRUSTED_ORIGIN = 'http://localhost:5173'; // matches ALLOWED_ORIGINS in csrfProtection.js
 
 beforeAll(async () => {
   if (mongoose.connection.readyState === 0) {
@@ -35,7 +35,7 @@ function extractCookie(setCookieHeader, name) {
   return { raw: raw.split(';')[0], value: raw.split(';')[0].split('=')[1] };
 }
 
-async function loginAndGetCookies() {
+async function loginAndGetRefreshCookie() {
   const passwordHash = await hashPassword(PLAIN_PASSWORD);
   await User.create({
     full_name: 'CSRF Test User',
@@ -57,36 +57,45 @@ async function loginAndGetCookies() {
     .post('/api/v1/auth/login')
     .send({ email: 'csrf.test@example.com', password: PLAIN_PASSWORD });
 
-  const refresh = extractCookie(res.headers['set-cookie'], 'refresh_token');
-  const csrf = extractCookie(res.headers['set-cookie'], 'csrf_token');
-  return { refresh, csrf };
+  return extractCookie(res.headers['set-cookie'], 'refresh_token');
 }
 
-describe('POST /auth/login — issues a readable (non-HttpOnly) CSRF cookie', () => {
-  it('sets csrf_token WITHOUT the HttpOnly flag, unlike refresh_token', async () => {
-    const { refresh, csrf } = await loginAndGetCookies();
+describe('POST /auth/login — cookie attributes (cross-origin deployment)', () => {
+  it('sets refresh_token as HttpOnly + Secure + SameSite=None, and does NOT set a csrf_token cookie', async () => {
+    const passwordHash = await hashPassword(PLAIN_PASSWORD);
+    await User.create({
+      full_name: 'CSRF Test User',
+      email: 'csrf.test2@example.com',
+      password_hash: passwordHash,
+      birth_date: new Date('1995-06-20'),
+      role: 'Student',
+      status: 'active',
+      email_verified_at: new Date(),
+      privacy_consent: {
+        policy_version: 'v1.0',
+        accepted_at: new Date(),
+        ip: '127.0.0.1',
+        user_agent: 'jest',
+      },
+    });
 
-    expect(csrf.value).toBeTruthy();
-    // Find the FULL raw Set-Cookie strings again to inspect flags precisely.
-    const passwordUser = await User.findOne({ email: 'csrf.test@example.com' });
-    expect(passwordUser).not.toBeNull();
-
-    // Re-login to inspect raw headers directly (avoids re-deriving from extractCookie's trimmed form).
     const res = await request(app)
       .post('/api/v1/auth/login')
-      .send({ email: 'csrf.test@example.com', password: PLAIN_PASSWORD });
-    const rawCsrf = res.headers['set-cookie'].find((c) => c.startsWith('csrf_token='));
-    const rawRefresh = res.headers['set-cookie'].find((c) => c.startsWith('refresh_token='));
+      .send({ email: 'csrf.test2@example.com', password: PLAIN_PASSWORD });
 
-    expect(rawCsrf).not.toMatch(/HttpOnly/i);
+    const rawRefresh = res.headers['set-cookie'].find((c) => c.startsWith('refresh_token='));
+    const rawCsrf = res.headers['set-cookie'].find((c) => c.startsWith('csrf_token='));
+
     expect(rawRefresh).toMatch(/HttpOnly/i);
-    expect(refresh.value).toBeTruthy();
+    expect(rawRefresh).toMatch(/Secure/i);
+    expect(rawRefresh).toMatch(/SameSite=None/i);
+    expect(rawCsrf).toBeUndefined(); // csrf_token cookie no longer exists
   });
 });
 
-describe('POST /auth/refresh — CSRF enforcement', () => {
-  it('rejects with 403 CSRF_TOKEN_INVALID when the X-CSRF-Token header is missing entirely', async () => {
-    const { refresh } = await loginAndGetCookies();
+describe('POST /auth/refresh — Origin-header CSRF enforcement (requireTrustedOrigin)', () => {
+  it('rejects with 403 CSRF_TOKEN_INVALID when neither Origin nor Referer headers are present', async () => {
+    const refresh = await loginAndGetRefreshCookie();
 
     const res = await request(app).post('/api/v1/auth/refresh').set('Cookie', refresh.raw);
 
@@ -94,29 +103,29 @@ describe('POST /auth/refresh — CSRF enforcement', () => {
     expect(res.body.error.code).toBe('CSRF_TOKEN_INVALID');
   });
 
-  it('rejects with 403 when the header value does NOT match the cookie (forged/guessed value)', async () => {
-    const { refresh, csrf } = await loginAndGetCookies();
+  it('rejects with 403 when Origin is present but not in the allow-list (forged cross-site request)', async () => {
+    const refresh = await loginAndGetRefreshCookie();
 
     const res = await request(app)
       .post('/api/v1/auth/refresh')
-      .set('Cookie', [refresh.raw, csrf.raw])
-      .set('X-CSRF-Token', 'a-completely-different-forged-value');
+      .set('Cookie', refresh.raw)
+      .set('Origin', 'https://evil-attacker.example.com');
 
     expect(res.status).toBe(403);
-    expect(res.body.error.code).toBe('CSRF_TOKEN_INVALID');
+    expect(res.body.error.code).toBe('CORS_NOT_ALLOWED');
   });
 
-  it('succeeds with 200 when cookie and header match exactly, and rotates the CSRF token', async () => {
-    const { refresh, csrf } = await loginAndGetCookies();
+  it('succeeds with 200 when Origin matches the allow-list, and rotates the refresh token', async () => {
+    const refresh = await loginAndGetRefreshCookie();
 
     const res = await request(app)
       .post('/api/v1/auth/refresh')
-      .set('Cookie', [refresh.raw, csrf.raw])
-      .set('X-CSRF-Token', csrf.value);
+      .set('Cookie', refresh.raw)
+      .set('Origin', TRUSTED_ORIGIN);
 
     expect(res.status).toBe(200);
 
-    const newCsrf = extractCookie(res.headers['set-cookie'], 'csrf_token');
-    expect(newCsrf.value).not.toBe(csrf.value); // rotated, not reused
+    const newRefresh = extractCookie(res.headers['set-cookie'], 'refresh_token');
+    expect(newRefresh.value).not.toBe(refresh.value); // rotated, not reused
   });
 });

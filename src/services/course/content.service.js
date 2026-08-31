@@ -7,7 +7,7 @@ const { AppError } = require('../../middleware/errorHandler');
 const auditService = require('../auditService');
 const { validateUploadedFile } = require('../../utils/fileValidation.util');
 const fileStorage = require('../fileStorage.service');
-const { triggerReviewOnPublishedEdit } = require('./reviewState.service');
+const { revertToDraftOnPublishedEdit } = require('./reviewState.service');
 const { toObjectId } = require('../../utils/objectId.util');
 const { loadOwnedCourse } = require('./courseAccess.util');
 const { COURSE_CONTENT_POLICY } = require('../../config/uploadPolicies');
@@ -106,9 +106,9 @@ async function addContent({
   });
   await content.save();
 
-  let reviewRequest = null;
+  let revertedToDraft = false;
   if (course.status === 'published') {
-    reviewRequest = await triggerReviewOnPublishedEdit({
+    revertedToDraft = await revertToDraftOnPublishedEdit({
       course,
       instructorId: safeInstructorId,
       changeType: 'CONTENT_ADDED',
@@ -128,7 +128,7 @@ async function addContent({
       course_id: safeCourseId,
       unit_id: safeUnitId,
       content_type: contentType,
-      review_request_id: reviewRequest?._id?.toString() || null,
+      reverted_to_draft: revertedToDraft,
     },
     req,
   });
@@ -189,9 +189,9 @@ async function updateContent({
 
   await content.save();
 
-  let reviewRequest = null;
+  let revertedToDraft = false;
   if (course.status === 'published') {
-    reviewRequest = await triggerReviewOnPublishedEdit({
+    revertedToDraft = await revertToDraftOnPublishedEdit({
       course,
       instructorId: safeInstructorId,
       changeType: 'CONTENT_UPDATED',
@@ -207,7 +207,11 @@ async function updateContent({
     action: 'CONTENT_UPDATED',
     resourceType: 'CourseContent',
     resourceId: safeContentId.toString(),
-    metadata: { review_request_id: reviewRequest?._id?.toString() || null },
+    metadata: {
+      course_id: safeCourseId,
+      unit_id: safeUnitId,
+      reverted_to_draft: revertedToDraft,
+    },
     req,
   });
 

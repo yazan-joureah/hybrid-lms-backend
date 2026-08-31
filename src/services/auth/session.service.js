@@ -6,6 +6,7 @@ const Session = require('../../models/Session');
 const RefreshToken = require('../../models/RefreshToken');
 const MFAConfiguration = require('../../models/MFAConfiguration');
 const LoginAttempt = require('../../models/LoginAttempt');
+const GuardianApproval = require('../../models/GuardianApproval');
 const { verifyPassword, generateOpaqueToken, sha256 } = require('../../utils/crypto');
 const { signAccessToken, signMfaTempToken } = require('../../utils/jwt');
 const auditService = require('../auditService');
@@ -41,6 +42,9 @@ function computeRedirectTo(user) {
     return !user.mfa_enabled || user.kyc_status !== 'verified'
       ? '/instructor/setup'
       : '/instructor/dashboard';
+  }
+  if (user.role === 'Admin' || user.role === 'SuperAdmin') {
+    return !user.mfa_enabled ? '/admin/setup' : '/admin/dashboard';
   }
   return '/admin/dashboard';
 }
@@ -123,7 +127,34 @@ async function loginUser({ email, password, req }) {
     return { error: 'EMAIL_NOT_VERIFIED' };
   }
   if (user.status === 'guardian_pending') {
-    return { error: 'GUARDIAN_PENDING' };
+    const approval = await GuardianApproval.findOne({
+      user_id: user._id,
+      status: 'pending',
+    }).sort({ created_at: -1 });
+
+    if (!approval) {
+      // لا يوجد سجل موافقة معلَّق فعلياً (تناقض بيانات) — فشل آمن بالرسالة
+      // العامة القديمة بدل توليد توكن لطلب غير موجود.
+      return { error: 'GUARDIAN_PENDING' };
+    }
+
+    // SECURITY: تسجيل الدخول أثبت ملكية الحساب (كلمة مرور صحيحة) — آمن
+    // تماماً أن نُدوِّر توكن الإدارة ونُعيده مباشرة. أي نسخة سابقة من
+    // الرابط (ضاعت أو انتهت صلاحيتها) تُبطَل تلقائياً بهذا التدوير.
+    const { raw: studentAccessRaw, hash: studentAccessHash } = generateOpaqueToken();
+    approval.student_access_token_hash = studentAccessHash;
+    await approval.save();
+
+    await auditService.record({
+      actorId: user._id,
+      actorRole: user.role,
+      action: 'GUARDIAN_MANAGE_TOKEN_REISSUED_ON_LOGIN',
+      resourceType: 'guardian_approval',
+      resourceId: approval._id,
+      req,
+    });
+
+    return { error: 'GUARDIAN_PENDING', guardianManageToken: studentAccessRaw };
   }
   if (user.status === 'suspended' || user.status === 'deleted') {
     return { error: 'ACCOUNT_SUSPENDED' };

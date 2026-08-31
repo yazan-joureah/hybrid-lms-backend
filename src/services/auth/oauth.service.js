@@ -98,7 +98,33 @@ async function completeLoginForLinkedUser({ userId, req }) {
     return { error: 'ACCOUNT_SUSPENDED' };
   }
   if (user.status === 'guardian_pending') {
-    return { error: 'GUARDIAN_PENDING' };
+    // ✅ نفس منطق session.service.js:loginUser تمامًا — تسجيل الدخول عبر
+    // Google أثبت ملكية الحساب فعليًا، فآمن تمامًا نُدوِّر (rotate)
+    // student_access_token_hash ونرجعه، بدل ما نكتفي برسالة خطأ عامة.
+    const approval = await GuardianApproval.findOne({
+      user_id: user._id,
+      status: 'pending',
+    }).sort({ created_at: -1 });
+
+    if (!approval) {
+      return { error: 'GUARDIAN_PENDING' };
+    }
+
+    const { raw: studentAccessRaw, hash: studentAccessHash } = generateOpaqueToken();
+    approval.student_access_token_hash = studentAccessHash;
+    await approval.save();
+
+    await auditService.record({
+      actorId: user._id,
+      actorRole: user.role,
+      action: 'GUARDIAN_MANAGE_TOKEN_REISSUED_ON_LOGIN',
+      resourceType: 'guardian_approval',
+      resourceId: approval._id,
+      metadata: { via: 'google_oauth' },
+      req,
+    });
+
+    return { error: 'GUARDIAN_PENDING', guardianManageToken: studentAccessRaw };
   }
 
   if (user.mfa_enabled) {
@@ -202,6 +228,14 @@ async function confirmGoogleRegistration({ rawToken, birthDate, role, req }) {
 
   const minor = isMinor(birthDate);
 
+  // SECURITY: نفس قيد UC-AUTH-01 المُضاف للتسجيل العادي — قاصر لا يجوز
+  // أن يختار دور Instructor عبر Google OAuth أيضاً، بغض النظر عن موافقة
+  // ولي الأمر اللاحقة. يُفحَص هنا (وليس بـ Zod) لأن guardian_email غير
+  // متوفر في هذه الخطوة أصلاً — القرار يعتمد فقط على birth_date + role.
+  if (minor && role === 'Instructor') {
+    return { error: 'MINOR_CANNOT_BE_INSTRUCTOR' };
+  }
+
   const user = await User.create({
     full_name: decoded.fullName,
     email: decoded.sub,
@@ -275,8 +309,8 @@ async function submitGoogleGuardianEmail({ rawToken, guardianEmail, req }) {
     student_device_fingerprint: req.get('x-device-fingerprint') || null,
   });
 
-  const approveUrl = `${env.appUrl}/auth/guardian/approve?token=${approvalRaw}`;
-  const manageUrl = `${env.appUrl}/auth/guardian/manage?token=${studentAccessRaw}`;
+  const approveUrl = `${env.frontUrl}/auth/guardian/approve?token=${approvalRaw}`;
+  const manageUrl = `${env.frontUrl}/auth/guardian/manage?token=${studentAccessRaw}`;
 
   try {
     await Promise.all([

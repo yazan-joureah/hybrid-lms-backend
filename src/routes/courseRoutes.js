@@ -213,4 +213,11 @@ router.get(
   progressController.getProgress
 );
 
+router.delete(
+  '/enrollments/:enrollmentId',
+  requireAuth,
+  requireRole(['Student']),
+  courseController.cancelMyEnrollmentHandler
+);
+
 module.exports = router;

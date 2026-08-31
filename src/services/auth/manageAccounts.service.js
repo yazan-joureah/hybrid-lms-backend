@@ -10,6 +10,7 @@ const emailService = require('../emailService');
 const logger = require('../../utils/logger');
 
 const ADMIN_SETUP_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes, consistent with password reset
+const env = require('../../config/env');
 
 function assertCanManageTarget({ actorRole, targetRole }) {
   if (targetRole === 'SuperAdmin') {
@@ -112,8 +113,10 @@ async function createAdminAccount({ actorId, actorRole, email, fullName, req }) 
     expires_at: new Date(Date.now() + ADMIN_SETUP_TOKEN_TTL_MS),
   });
 
+  const activationLink = `${env.frontUrl}/admin/activate?email=${encodeURIComponent(newAdmin.email)}`;
+
   try {
-    await emailService.sendAdminAccountCreatedEmail(newAdmin.email, code);
+    await emailService.sendAdminAccountCreatedEmail(newAdmin.email, code, activationLink);
   } catch (err) {
     // Account is created; email failure is logged but does not block the operation
     logger.error('Admin account creation email failed to send — account still created', {

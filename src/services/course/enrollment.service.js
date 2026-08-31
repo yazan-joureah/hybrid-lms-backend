@@ -142,6 +142,52 @@ async function cancelEnrollmentForRefund({ enrollmentId }) {
   return { success: true, data: { enrollment, alreadyCancelled: false } };
 }
 
+async function cancelMyEnrollment({ studentId, enrollmentId, req }) {
+  const safeStudentId = toObjectId(studentId, 'studentId');
+  const safeEnrollmentId = toObjectId(enrollmentId, 'enrollmentId');
+
+  const enrollment = await Enrollment.findOne({
+    _id: safeEnrollmentId,
+    student_id: safeStudentId,
+  }).populate('course_id', 'course_type title');
+
+  if (!enrollment) {
+    throw new AppError(404, 'ENROLLMENT_NOT_FOUND', 'Enrollment not found.');
+  }
+  if (enrollment.status === 'cancelled') {
+    throw new AppError(409, 'ALREADY_CANCELLED', 'Enrollment is already cancelled.');
+  }
+  if (enrollment.status === 'completed') {
+    throw new AppError(409, 'COURSE_COMPLETED', 'Cannot cancel a completed enrollment.');
+  }
+
+  const course = enrollment.course_id;
+  const isPaidAndActive = course.course_type === 'paid' && enrollment.status === 'active';
+  if (isPaidAndActive) {
+    throw new AppError(
+      409,
+      'REFUND_REQUIRED',
+      'This enrollment has an actual payment attached — request a refund instead of cancelling directly.'
+    );
+  }
+
+  const previousStatus = enrollment.status;
+  enrollment.status = 'cancelled';
+  await enrollment.save();
+
+  await auditService.record({
+    actorId: safeStudentId,
+    actorRole: 'Student',
+    action: 'ENROLLMENT_SELF_CANCELLED',
+    resourceType: 'Enrollment',
+    resourceId: safeEnrollmentId.toString(),
+    metadata: { course_id: course._id.toString(), previous_status: previousStatus },
+    req,
+  });
+
+  return { success: true, data: { enrollment } };
+}
+
 /** Instructor-facing roster for a course they own. */
 async function getCourseStudents({ instructorId, courseId, queryParams = {}, req }) {
   const { safeCourseId } = await loadOwnedCourse({
@@ -171,4 +217,5 @@ module.exports = {
   activatePendingEnrollment,
   cancelEnrollmentForRefund,
   getCourseStudents,
+  cancelMyEnrollment,
 };
