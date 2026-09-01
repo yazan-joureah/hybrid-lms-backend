@@ -38,6 +38,7 @@ const LoginAttempt = require('../../src/models/LoginAttempt');
 const { hashPassword } = require('../../src/utils/crypto');
 const authService = require('../../src/services/authService');
 const redisClient = require('../../src/config/redis');
+const { resolveAxisConfig } = require('../../src/middleware/rateLimiter');
 
 const PLAIN_PASSWORD = 'a-genuinely-long-passphrase-2026';
 
@@ -272,11 +273,13 @@ describe('POST /auth/login — network-level rate limiter, decoupled from succes
   it('never locks out a user who logs in successfully many times in a row — the core regression this fix targets (e.g. switching roles repeatedly during a live demo)', async () => {
     const user = await createActiveUser();
 
-    // Deliberately MORE than env.rateLimit.maxAttempts (5) — if success
-    // were still being charged against the budget (the pre-fix bug),
-    // this loop would start returning 429 on the 6th call.
+    // Get the identifier threshold for login (15 per hour)
+    const idConfig = resolveAxisConfig('login', 'id');
+    // Run more than the threshold to prove success doesn't count
+    const loops = idConfig.maxAttempts + 3;
+
     const statuses = [];
-    for (let i = 0; i < 8; i += 1) {
+    for (let i = 0; i < loops; i += 1) {
       // eslint-disable-next-line no-await-in-loop
       const res = await request(app)
         .post('/api/v1/auth/login')
@@ -284,10 +287,9 @@ describe('POST /auth/login — network-level rate limiter, decoupled from succes
       statuses.push(res.status);
     }
 
-    expect(statuses).toEqual(new Array(8).fill(200));
+    expect(statuses).toEqual(new Array(loops).fill(200));
 
-    // Direct proof at the storage layer, not just the HTTP symptom: the
-    // hits key for the identifier axis must never have been created.
+    // Direct proof at the storage layer: the hits key for the identifier axis must never have been created.
     const hits = await redisClient.get(`rl:hits:login:id:${user.email}`);
     expect(hits).toBeNull();
   });
@@ -295,8 +297,7 @@ describe('POST /auth/login — network-level rate limiter, decoupled from succes
   it('resets the hit counter on a genuine success, so earlier near-misses do not carry into the next window', async () => {
     const user = await createActiveUser();
 
-    // 3 wrong-password attempts — comfortably under the threshold (5) on
-    // its own, purely to arm the counter.
+    // 3 wrong-password attempts — comfortably under the threshold on its own
     for (let i = 0; i < 3; i += 1) {
       // eslint-disable-next-line no-await-in-loop
       await request(app)
@@ -316,18 +317,12 @@ describe('POST /auth/login — network-level rate limiter, decoupled from succes
     expect(hitsAfterSuccess).toBeNull();
   });
 
-  it('still blocks with 429 after exceeding maxAttempts CONSECUTIVE FAILURES from the same IP — proves recordFailure/checkLock are wired correctly, isolated from any single account via distinct nonexistent emails', async () => {
-    // Distinct, nonexistent emails on every call — this means the
-    // IDENTIFIER axis (keyed per-email) never itself crosses the
-    // threshold, and User.failed_login_count (account-level lockout,
-    // MongoDB-backed) never engages at all, since no such User document
-    // exists. What we ARE isolating and proving here is the IP axis:
-    // Redis rl:hits:login:ip:<ip> is shared across all these distinct
-    // identifiers, exactly like it will be shared across the whole
-    // grading committee's logins from one room/IP.
+  it('still blocks with 429 after exceeding maxAttempts CONSECUTIVE FAILURES from the same IP...', async () => {
+    const { maxAttempts } = resolveAxisConfig('login', 'ip'); // 20
+
     const statuses = [];
-    for (let i = 0; i < 7; i += 1) {
-      // eslint-disable-next-line no-await-in-loop
+    // 1. Increase limit to maxAttempts + 2
+    for (let i = 0; i < maxAttempts + 2; i += 1) {
       const res = await request(app)
         .post('/api/v1/auth/login')
         .send({
@@ -337,40 +332,37 @@ describe('POST /auth/login — network-level rate limiter, decoupled from succes
       statuses.push(res.status);
     }
 
-    // Requests 1-6: each one is evaluated for its OWN outcome BEFORE the
-    // failure is recorded (checkLock is read-only, recordFailure runs
-    // AFTER the controller already decided the response body) — so even
-    // the 6th request, which is the one that pushes the counter past the
-    // threshold and arms the lock, still returns the real business error.
-    expect(statuses.slice(0, 6)).toEqual(new Array(6).fill(401));
+    // 2. The first maxAttempts + 1 requests pass checkLock and return 401
+    expect(statuses.slice(0, maxAttempts + 1)).toEqual(new Array(maxAttempts + 1).fill(401));
 
-    // Request 7 is the first one checkLock actually rejects, since the
-    // lock was armed by request 6's recordFailure call.
-    expect(statuses[6]).toBe(429);
+    // 3. The (maxAttempts + 2)th request is rejected by checkLock (429)
+    expect(statuses[maxAttempts + 1]).toBe(429);
   });
 
   it('sequences account-level lockout (Mongo) and network-level lockout (Redis) correctly against the SAME real account', async () => {
     const user = await createActiveUser();
 
+    // 1. Switch to idConfig (15) instead of ipConfig (20)
+    const idConfig = resolveAxisConfig('login', 'id');
+    const totalAttempts = idConfig.maxAttempts + 2; // 17 attempts
+
     const statuses = [];
-    for (let i = 0; i < 7; i += 1) {
-      // eslint-disable-next-line no-await-in-loop
+    for (let i = 0; i < totalAttempts; i += 1) {
       const res = await request(app)
         .post('/api/v1/auth/login')
         .send({ email: user.email, password: 'wrong-password-attempt' });
       statuses.push(res.status);
     }
 
-    // Requests 1-5: plain wrong-password failures (account counter climbing).
     expect(statuses.slice(0, 5)).toEqual(new Array(5).fill(401));
-    // Request 6: the account crossed ITS OWN threshold on attempt 5, so
-    // the SERVICE now short-circuits with ACCOUNT_LOCKED before ever
-    // touching Argon2id again — and recordFailure still counts this as a
-    // failure (see login.controller.js), which is what arms the network
-    // lock for the NEXT request.
-    expect(statuses[5]).toBe(423);
-    // Request 7: network-level lock (Redis) now rejects it outright.
-    expect(statuses[6]).toBe(429);
+
+    // 2. Attempts 6 to 16: Mongo lock active (423). The 16th attempt arms the Redis lock.
+    for (let i = 5; i <= idConfig.maxAttempts; i += 1) {
+      expect(statuses[i]).toBe(423);
+    }
+
+    // 3. The 17th attempt (index 16) is rejected by Redis checkLock (429)
+    expect(statuses[idConfig.maxAttempts + 1]).toBe(429);
 
     const updatedUser = await User.findOne({ email: user.email });
     expect(updatedUser.status).toBe('temporary_locked');
