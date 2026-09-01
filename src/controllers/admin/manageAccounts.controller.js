@@ -1,5 +1,6 @@
 // src/controllers/admin/manageAccounts.controller.js
 const authService = require('../../services/authService');
+const logger = require('../../utils/logger');
 
 /** GET /admin/accounts — UC-AUTH-08, browsing/search (closes the listing gap). */
 async function listAccountsHandler(req, res, next) {
@@ -12,6 +13,19 @@ async function listAccountsHandler(req, res, next) {
       page: page ? Number(page) : undefined,
       pageSize: pageSize ? Number(pageSize) : undefined,
     });
+
+    // DEVIATION (fix/AUTH-BE-17): opportunistic lazy-anonymization sweep
+    // — fires on every Admin/SuperAdmin visit to this listing, but is
+    // deliberately NOT awaited: a full-collection sweep must never delay
+    // the page the Admin is actually waiting on. Errors are caught and
+    // logged only — a sweep failure must never surface as a 500 on an
+    // otherwise successful account listing.
+    authService.anonymizeExpiredDeletedAccounts({ req }).catch((err) =>
+      logger.error('Lazy anonymization sweep failed (non-blocking)', {
+        error: err.message,
+      })
+    );
+
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
     return next(err);
@@ -93,6 +107,15 @@ async function listDeletionRequestsHandler(req, res, next) {
   try {
     const { status } = req.query;
     const result = await authService.listDeletionRequests({ status });
+
+    // Same lazy sweep as listAccountsHandler above — SuperAdmin's queue
+    // page is the OTHER natural high-frequency visit point for this.
+    authService.anonymizeExpiredDeletedAccounts({ req }).catch((err) =>
+      logger.error('Lazy anonymization sweep failed (non-blocking)', {
+        error: err.message,
+      })
+    );
+
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
     return next(err);
