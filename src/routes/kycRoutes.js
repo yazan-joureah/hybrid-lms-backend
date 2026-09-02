@@ -9,7 +9,7 @@ const { rateLimit } = require('../middleware/rateLimiter');
 const { createMemoryUpload } = require('../middleware/upload.util');
 const { AppError } = require('../middleware/errorHandler');
 const { KYC_DOCUMENT_POLICY } = require('../config/uploadPolicies');
-const { kycSubmitSchema } = require('../validators/kycSchemas');
+const { kycSubmitSchema, ageCorrectionSchema } = require('../validators/kycSchemas');
 
 const kycUpload = createMemoryUpload(KYC_DOCUMENT_POLICY.maxFileSizeBytes, 2).fields([
   { name: 'id_document', maxCount: 1 },
@@ -37,6 +37,14 @@ router.post(
   handleUploadErrors(kycUpload),
   validateBody(kycSubmitSchema),
   kycController.submit
+);
+
+router.post(
+  '/age-correction',
+  requireAuth,
+  rateLimit('kyc-age-correction', (req) => req.user.id), // uses DEFAULT_AXIS_CONFIG automatically — no changes to rateLimiter.js
+  validateBody(ageCorrectionSchema),
+  kycController.requestCorrection
 );
 
 module.exports = router;

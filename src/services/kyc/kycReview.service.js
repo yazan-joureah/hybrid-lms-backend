@@ -58,14 +58,16 @@ async function getRequestForReview(kycRequestId) {
  * @param {string} params.adminUserId
  * @param {Date} params.documentBirthDate - تاريخ الميلاد المقروء من الوثيقة، يُدخله Admin يدوياً بعد الفحص البصري
  * @param {string} [params.optionalNote]
+ * @param {boolean} [params.confirmYellowTier] - تأكيد صريح من Admin لقبول الفارق الأصفر
  * @param {import('express').Request} params.req
- * @returns {Promise<{success: boolean, outcome?: 'verified'|'age_flagged', reason?: string}>}
+ * @returns {Promise<{success: boolean, outcome?: 'verified'|'age_flagged', reason?: string, tier?: string, discrepancyYears?: number}>}
  */
 async function approveKycRequest({
   kycRequestId,
   adminUserId,
   documentBirthDate,
   optionalNote,
+  confirmYellowTier = false,
   req,
 }) {
   const admin = await User.findById(adminUserId);
@@ -110,6 +112,16 @@ async function approveKycRequest({
 
   // فارق أخضر أو أصفر → لا إيقاف للتدفق (الأصفر يُعرَض كتحذير فقط، القرار
   // النهائي يبقى بيد Admin البشري بعد المقارنة البصرية)
+  // ← الإضافة الوحيدة: وقفة تأكيد صريحة للأصفر قبل أي كتابة فعلية
+  if (ageResult.tier === 'yellow' && !confirmYellowTier) {
+    return {
+      success: false,
+      reason: 'AGE_DISCREPANCY_REQUIRES_CONFIRMATION',
+      tier: ageResult.tier,
+      discrepancyYears: ageResult.discrepancyYears,
+    };
+  }
+
   kycRequest.status = 'verified';
   kycRequest.age_discrepancy_years = ageResult.discrepancyYears;
   kycRequest.review_decision_reason = optionalNote || null;

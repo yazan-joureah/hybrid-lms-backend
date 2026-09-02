@@ -2,7 +2,7 @@
 const authService = require('../../services/authService');
 const logger = require('../../utils/logger');
 
-/** GET /admin/accounts — UC-AUTH-08, browsing/search (closes the listing gap). */
+/** GET /admin/accounts. */
 async function listAccountsHandler(req, res, next) {
   try {
     const { role, status, search, page, pageSize } = req.query;

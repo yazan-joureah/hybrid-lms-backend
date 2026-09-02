@@ -12,7 +12,7 @@ function required(name) {
   return value;
 }
 
-// Define all values as constants to avoid `this` binding issues
+// Define all values as constants
 const nodeEnv = process.env.NODE_ENV || 'development';
 const port = parseInt(process.env.PORT, 10) || 3000;
 const appUrl = process.env.APP_URL || 'http://localhost:3000';

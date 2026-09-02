@@ -320,6 +320,9 @@ async function processGuardianApproval({
   });
 
   if (user.email_verified_at) {
+    if (user.kyc_status === 'age_flagged') {
+      user.kyc_status = 'not_submitted';
+    }
     user.status = 'active';
     await user.save();
     return { error: null, status: 'active', decision };
