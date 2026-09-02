@@ -185,6 +185,121 @@ describe('approveKycRequest — EXT-KYC-01 (فارق العمر الأحمر ي�
   });
 });
 
+describe('approveKycRequest — نطاق التأكيد الأصفر (confirmYellowTier)', () => {
+  // نفس التواريخ المستخدَمة في ageDiscrepancy.test.js (فارق أصفر مؤكَّد:
+  // extraMonths=7) — لضمان الاتساق بين اختبار الوحدة واختبار التكامل هنا.
+  const ACCOUNT_BIRTH_DATE = new Date('2000-01-01');
+  const YELLOW_DOCUMENT_BIRTH_DATE = new Date('2001-08-01');
+
+  it('فارق أصفر بدون confirmYellowTier → يرفض بـ AGE_DISCREPANCY_REQUIRES_CONFIRMATION، ولا يُكتب أي شيء فعلياً', async () => {
+    const admin = await createAdmin();
+    const student = await createUser({ birth_date: ACCOUNT_BIRTH_DATE });
+    const kycRequest = await createKycRequest(student._id, 'Student');
+
+    const result = await approveKycRequest({
+      kycRequestId: String(kycRequest._id),
+      adminUserId: String(admin._id),
+      documentBirthDate: YELLOW_DOCUMENT_BIRTH_DATE,
+      // confirmYellowTier غير مُرسَل عمداً — القيمة الافتراضية false
+      req: { ip: '127.0.0.1', get: () => 'jest-test-agent' },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.reason).toBe('AGE_DISCREPANCY_REQUIRES_CONFIRMATION');
+    expect(result.tier).toBe('yellow');
+    expect(result.discrepancyYears).toBeGreaterThan(1);
+    expect(result.discrepancyYears).toBeLessThanOrEqual(2);
+
+    // تأكيد سلبي: لا شيء تغيّر — لا KYCRequest ولا User ولا Audit Log
+    const unchangedRequest = await KYCRequest.findById(kycRequest._id);
+    expect(unchangedRequest.status).toBe('review_pending');
+    expect(unchangedRequest.reviewed_by_admin_id).toBeNull();
+
+    const unchangedStudent = await User.findById(student._id);
+    expect(unchangedStudent.kyc_status).toBe('review_pending');
+
+    const approvalLog = await AuditLog.findOne({ action: 'KYC_REQUEST_APPROVED' });
+    expect(approvalLog).toBeNull();
+  });
+
+  it('فارق أصفر مع confirmYellowTier=true → ينجح ويُحدِّث الحالتين إلى verified', async () => {
+    const admin = await createAdmin();
+    const student = await createUser({ birth_date: ACCOUNT_BIRTH_DATE });
+    const kycRequest = await createKycRequest(student._id, 'Student');
+
+    const result = await approveKycRequest({
+      kycRequestId: String(kycRequest._id),
+      adminUserId: String(admin._id),
+      documentBirthDate: YELLOW_DOCUMENT_BIRTH_DATE,
+      confirmYellowTier: true,
+      req: { ip: '127.0.0.1', get: () => 'jest-test-agent' },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.outcome).toBe('verified');
+
+    const updatedRequest = await KYCRequest.findById(kycRequest._id);
+    expect(updatedRequest.status).toBe('verified');
+    expect(updatedRequest.age_discrepancy_years).toBeGreaterThan(1);
+    expect(updatedRequest.age_discrepancy_years).toBeLessThanOrEqual(2);
+    expect(updatedRequest.reviewed_by_admin_id.toString()).toBe(String(admin._id));
+
+    const updatedStudent = await User.findById(student._id);
+    expect(updatedStudent.kyc_status).toBe('verified');
+
+    const approvalLog = await AuditLog.findOne({ action: 'KYC_REQUEST_APPROVED' });
+    expect(approvalLog).not.toBeNull();
+  });
+
+  it('Instructor بفارق أصفر مع confirmYellowTier=true → يُمنَح صلاحيات المدرّس أيضاً (SF-KYC-01 لا يُستثنى للأصفر)', async () => {
+    const admin = await createAdmin();
+    const instructor = await createUser({ role: 'Instructor', birth_date: ACCOUNT_BIRTH_DATE });
+    const kycRequest = await createKycRequest(instructor._id, 'Instructor');
+
+    const result = await approveKycRequest({
+      kycRequestId: String(kycRequest._id),
+      adminUserId: String(admin._id),
+      documentBirthDate: YELLOW_DOCUMENT_BIRTH_DATE,
+      confirmYellowTier: true,
+      req: { ip: '127.0.0.1', get: () => 'jest-test-agent' },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.outcome).toBe('verified');
+
+    const permissionLog = await AuditLog.findOne({
+      action: 'KYC_INSTRUCTOR_PERMISSIONS_GRANTED',
+      resource_id: String(instructor._id),
+    });
+    expect(permissionLog).not.toBeNull();
+  });
+
+  it('استدعاء ثانٍ بعد الرفض الأول (بدون تأكيد) ثم مع confirmYellowTier=true → المحاولة الثانية تنجح لأن الطلب ما زال review_pending', async () => {
+    const admin = await createAdmin();
+    const student = await createUser({ birth_date: ACCOUNT_BIRTH_DATE });
+    const kycRequest = await createKycRequest(student._id, 'Student');
+    const fakeReq = { ip: '127.0.0.1', get: () => 'jest-test-agent' };
+
+    const firstAttempt = await approveKycRequest({
+      kycRequestId: String(kycRequest._id),
+      adminUserId: String(admin._id),
+      documentBirthDate: YELLOW_DOCUMENT_BIRTH_DATE,
+      req: fakeReq,
+    });
+    expect(firstAttempt.success).toBe(false);
+
+    const secondAttempt = await approveKycRequest({
+      kycRequestId: String(kycRequest._id),
+      adminUserId: String(admin._id),
+      documentBirthDate: YELLOW_DOCUMENT_BIRTH_DATE,
+      confirmYellowTier: true,
+      req: fakeReq,
+    });
+    expect(secondAttempt.success).toBe(true);
+    expect(secondAttempt.outcome).toBe('verified');
+  });
+});
+
 describe('rejectKycRequest', () => {
   it('يرفض بسبب صالح من REJECTION_REASONS ويُحدِّث الحالتين معاً', async () => {
     const admin = await createAdmin();
