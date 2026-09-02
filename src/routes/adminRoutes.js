@@ -109,4 +109,12 @@ router.post(
   adminController.reviewDeletionRequestHandler
 );
 
+// --- Security Audit Statistics (UC-REPORT-04) — SuperAdmin only ---
+// No rateLimit() here, matching every other read-only /admin/* GET route
+// in this file — already gated by requireAuth + requireAdminMfa (applied
+// globally above) + requireRole('SuperAdmin').
+router.get('/security-audit/overview', requireRole(['SuperAdmin']), adminController.getOverview);
+router.get('/security-audit/events', requireRole(['SuperAdmin']), adminController.listEvents);
+router.get('/security-audit/actions', requireRole(['SuperAdmin']), adminController.listActions);
+
 module.exports = router;
