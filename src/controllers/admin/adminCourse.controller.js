@@ -6,7 +6,7 @@ const {
   listAllCoursesForAdmin,
 } = require('../../services/courseService');
 
-/** UC-COURSE-07: lists courses awaiting review. */
+/** lists courses awaiting review. */
 async function getPendingCourses(req, res, next) {
   try {
     const result = await listPendingCourses();
@@ -16,7 +16,7 @@ async function getPendingCourses(req, res, next) {
   }
 }
 
-/** UC-COURSE-07: Admin publish/reject/needs_revision decision. */
+/** Admin publish/reject/needs_revision decision. */
 async function reviewCourseHandler(req, res, next) {
   try {
     const adminId = req.user.id;
@@ -35,7 +35,7 @@ async function reviewCourseHandler(req, res, next) {
   }
 }
 
-/** Admin sets course status to suspended or archived. */
+/** Admin sets course status to published, suspended or archived. */
 async function setCourseStatusHandler(req, res, next) {
   try {
     const adminId = req.user.id;
