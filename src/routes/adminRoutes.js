@@ -117,4 +117,11 @@ router.get('/security-audit/overview', requireRole(['SuperAdmin']), adminControl
 router.get('/security-audit/events', requireRole(['SuperAdmin']), adminController.listEvents);
 router.get('/security-audit/actions', requireRole(['SuperAdmin']), adminController.listActions);
 
+// --- Analytics Dashboard (UC-REPORT-01) — Admin AND SuperAdmin ---
+router.get(
+  '/analytics/overview',
+  requireRole(['Admin', 'SuperAdmin']),
+  adminController.getAnalyticsOverview
+);
+
 module.exports = router;
