@@ -175,7 +175,26 @@ async function submitKycRequest({ userId, idDocumentType, idDocumentFile, selfie
   return { success: true };
 }
 
+async function getMyLatestKycRequest({ userId }) {
+  const latest = await KYCRequest.findOne({ user_id: userId })
+    .sort({ submitted_at: -1 })
+    .select('status review_decision_reason age_discrepancy_years submitted_at reviewed_at');
+
+  if (!latest) {
+    return null;
+  }
+
+  return {
+    status: latest.status,
+    reviewDecisionReason: latest.review_decision_reason,
+    ageDiscrepancyYears: latest.age_discrepancy_years,
+    submittedAt: latest.submitted_at,
+    reviewedAt: latest.reviewed_at,
+  };
+}
+
 module.exports = {
   submitKycRequest,
-  checkSubmissionEligibility, // مُصدَّرة للاختبار المباشر
+  checkSubmissionEligibility,
+  getMyLatestKycRequest,
 };

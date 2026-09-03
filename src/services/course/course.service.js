@@ -6,6 +6,11 @@ const CourseContent = require('../../models/CourseContent');
 const fileStorage = require('../fileStorage.service');
 const CourseReviewRequest = require('../../models/CourseReviewRequest');
 const Quiz = require('../../models/quiz.model');
+const LiveSession = require('../../models/liveSession.model');
+const Attendance = require('../../models/attendance.model');
+const PeerAssignment = require('../../models/peerAssignment.model');
+const PeerSubmission = require('../../models/peerSubmission.model');
+const PeerReview = require('../../models/peerReview.model');
 const auditService = require('../auditService');
 const { AppError } = require('../../middleware/errorHandler');
 const { revertToDraftOnPublishedEdit } = require('./reviewState.service');
@@ -198,6 +203,14 @@ async function deleteCourse({ courseId, instructorId, req }) {
     );
   }
 
+  if (course.published_at) {
+    throw new AppError(
+      409,
+      'COURSE_HAS_PUBLICATION_HISTORY',
+      'This course has publication history and cannot be deleted — archive it instead.'
+    );
+  }
+
   const units = await CourseUnit.find({ course_id: safeCourseId });
   const unitIds = units.map((u) => u._id);
   const contents = await CourseContent.find({ unit_id: { $in: unitIds } });
@@ -218,6 +231,40 @@ async function deleteCourse({ courseId, instructorId, req }) {
 
   await CourseContent.deleteMany({ unit_id: { $in: unitIds } });
   await CourseUnit.deleteMany({ course_id: safeCourseId });
+  const deletedQuizzes = await Quiz.deleteMany({ course_id: safeCourseId });
+
+  const liveSessions = await LiveSession.find({ courseId: safeCourseId }).select('_id');
+  const sessionIds = liveSessions.map((s) => s._id);
+  const deletedAttendance = await Attendance.deleteMany({ sessionId: { $in: sessionIds } });
+  const deletedSessions = await LiveSession.deleteMany({ courseId: safeCourseId });
+
+  const assignments = await PeerAssignment.find({ courseId: safeCourseId }).select('_id');
+  const assignmentIds = assignments.map((a) => a._id);
+  const submissions = await PeerSubmission.find({ assignmentId: { $in: assignmentIds } });
+
+  for (const submission of submissions) {
+    if (submission.fileId) {
+      // eslint-disable-next-line no-await-in-loop
+      await fileStorage.safeDeleteFile({
+        fileId: submission.fileId,
+        userId: safeInstructorId,
+        actorRole: 'Instructor',
+        req,
+      });
+    }
+  }
+  const submissionIds = submissions.map((s) => s._id);
+  const deletedReviews = await PeerReview.deleteMany({ submissionId: { $in: submissionIds } });
+  const deletedSubmissions = await PeerSubmission.deleteMany({
+    assignmentId: { $in: assignmentIds },
+  });
+  const deletedAssignments = await PeerAssignment.deleteMany({ courseId: safeCourseId });
+
+  // --- سجلات مراجعة تاريخية (rejected/cancelled فقط، بحكم حارس published_at)
+  const deletedReviewRequests = await CourseReviewRequest.deleteMany({
+    course_id: safeCourseId,
+  });
+
   await course.deleteOne();
 
   await auditService.record({
@@ -226,7 +273,17 @@ async function deleteCourse({ courseId, instructorId, req }) {
     action: 'COURSE_DELETED',
     resourceType: 'Course',
     resourceId: safeCourseId.toString(),
-    metadata: { deleted_units: units.length, deleted_content: contents.length },
+    metadata: {
+      deleted_units: units.length,
+      deleted_content: contents.length,
+      deleted_quizzes: deletedQuizzes.deletedCount,
+      deleted_live_sessions: deletedSessions.deletedCount,
+      deleted_attendance_records: deletedAttendance.deletedCount,
+      deleted_peer_assignments: deletedAssignments.deletedCount,
+      deleted_peer_submissions: deletedSubmissions.deletedCount,
+      deleted_peer_reviews: deletedReviews.deletedCount,
+      deleted_review_requests: deletedReviewRequests.deletedCount,
+    },
     req,
   });
 

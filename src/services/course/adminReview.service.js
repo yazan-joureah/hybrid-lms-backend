@@ -73,6 +73,13 @@ async function reviewCourse({ courseId, adminId, decision, reason, req }) {
     course.published_at = new Date();
     course.content_complete = true;
   } else if (decision === 'reject') {
+    if (course.published_at) {
+      throw new AppError(
+        400,
+        'CANNOT_REJECT_PUBLISHED_HISTORY',
+        'A course with publication history cannot be rejected outright — use needs_revision, or suspend/archive it instead.'
+      );
+    }
     course.status = 'rejected';
     course.rejection_reason = reason;
   } else if (decision === 'needs_revision') {

@@ -1,4 +1,4 @@
-const { submitKycRequest } = require('../../services/kycService');
+const { submitKycRequest, getMyLatestKycRequest } = require('../../services/kycService');
 const { AppError } = require('../../middleware/errorHandler');
 
 async function submit(req, res, next) {
@@ -30,4 +30,13 @@ async function submit(req, res, next) {
   }
 }
 
-module.exports = { submit };
+async function getMyStatus(req, res, next) {
+  try {
+    const latest = await getMyLatestKycRequest({ userId: req.user.id });
+    return res.status(200).json({ success: true, data: { latestRequest: latest } });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+module.exports = { submit, getMyStatus };

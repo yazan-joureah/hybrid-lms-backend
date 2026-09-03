@@ -239,7 +239,7 @@ describe('المسار الكامل: تقديم → مراجعة → قبول ع
 
     expect(firstAttempt.status).toBe(409);
     expect(firstAttempt.body.error.code).toBe('AGE_DISCREPANCY_REQUIRES_CONFIRMATION');
-    expect(firstAttempt.body.data.tier).toBe('yellow');
+    expect(firstAttempt.body.error.tier).toBe('yellow'); // Updated: target error object
 
     const stillPending = await KYCRequest.findById(kycRequest._id);
     expect(stillPending.status).toBe('review_pending');
