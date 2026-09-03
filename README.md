@@ -735,106 +735,7 @@ This section details the functional requirements implemented in the system, orga
 
 ## Security Architecture & Implementation
 
-### المتطلبات
-- Node.js ≥ 22
-- Docker Desktop (لتشغيل MongoDB و Redis محلياً)
-- ClamAV (اختياري — لفحص الملفات من البرمجيات الخبيثة)
 
-### خطوات التشغيل
-
-```bash
-# 1. تثبيت الحزم
-npm install
-
-# 2. نسخ ملف البيئة وتعديله
-cp .env.example .env
-# املأ المتغيرات المطلوبة (JWT secrets, OAuth credentials, Stripe keys, إلخ)
-
-# 3. تشغيل قواعد البيانات محلياً
-docker compose up -d
-
-# 4. (اختياري) إنشاء بيانات تجريبية
-npm run seed:dev-users
-
-# 5. تشغيل الخادم في وضع التطوير
-npm run dev
-```
-
-الخادم يعمل الآن على: `http://localhost:3000/api/v1/health`
-
-**تصفح قاعدة البيانات بصرياً (اختياري):** بعد `docker compose up -d`، افتح `http://localhost:8081` (مستخدم: `admin` / كلمة مرور: `local_dev_only` — أداة تطوير محلية فقط، لا تُنشَر أبداً في الإنتاج).
-
----
-
-## استراتيجية الاختبار (Testing Strategy)
-
-الاختبارات تتصل بـ MongoDB و Redis **حقيقيَّين** — عبر `docker-compose` محلياً، وعبر `services:` في GitHub Actions أثناء CI (راجع `.github/workflows/ci.yml`). هذا يعطي دقة أعلى من محاكاة في الذاكرة، ويتجنّب الحاجة لتحميل ملفات تنفيذية إضافية (تفادياً لتضخيم `node_modules` دون داعٍ). استخدم قاعدة بيانات منفصلة للاختبار (`hybrid_lms_test`) لتفادي تلويث بيانات التطوير.
-
----
-
-## الأوامر المتاحة
-
-| الأمر | الوظيفة |
-|---|---|
-| `npm run dev` | تشغيل الخادم مع Hot Reload |
-| `npm start` | تشغيل الخادم في وضع الإنتاج |
-| `npm test` | تشغيل الاختبارات |
-| `npm run test:coverage` | الاختبارات مع تقرير التغطية |
-| `npm run test:watch` | تشغيل الاختبارات في وضع المراقبة |
-| `npm run lint` | فحص جودة وأمان الكود (ESLint + eslint-plugin-security) |
-| `npm run lint:fix` | إصلاح مشاكل الكود تلقائياً |
-| `npm run format` | تنسيق الكود (Prettier) |
-| `npm run seed:prod-superadmin` | إنشاء حساب Super Admin للإنتاج |
-| `npm run seed:dev-users` | إنشاء بيانات مستخدمين تجريبية |
-| `npm run seed:live-demo` | إنشاء بيانات جلسات مباشرة تجريبية |
-| `npm run seed:peer-demo` | إنشاء بيانات مراجعة أقران تجريبية |
-
----
-
-## هيكل المشروع (MVCS Architecture)
-
-```
-src/
-├── config/         إعدادات البيئة، قواعد البيانات، OAuth، Stripe، سياسات الرفع
-├── controllers/    استقبال الطلبات وإرسال الردود فقط (لا منطق أعمال هنا)
-│   ├── admin/      إدارة النظام
-│   ├── attendance/ الحضور
-│   ├── auth/       المصادقة والأمان
-│   ├── cert/       الشهادات الرقمية
-│   ├── course/     المقررات
-│   ├── kyc/        التحقق من الهوية
-│   ├── live/       الجلسات المباشرة
-│   ├── peer/       مراجعة الأقران
-│   ├── report/     التقارير
-│   └── user/       ملفات المستخدمين
-├── services/       منطق الأعمال الفعلي (Business Logic)
-├── models/         مخططات Mongoose (30+ نموذج بيانات)
-├── middleware/     JWT auth, MFA, validation, rate limiting, CSRF, error handling
-├── routes/         تعريف الـ Endpoints (13 مجموعة routes)
-├── validators/     مخططات Zod للتحقق من المدخلات
-├── sockets/        Socket.IO للجلسات المباشرة والتفاعل الفوري
-├── utils/          دوال مساعدة (JWT, TOTP, تشفير AES-256-GCM, logger, CSV, إلخ)
-└── app.js          تهيئة Express
-└── server.js       نقطة الدخول الرئيسية
-```
-
-### الـ Endpoints الرئيسية (API Routes)
-
-| المسار | الوصف |
-|---|---|
-| `/api/v1/health` | فحص صحة الخادم |
-| `/api/v1/auth` | المصادقة (تسجيل، تسجيل دخول، MFA، OAuth، استعادة الحساب) |
-| `/api/v1/users` | إدارة ملفات المستخدمين والصور الشخصية |
-| `/api/v1/courses` | إدارة المقررات والتسجيل والتقدم |
-| `/api/v1/quizzes` | الاختبارات القصيرة |
-| `/api/v1/live` | الجلسات المباشرة |
-| `/api/v1/peer` | مراجعة الأقران |
-| `/api/v1/attendance` | تتبع الحضور |
-| `/api/v1/payments` | معالجة المدفوعات والفواتير |
-| `/api/v1/kyc` | التحقق من الهوية |
-| `/api/v1/certificates` | إصدار والتحقق من الشهادات |
-| `/api/v1/admin` | لوحة تحكم المسؤولين |
-| `/api/v1/reports` | تقارير النظام |
 
 
 ### 5.1 Security Framework Overview
@@ -3162,3 +3063,2289 @@ For academic or research inquiries, please contact the project maintainers.
 **Last Updated:** January 15, 2025  
 **Author:** Yazan Joureah (174681)  
 **Project:** Hybrid LMS Backend — BPR601 S25
++ character random string |
+| `ENCRYPTION_MASTER_KEY` | AES-256 master encryption key | 64-character hex string (32 bytes) |
+| `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth client ID | From Google Cloud Console |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth client secret | From Google Cloud Console |
+| `GOOGLE_OAUTH_REDIRECT_URI` | OAuth redirect URL | `http://localhost:3000/api/v1/auth/google/callback` |
+| `STRIPE_SECRET_KEY` | Stripe API secret key | `sk_test_...` (test mode) |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret | `whsec_...` |
+| `CERT_SIGNING_PRIVATE_KEY_PEM` | Ed25519 private key for certificates | PEM format Ed25519 private key |
+| `CERT_SIGNING_PUBLIC_KEY_PEM` | Ed25519 public key for certificates | PEM format Ed25519 public key |
+| `GMAIL_CLIENT_ID` | Gmail OAuth2 client ID | For email sending |
+| `GMAIL_CLIENT_SECRET` | Gmail OAuth2 client secret | For email sending |
+| `GMAIL_REFRESH_TOKEN` | Gmail OAuth2 refresh token | For email sending |
+| `GMAIL_USER` | Gmail sender address | `noreply@example.com` |
+| `CLAMAV_HOST` | ClamAV server host (optional) | `localhost` or IP |
+| `CLAMAV_PORT` | ClamAV server port (optional) | `3310` (default) |
+
+**Generating Secrets:**
+```bash
+# Generate JWT secrets (Node.js)
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+
+# Generate encryption master key (32 bytes for AES-256)
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+# Generate Ed25519 key pair for certificates (OpenSSL)
+openssl genpkey -algorithm Ed25519 -out private_key.pem
+openssl pkey -in private_key.pem -pubout -out public_key.pem
+```
+
+**Step 4: Start Database Services (Docker)**
+```bash
+# Start MongoDB and Redis containers
+docker compose up -d
+
+# Verify containers are running
+docker compose ps
+
+# View logs
+docker compose logs -f
+```
+
+**Docker Compose Configuration:**
+```yaml
+version: '3.8'
+services:
+  mongodb:
+    image: mongo:8
+    container_name: hybrid-lms-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: hybrid_lms
+    volumes:
+      - mongodb_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    container_name: hybrid-lms-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # Development only: MongoDB GUI
+  mongo-express:
+    image: mongo-express
+    container_name: hybrid-lms-mongo-express
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongodb:27017/
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: local_dev_only
+
+volumes:
+  mongodb_data:
+  redis_data:
+```
+
+**Step 5: Seed Development Data (Optional)**
+```bash
+# Create development users (students, instructors, admins)
+npm run seed:dev-users
+
+# Create demo live session data
+npm run seed:live-demo
+
+# Create demo peer review data
+npm run seed:peer-demo
+```
+
+**Step 6: Start Development Server**
+```bash
+# Start with hot reload
+npm run dev
+
+# Server will be available at:
+# http://localhost:3000/api/v1/health
+```
+
+**Step 7: Verify Installation**
+```bash
+# Test health endpoint
+curl http://localhost:3000/api/v1/health
+
+# Expected response:
+# {"success":true,"message":"Server is running","timestamp":"..."}
+```
+
+### 7.3 Development Tools Setup
+
+**Visual Studio Code Extensions:**
+```json
+{
+  "recommendations": [
+    "dbaeumer.vscode.eslint",
+    "esbenp.prettier-vscode",
+    "mongodb.mongodb-vscode",
+    "rangav.vscode-thunder-client",
+    "ms-azuretools.vscode-docker",
+    "eamodio.gitlens"
+  ]
+}
+```
+
+**VS Code Settings (`.vscode/settings.json`):**
+```json
+{
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": true
+  },
+  "eslint.validate": ["javascript"],
+  "files.eol": "\n"
+}
+```
+
+### 7.4 Troubleshooting Common Issues
+
+**Issue: MongoDB connection failed**
+```bash
+# Check if MongoDB container is running
+docker compose ps
+
+# Check MongoDB logs
+docker compose logs mongodb
+
+# Restart MongoDB
+docker compose restart mongodb
+```
+
+**Issue: Redis connection failed**
+```bash
+# Test Redis connection
+redis-cli ping
+# Expected: PONG
+
+# Check Redis logs
+docker compose logs redis
+```
+
+**Issue: Port already in use**
+```bash
+# Find process using port 3000 (Linux/Mac)
+lsof -i :3000
+
+# Find process using port 3000 (Windows PowerShell)
+netstat -ano | findstr :3000
+
+# Kill process (replace PID with actual process ID)
+kill -9 <PID>          # Linux/Mac
+taskkill /PID <PID> /F  # Windows
+```
+
+**Issue: npm install fails**
+```bash
+# Clear npm cache
+npm cache clean --force
+
+# Delete node_modules and package-lock.json
+rm -rf node_modules package-lock.json
+
+# Reinstall
+npm install
+```
+
+---
+
+## Testing Methodology & Quality Assurance
+
+### 8.1 Testing Strategy Overview
+
+This project implements a **comprehensive testing pyramid** with multiple layers of test coverage:
+
+```
+          /\
+         /  \  E2E Tests (Manual + Future Automation)
+        /────\
+       /      \  Integration Tests (API Endpoints + Database)
+      /────────\
+     /          \ Unit Tests (Services, Utilities, Validators)
+    /────────────\
+```
+
+**Testing Philosophy:**
+- **Real Dependencies:** Integration tests use real MongoDB and Redis instances, not mocks
+- **Deterministic:** Tests produce consistent results across environments
+- **Isolated:** Each test is independent, no shared state
+- **Fast:** Unit tests run in milliseconds, full suite completes in <2 minutes
+- **Maintainable:** Tests document expected behavior, serve as living documentation
+
+### 8.2 Test Configuration
+
+**Jest Configuration (`jest.config.js`):**
+```javascript
+module.exports = {
+  testEnvironment: 'node',
+  coverageDirectory: 'coverage',
+  collectCoverageFrom: [
+    'src/**/*.js',
+    '!src/server.js',  // Entry point, tested via integration tests
+    '!src/config/**',  // Configuration files
+  ],
+  testMatch: [
+    '**/tests/**/*.test.js',
+    '**/tests/**/*.spec.js'
+  ],
+  coverageThreshold: {
+    global: {
+      branches: 70,
+      functions: 75,
+      lines: 80,
+      statements: 80
+    }
+  },
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
+  testTimeout: 30000,  // 30 seconds for integration tests
+  verbose: true
+};
+```
+
+**Test Database Configuration:**
+- **Database Name:** `hybrid_lms_test` (separate from development database)
+- **Data Isolation:** Database cleared before each test suite
+- **Indexing:** Same indexes as production for accurate testing
+- **Seeding:** Test-specific seed data, never shared with development
+
+### 8.3 Test Categories
+
+#### Unit Tests
+**Scope:** Individual functions, utilities, validators  
+**Characteristics:**
+- No external dependencies (database, network, filesystem)
+- Fast execution (<1ms per test)
+- High code coverage target (>90%)
+- Use mocks/stubs for dependencies
+
+**Example Unit Test:**
+```javascript
+// tests/unit/utils/jwt.test.js
+const { generateAccessToken, verifyAccessToken } = require('../../../src/utils/jwt');
+
+describe('JWT Utility', () => {
+  describe('generateAccessToken', () => {
+    it('should generate valid JWT token with correct claims', () => {
+      const payload = { userId: '123', role: 'student' };
+      const token = generateAccessToken(payload);
+
+      expect(token).toBeDefined();
+      expect(typeof token).toBe('string');
+      expect(token.split('.')).toHaveLength(3); // Header.Payload.Signature
+    });
+  });
+
+  describe('verifyAccessToken', () => {
+    it('should verify valid token and return payload', () => {
+      const payload = { userId: '123', role: 'student' };
+      const token = generateAccessToken(payload);
+      const decoded = verifyAccessToken(token);
+
+      expect(decoded.userId).toBe('123');
+      expect(decoded.role).toBe('student');
+    });
+
+    it('should throw error for expired token', () => {
+      const expiredToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
+      expect(() => verifyAccessToken(expiredToken)).toThrow('jwt expired');
+    });
+  });
+});
+```
+
+#### Integration Tests
+**Scope:** API endpoints with real database operations  
+**Characteristics:**
+- Tests full request-response cycle
+- Real MongoDB and Redis connections
+- Database state setup and teardown
+- HTTP status codes, response structure validation
+- Authentication and authorization flows
+
+**Example Integration Test:**
+```javascript
+// tests/integration/auth.test.js
+const request = require('supertest');
+const app = require('../../src/app');
+const User = require('../../src/models/User');
+
+describe('POST /api/v1/auth/register', () => {
+  beforeEach(async () => {
+    await User.deleteMany({}); // Clean database
+  });
+
+  it('should register new user with valid data', async () => {
+    const userData = {
+      email: 'student@test.com',
+      password: 'SecurePass123!',
+      firstName: 'John',
+      lastName: 'Doe',
+      dateOfBirth: '2000-01-15',
+      role: 'student'
+    };
+
+    const response = await request(app)
+      .post('/api/v1/auth/register')
+      .send(userData)
+      .expect(201);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.email).toBe('student@test.com');
+    expect(response.body.data.password).toBeUndefined(); // Never return password
+
+    // Verify user created in database
+    const user = await User.findOne({ email: 'student@test.com' });
+    expect(user).toBeDefined();
+    expect(user.firstName).toBe('John');
+  });
+
+  it('should reject duplicate email', async () => {
+    const userData = {
+      email: 'duplicate@test.com',
+      password: 'SecurePass123!',
+      firstName: 'John',
+      lastName: 'Doe',
+      dateOfBirth: '2000-01-15',
+      role: 'student'
+    };
+
+    // First registration
+    await request(app).post('/api/v1/auth/register').send(userData).expect(201);
+
+    // Duplicate registration
+    const response = await request(app)
+      .post('/api/v1/auth/register')
+      .send(userData)
+      .expect(409);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error.code).toBe('DUPLICATE_EMAIL');
+  });
+
+  it('should reject weak password', async () => {
+    const userData = {
+      email: 'test@test.com',
+      password: 'weak',  // Too short, no uppercase, no special char
+      firstName: 'John',
+      lastName: 'Doe',
+      dateOfBirth: '2000-01-15',
+      role: 'student'
+    };
+
+    const response = await request(app)
+      .post('/api/v1/auth/register')
+      .send(userData)
+      .expect(400);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error.field).toBe('password');
+  });
+});
+```
+
+#### Property-Based Testing
+**Scope:** Testing with automatically generated inputs to find edge cases  
+**Library:** fast-check  
+**Use Cases:**
+- Validators (email, password, phone number)
+- Data transformation functions
+- Parsing logic
+- Encryption/decryption round-trips
+
+**Example Property-Based Test:**
+```javascript
+const fc = require('fast-check');
+const { encryptData, decryptData } = require('../../../src/utils/encryption');
+
+describe('Encryption Utility (Property-Based)', () => {
+  it('should decrypt to original plaintext for any input', () => {
+    fc.assert(
+      fc.property(fc.string(), (plaintext) => {
+        const { ciphertext, iv, authTag } = encryptData(plaintext);
+        const decrypted = decryptData(ciphertext, iv, authTag);
+        return decrypted === plaintext;
+      }),
+      { numRuns: 1000 } // Run 1000 random test cases
+    );
+  });
+
+  it('should produce different ciphertext for same plaintext (due to random IV)', () => {
+    fc.assert(
+      fc.property(fc.string({ minLength: 1 }), (plaintext) => {
+        const encrypted1 = encryptData(plaintext);
+        const encrypted2 = encryptData(plaintext);
+        return encrypted1.ciphertext !== encrypted2.ciphertext ||
+               encrypted1.iv !== encrypted2.iv;
+      })
+    );
+  });
+});
+```
+
+### 8.4 Running Tests
+
+**Command Summary:**
+
+| Command | Purpose |
+|---------|---------|
+| `npm test` | Run all tests once |
+| `npm run test:coverage` | Run tests with coverage report |
+| `npm run test:watch` | Run tests in watch mode (re-run on file changes) |
+| `npm test -- --testPathPattern=auth` | Run only auth-related tests |
+| `npm test -- --verbose` | Run tests with detailed output |
+
+**Coverage Report:**
+After running `npm run test:coverage`, open `coverage/lcov-report/index.html` in a browser to view detailed coverage report.
+
+**Example Coverage Output:**
+```
+--------------------------|---------|----------|---------|---------|-------------------
+File                      | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s
+--------------------------|---------|----------|---------|---------|-------------------
+All files                 |   82.45 |    75.32 |   78.91 |   83.12 |
+ controllers              |   85.23 |    78.45 |   82.11 |   86.01 |
+  authController.js       |   92.11 |    85.23 |   90.00 |   93.45 | 45-47,112
+  courseController.js     |   78.34 |    71.22 |   75.50 |   79.12 | 23,56-60,145
+ services                 |   80.12 |    72.34 |   76.45 |   81.23 |
+  authService.js          |   88.45 |    80.12 |   85.00 |   89.23 | 234-240
+ utils                    |   94.23 |    91.12 |   93.45 |   95.01 |
+  jwt.js                  |   98.00 |    95.00 |   100.00|   98.50 | 67
+--------------------------|---------|----------|---------|---------|-------------------
+```
+
+### 8.5 Continuous Integration Testing
+
+**GitHub Actions Workflow (`.github/workflows/ci.yml`):**
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mongodb:
+        image: mongo:8
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint code
+        run: npm run lint
+
+      - name: Run security audit
+        run: npm audit --audit-level=moderate
+
+      - name: Run tests with coverage
+        run: npm run test:coverage
+        env:
+          NODE_ENV: test
+          MONGO_URI: mongodb://localhost:27017/hybrid_lms_test
+          REDIS_URL: redis://localhost:6379
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/lcov.info
+          flags: unittests
+          name: hybrid-lms-backend
+
+      - name: Secret scanning with Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+
+      - name: SAST with Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/owasp-top-ten
+
+      - name: Build application
+        run: npm run build --if-present
+```
+
+### 8.6 Test Coverage Goals
+
+**Coverage Thresholds:**
+- **Statements:** ≥80%
+- **Branches:** ≥70%
+- **Functions:** ≥75%
+- **Lines:** ≥80%
+
+**High-Priority Coverage:**
+- **Authentication/Authorization:** >95% (security-critical)
+- **Payment Processing:** >90% (financial transactions)
+- **Data Encryption:** >95% (security-critical)
+- **User Registration:** >90% (core functionality)
+
+---
+
+## API Documentation & Interface Specifications
+
+### 9.1 API Overview
+
+**Base URL:** `/api/v1`  
+**Protocol:** HTTPS (production), HTTP (development)  
+**Authentication:** JWT Bearer Token (most endpoints)  
+**Request Format:** JSON (`Content-Type: application/json`)  
+**Response Format:** JSON
+
+### 9.2 API Endpoint Catalog
+
+#### Health Check
+```http
+GET /api/v1/health
+```
+**Description:** Server health check endpoint  
+**Authentication:** None  
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Server is running",
+  "timestamp": "2025-01-15T14:30:00.000Z",
+  "version": "0.1.0",
+  "uptime": 86400
+}
+```
+
+#### Authentication Endpoints
+
+**Register New User**
+```http
+POST /api/v1/auth/register
+Content-Type: application/json
+
+{
+  "email": "student@example.com",
+  "password": "SecurePass123!",
+  "firstName": "John",
+  "lastName": "Doe",
+  "dateOfBirth": "2000-01-15",
+  "role": "student"
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": "64f1c2a3b8f7e90012345678",
+      "email": "student@example.com",
+      "firstName": "John",
+      "lastName": "Doe",
+      "role": "student",
+      "emailVerified": false
+    }
+  },
+  "message": "Registration successful. Please check your email for verification link."
+}
+```
+
+**Login**
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "student@example.com",
+  "password": "SecurePass123!"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": "64f1c2a3b8f7e90012345678",
+      "email": "student@example.com",
+      "firstName": "John",
+      "lastName": "Doe",
+      "role": "student"
+    },
+    "tokens": {
+      "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    },
+    "mfaRequired": false
+  }
+}
+```
+
+**MFA Enrollment**
+```http
+POST /api/v1/auth/mfa/enroll
+Authorization: Bearer <access_token>
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "secret": "JBSWY3DPEHPK3PXP",
+    "qrCode": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+    "backupCodes": [
+      "1A2B3C4D",
+      "5E6F7G8H",
+      "9I0J1K2L",
+      "3M4N5O6P",
+      "7Q8R9S0T",
+      "1U2V3W4X",
+      "5Y6Z7A8B",
+      "9C0D1E2F",
+      "3G4H5I6J",
+      "7K8L9M0N"
+    ]
+  },
+  "message": "Save your backup codes in a secure location. They will not be shown again."
+}
+```
+
+#### Course Management Endpoints
+
+**Create Course (Instructor)**
+```http
+POST /api/v1/courses
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "title": "Introduction to Web Development",
+  "description": "Learn HTML, CSS, and JavaScript from scratch",
+  "category": "Programming",
+  "level": "beginner",
+  "language": "en",
+  "price": 49.99,
+  "currency": "USD",
+  "units": [
+    {
+      "title": "HTML Fundamentals",
+      "order": 1,
+      "lessons": [
+        {
+          "title": "HTML Introduction",
+          "type": "video",
+          "content": "https://example.com/video/html-intro.mp4",
+          "duration": 900
+        }
+      ]
+    }
+  ]
+}
+```
+
+**List Courses (Public)**
+```http
+GET /api/v1/courses?page=1&limit=20&category=Programming&level=beginner
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "64f1c2a3b8f7e90012345678",
+      "title": "Introduction to Web Development",
+      "description": "Learn HTML, CSS, and JavaScript from scratch",
+      "instructor": {
+        "id": "64f1c2a3b8f7e90012345679",
+        "firstName": "Jane",
+        "lastName": "Smith"
+      },
+      "category": "Programming",
+      "level": "beginner",
+      "price": 49.99,
+      "currency": "USD",
+      "rating": 4.7,
+      "enrollmentCount": 1523,
+      "coverImage": "https://example.com/images/course-cover.jpg"
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "total": 156,
+    "totalPages": 8
+  }
+}
+```
+
+**Enroll in Course**
+```http
+POST /api/v1/courses/:courseId/enroll
+Authorization: Bearer <access_token>
+```
+
+**Response (201 Created):**
+```json
+{
+  "success": true,
+  "data": {
+    "enrollmentId": "64f1c2a3b8f7e90012345680",
+    "courseId": "64f1c2a3b8f7e90012345678",
+    "userId": "64f1c2a3b8f7e90012345681",
+    "enrolledAt": "2025-01-15T14:30:00.000Z",
+    "status": "active",
+    "progress": 0
+  },
+  "message": "Successfully enrolled in course"
+}
+```
+
+#### Payment Endpoints
+
+**Create Payment Intent (Stripe)**
+```http
+POST /api/v1/payments/create-intent
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "courseId": "64f1c2a3b8f7e90012345678",
+  "currency": "USD"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "clientSecret": "pi_3MtwBwLkdIwHu7ix2bYHl6xZ_secret_T3E1xJnkjFJlELkS5cSGOLu0J",
+    "paymentIntentId": "pi_3MtwBwLkdIwHu7ix2bYHl6xZ",
+    "amount": 4999,
+    "currency": "USD"
+  }
+}
+```
+
+### 9.3 Error Response Format
+
+All API errors follow a consistent format:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable error message",
+    "field": "fieldName",
+    "details": {
+      /* Additional error context */
+    }
+  }
+}
+```
+
+**Common Error Codes:**
+
+| HTTP Status | Error Code | Description |
+|-------------|------------|-------------|
+| 400 | `VALIDATION_ERROR` | Invalid input data |
+| 400 | `INVALID_CREDENTIALS` | Wrong email/password |
+| 401 | `UNAUTHORIZED` | Missing or invalid authentication |
+| 401 | `TOKEN_EXPIRED` | JWT token expired |
+| 403 | `FORBIDDEN` | Insufficient permissions |
+| 403 | `MFA_REQUIRED` | MFA verification needed |
+| 404 | `NOT_FOUND` | Resource not found |
+| 409 | `DUPLICATE_EMAIL` | Email already registered |
+| 409 | `CONFLICT` | State conflict (e.g., already enrolled) |
+| 422 | `UNPROCESSABLE_ENTITY` | Semantic validation failed |
+| 429 | `RATE_LIMIT_EXCEEDED` | Too many requests |
+| 500 | `INTERNAL_SERVER_ERROR` | Unexpected server error |
+
+### 9.4 Authentication Flow
+
+**Standard Authentication Flow:**
+```
+1. Client: POST /api/v1/auth/login (email + password)
+2. Server: Validate credentials
+3. Server: Return access token (15 min) + refresh token (7 days)
+4. Client: Store access token in memory, refresh token in httpOnly cookie
+5. Client: Include access token in subsequent requests (Authorization: Bearer <token>)
+6. When access token expires:
+   a. Client: POST /api/v1/auth/refresh (with refresh token in cookie)
+   b. Server: Validate refresh token
+   c. Server: Issue new access token + rotate refresh token
+```
+
+**MFA Authentication Flow:**
+```
+1. Client: POST /api/v1/auth/login (email + password)
+2. Server: Validate credentials
+3. Server: Return {mfaRequired: true, tempToken: "..."}
+4. Client: POST /api/v1/auth/mfa/verify (tempToken + TOTP code)
+5. Server: Validate TOTP code
+6. Server: Return access token + refresh token
+```
+
+### 9.5 Rate Limiting Headers
+
+All rate-limited endpoints include the following headers:
+
+```http
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 57
+X-RateLimit-Reset: 1705419600
+Retry-After: 45
+```
+
+---
+
+## Database Design & Data Modeling
+
+### 10.1 Database Schema Overview
+
+The system uses **MongoDB** (document-oriented NoSQL database) with **30+ collections** organized by domain:
+
+**Collections by Module:**
+1. **Authentication:** `users`, `sessions`, `mfaSecrets`, `passwordResets`
+2. **Courses:** `courses`, `units`, `lessons`, `enrollments`, `progress`
+3. **Assessments:** `quizzes`, `questions`, `quizAttempts`, `submissions`
+4. **Live Sessions:** `liveSessions`, `sessionParticipants`, `chatMessages`
+5. **Peer Review:** `peerAssignments`, `peerSubmissions`, `peerReviews`
+6. **Payments:** `payments`, `invoices`, `refunds`, `payouts`
+7. **Certificates:** `certificates`, `certificateTemplates`
+8. **KYC:** `kycSubmissions`, `kycDocuments`
+9. **Administration:** `auditLogs`, `systemReports`, `notifications`
+
+### 10.2 Core Data Models
+
+#### User Model
+```javascript
+{
+  _id: ObjectId,
+  email: String (unique, indexed),
+  passwordHash: String,
+  firstName: String,
+  lastName: String,
+  dateOfBirth: Date,
+  role: String (enum: ['student', 'instructor', 'admin', 'superadmin']),
+  profilePicture: String (URL),
+  emailVerified: Boolean,
+  emailVerificationToken: String,
+  mfaEnabled: Boolean,
+  accountStatus: String (enum: ['active', 'suspended', 'pendingDeletion', 'deleted']),
+  createdAt: Date,
+  updatedAt: Date,
+  lastLogin: Date,
+  loginAttempts: Number,
+  lockUntil: Date,
+
+  // Relationships
+  enrollments: [ObjectId] → Enrollment,
+  createdCourses: [ObjectId] → Course (if instructor),
+
+  // Metadata
+  preferences: {
+    language: String,
+    timezone: String,
+    notifications: {
+      email: Boolean,
+      push: Boolean
+    }
+  },
+  
+  // Audit
+  ipAddresses: [String],
+  userAgents: [String]
+}
+```
+
+**Indexes:**
+```javascript
+db.users.createIndex({ email: 1 }, { unique: true });
+db.users.createIndex({ role: 1 });
+db.users.createIndex({ accountStatus: 1 });
+db.users.createIndex({ createdAt: -1 });
+```
+
+#### Course Model
+```javascript
+{
+  _id: ObjectId,
+  title: String (indexed, text search),
+  description: String (text search),
+  instructor: ObjectId → User,
+  category: String (indexed),
+  level: String (enum: ['beginner', 'intermediate', 'advanced']),
+  language: String,
+  coverImage: String (URL),
+  
+  // Pricing
+  price: Number,
+  currency: String,
+  
+  // Content Structure (embedded)
+  units: [
+    {
+      _id: ObjectId,
+      title: String,
+      order: Number,
+      lessons: [
+        {
+          _id: ObjectId,
+          title: String,
+          type: String (enum: ['video', 'document', 'quiz', 'assignment']),
+          content: String (URL or content),
+          duration: Number (seconds),
+          order: Number
+        }
+      ]
+    }
+  ],
+  
+  // Status
+  status: String (enum: ['draft', 'review', 'published', 'archived']),
+  publishedAt: Date,
+  
+  // Statistics (denormalized for performance)
+  enrollmentCount: Number,
+  averageRating: Number,
+  totalReviews: Number,
+  
+  // Timestamps
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+**Indexes:**
+```javascript
+db.courses.createIndex({ title: "text", description: "text" });
+db.courses.createIndex({ instructor: 1 });
+db.courses.createIndex({ category: 1, level: 1 });
+db.courses.createIndex({ status: 1 });
+db.courses.createIndex({ averageRating: -1 });
+db.courses.createIndex({ enrollmentCount: -1 });
+```
+
+#### Enrollment Model
+```javascript
+{
+  _id: ObjectId,
+  user: ObjectId → User,
+  course: ObjectId → Course,
+  enrolledAt: Date,
+  status: String (enum: ['active', 'completed', 'dropped', 'expired']),
+  
+  // Progress Tracking
+  progress: {
+    completedLessons: [ObjectId],
+    totalLessons: Number,
+    percentageComplete: Number,
+    lastAccessedLesson: ObjectId,
+    lastAccessedAt: Date
+  },
+  
+  // Assessment
+  quizScores: [
+    {
+      quiz: ObjectId,
+      score: Number,
+      attempts: Number,
+      passed: Boolean
+    }
+  ],
+  
+  // Completion
+  completedAt: Date,
+  certificateIssued: Boolean,
+  certificate: ObjectId → Certificate,
+  
+  // Payment
+  payment: ObjectId → Payment
+}
+```
+
+**Indexes:**
+```javascript
+db.enrollments.createIndex({ user: 1, course: 1 }, { unique: true });
+db.enrollments.createIndex({ course: 1 });
+db.enrollments.createIndex({ status: 1 });
+db.enrollments.createIndex({ enrolledAt: -1 });
+```
+
+### 10.3 Relationships & Referencing Strategy
+
+**Embedding vs. Referencing Decision Matrix:**
+
+| Relationship | Strategy | Rationale |
+|--------------|----------|-----------|
+| Course → Units → Lessons | **Embed** | Tight coupling, retrieved together, bounded size |
+| User → Enrollments | **Reference** | Unbounded growth (user may enroll in many courses) |
+| Course → Reviews | **Reference** | Unbounded growth, independent lifecycle |
+| Enrollment → Progress | **Embed** | Tight coupling, single enrollment context |
+| Payment → Invoice | **Reference** | Different access patterns, separate auditing |
+
+### 10.4 Data Integrity Constraints
+
+**Application-Level Constraints:**
+1. **Unique Email:** Enforced by unique index + application validation
+2. **Role Validation:** Enum validation in Mongoose schema
+3. **Price Non-Negative:** Mongoose schema validator
+4. **Date Consistency:** `createdAt ≤ updatedAt` validated in middleware
+5. **Enrollment Uniqueness:** Unique compound index (user + course)
+
+**Database-Level Constraints:**
+- Unique indexes prevent duplicate entries
+- TTL indexes auto-delete expired data (sessions, tokens)
+- Schema validation (MongoDB JSON Schema validation enabled)
+
+### 10.5 Indexing Strategy
+
+**Performance-Critical Indexes:**
+1. **Lookup Queries:**
+   - `users.email` (unique)
+   - `courses.instructor`
+   - `enrollments.user`
+
+2. **Sort Operations:**
+   - `courses.averageRating` (descending)
+   - `courses.enrollmentCount` (descending)
+   - `courses.createdAt` (descending)
+
+3. **Full-Text Search:**
+   - `courses` (title, description)
+   - `users` (firstName, lastName)
+
+4. **Compound Indexes:**
+   - `enrollments (user, course)` — unique constraint + common query
+   - `courses (category, level)` — filtered browsing
+
+**Index Monitoring:**
+```javascript
+// Analyze slow queries
+db.setProfilingLevel(1, { slowms: 100 });
+db.system.profile.find().sort({ ts: -1 }).limit(10);
+
+// Check index usage
+db.courses.aggregate([
+  { $indexStats: {} }
+]);
+```
+
+### 10.6 Data Migration & Versioning
+
+**Schema Versioning:**
+```javascript
+{
+  _id: ObjectId,
+  schemaVersion: 2,  // Track schema version for migrations
+  // ... other fields
+}
+```
+
+**Migration Script Example:**
+```javascript
+// migrations/002-add-profile-picture.js
+async function up() {
+  await db.collection('users').updateMany(
+    { schemaVersion: { $lt: 2 } },
+    {
+      $set: { 
+        profilePicture: null,
+        schemaVersion: 2
+      }
+    }
+  );
+}
+
+async function down() {
+  await db.collection('users').updateMany(
+    { schemaVersion: 2 },
+    {
+      $unset: { profilePicture: "" },
+      $set: { schemaVersion: 1 }
+    }
+  );
+}
+```
+
+---
+
+## DevSecOps Pipeline & Continuous Integration
+
+### 11.1 DevSecOps Overview
+
+This project implements **Shift-Left Security**, integrating security checks throughout the development lifecycle:
+
+```
+Developer → Pre-Commit → Push → CI Pipeline → Code Review → Merge → Deploy
+   ↓           ↓          ↓         ↓              ↓           ↓        ↓
+IDE Lint   Gitleaks  Gitleaks   npm audit     Security   Approval  Prod Scan
+           ESLint              CodeQL        Review
+                               Semgrep
+                               Tests
+```
+
+### 11.2 Pre-Commit Hooks (Husky + Gitleaks)
+
+**Husky Configuration (`.husky/pre-commit`):**
+```bash
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Run linting and formatting on staged files
+npx lint-staged
+
+# Scan for secrets
+gitleaks protect --staged --verbose
+```
+
+**lint-staged Configuration (`package.json`):**
+```json
+{
+  "lint-staged": {
+    "*.js": [
+      "eslint --fix",
+      "prettier --write"
+    ]
+  }
+}
+```
+
+**What Gets Checked:**
+1. **ESLint:** Code quality and security issues
+2. **Prettier:** Code formatting
+3. **Gitleaks:** Secret scanning (API keys, passwords, tokens)
+
+**Developer Experience:**
+```bash
+git add src/controllers/authController.js
+git commit -m "feat(auth): add password reset endpoint"
+
+# Output:
+✔ Preparing lint-staged...
+✔ Running tasks for staged files...
+✔ Applying modifications from tasks...
+✔ Cleaning up temporary files...
+✔ Gitleaks: No secrets detected
+
+[feature/AUTH-BE-04-password-reset 1a2b3c4] feat(auth): add password reset endpoint
+ 1 file changed, 45 insertions(+), 2 deletions(-)
+```
+
+### 11.3 Continuous Integration Pipeline
+
+**GitHub Actions Workflow (`.github/workflows/ci.yml`):**
+
+**Pipeline Stages:**
+
+1. **Setup:**
+   - Checkout code
+   - Setup Node.js 22
+   - Install dependencies (npm ci)
+   - Start MongoDB and Redis services
+
+2. **Code Quality:**
+   - ESLint (code quality + security rules)
+   - Prettier (formatting check)
+   - Dependency audit (npm audit)
+
+3. **Security Scanning:**
+   - **Gitleaks:** Secret scanning
+   - **Semgrep:** SAST with OWASP Top 10 rules
+   - **CodeQL:** Semantic code analysis (GitHub Advanced Security)
+   - **npm audit:** Dependency vulnerability scanning
+
+4. **Testing:**
+   - Unit tests
+   - Integration tests
+   - Coverage report (target: >80%)
+   - Upload to Codecov
+
+5. **Build:**
+   - Build application (if build step exists)
+   - Create Docker image (production deployments)
+
+**Example Workflow Execution:**
+```
+┌─────────────────────────────────────────┐
+│ CI Pipeline: Pull Request #42           │
+├─────────────────────────────────────────┤
+│ ✓ Setup (Node.js 22, MongoDB, Redis)   │ 45s
+│ ✓ Install dependencies                  │ 32s
+│ ✓ Lint code (ESLint)                    │ 12s
+│ ✓ npm audit (0 vulnerabilities)         │ 5s
+│ ✓ Gitleaks (no secrets found)           │ 8s
+│ ✓ Semgrep (0 high, 2 medium issues)     │ 28s
+│ ✓ CodeQL analysis                       │ 3m 45s
+│ ✓ Run tests (248 passed, 0 failed)      │ 1m 22s
+│ ✓ Coverage (84.2% statements)           │ included above
+│ ✓ Build application                     │ 18s
+├─────────────────────────────────────────┤
+│ Total time: 6m 35s                      │
+│ Status: ✓ All checks passed             │
+└─────────────────────────────────────────┘
+```
+
+### 11.4 Security Scanning Tools
+
+#### Gitleaks Configuration (`.gitleaks.toml`)
+```toml
+title = "Hybrid LMS Gitleaks Configuration"
+
+[extend]
+useDefault = true
+
+[[rules]]
+description = "AWS Access Key"
+id = "aws-access-key"
+regex = '''AKIA[0-9A-Z]{16}'''
+
+[[rules]]
+description = "Private Key"
+id = "private-key"
+regex = '''-----BEGIN (RSA|OPENSSH|DSA|EC|PGP) PRIVATE KEY-----'''
+
+[[rules]]
+description = "JWT Token"
+id = "jwt-token"
+regex = '''eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*'''
+
+[allowlist]
+description = "Allowlist for test files"
+paths = [
+  '''^tests/.*\.test\.js$''',
+  '''^tests/fixtures/.*'''
+]
+```
+
+#### Semgrep Rules
+Uses public rulesets:
+- `p/security-audit` — General security issues
+- `p/owasp-top-ten` — OWASP Top 10 vulnerabilities
+- `p/nodejs` — Node.js-specific issues
+
+**Example Findings:**
+```yaml
+# SQL Injection (not applicable to MongoDB, but demonstrates)
+- id: sql-injection-detector
+  pattern: db.query($USER_INPUT)
+  message: Potential SQL injection vulnerability
+  severity: ERROR
+
+# Hardcoded Secrets
+- id: hardcoded-password
+  pattern: password = "..."
+  message: Hardcoded password detected
+  severity: WARNING
+
+# Regex DoS
+- id: regex-dos
+  pattern: new RegExp($USER_INPUT)
+  message: User-controlled regex can cause ReDoS
+  severity: WARNING
+```
+
+#### CodeQL Configuration
+```yaml
+name: "CodeQL"
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly scan (Mondays at 6 AM)
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        language: [ 'javascript' ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended,security-and-quality
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+```
+
+### 11.5 Dependency Management
+
+**Dependabot Configuration (`.github/dependabot.yml`):**
+```yaml
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "yazan-joureah"
+    labels:
+      - "dependencies"
+      - "security"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    
+    # Security updates only (for production)
+    # open-pull-requests-limit: 0
+    # allow:
+    #   - dependency-type: "all"
+    #     update-types: ["security"]
+```
+
+**Automated Dependency Updates:**
+- Dependabot creates pull requests for outdated dependencies
+- CI pipeline runs on each PR to validate compatibility
+- Security updates prioritized and auto-merged (after CI passes)
+- Major version updates require manual review
+
+### 11.6 Code Review Requirements
+
+**Pull Request Checklist:**
+- [ ] All CI checks passing (tests, linting, security scans)
+- [ ] Code coverage maintained or improved (≥80%)
+- [ ] No new security vulnerabilities introduced
+- [ ] Documentation updated (if API changes)
+- [ ] Commit messages follow conventional commit format
+- [ ] No merge conflicts
+- [ ] At least one approving review from team member
+- [ ] Approved by security reviewer (for security-sensitive changes)
+
+**Branch Protection Rules:**
+- Require pull request reviews before merging
+- Require status checks to pass before merging
+- Require branches to be up to date before merging
+- Require linear history (rebase, not merge commits)
+- Restrict who can push to main branch
+
+---
+
+## Project Management & Development Workflow
+
+### 12.1 Branching Strategy
+
+**Git Flow (Simplified):**
+```
+main (protected)
+  ├── develop (integration branch)
+  │   ├── feature/AUTH-BE-01-registration
+  │   ├── feature/COURSE-BE-05-enrollment
+  │   └── fix/AUTH-BE-03-token-expiry
+  └── hotfix/SECURITY-01-csrf-vulnerability
+```
+
+**Branch Naming Convention:**
+```
+[type]/[MODULE]-[BE]-[NN]-[description]
+
+Examples:
+- feature/AUTH-BE-01-mfa-enrollment
+- fix/PAYMENT-BE-02-stripe-webhook-bug
+- hotfix/SECURITY-01-xss-vulnerability
+- chore/INFRA-BE-01-update-dependencies
+```
+
+**Types:**
+- `feature` — New functionality
+- `fix` — Bug fixes
+- `hotfix` — Critical production fixes (branches from main)
+- `chore` — Maintenance (dependencies, tooling, refactoring)
+- `docs` — Documentation updates
+
+### 12.2 Commit Message Convention
+
+**Format (Conventional Commits):**
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+**Examples:**
+```
+feat(auth): implement MFA enrollment endpoint
+
+Add POST /api/v1/auth/mfa/enroll for TOTP-based MFA setup.
+Returns QR code for authenticator app and 10 backup codes.
+Backup codes encrypted with AES-256-GCM before storage.
+
+Closes #42
+
+---
+
+fix(payment): correct Stripe webhook signature verification
+
+Previous implementation used wrong secret key for signature
+validation, causing all webhook events to fail verification.
+Updated to use STRIPE_WEBHOOK_SECRET from environment.
+
+Fixes #87
+
+---
+
+docs(readme): add API authentication flow documentation
+
+Added sequence diagrams and code examples for:
+- Standard JWT authentication
+- MFA authentication flow
+- Refresh token rotation
+
+---
+
+chore(deps): update Express to 4.19.2
+
+Security update to address CVE-2024-XXXXX.
+All tests passing, no breaking changes.
+```
+
+### 12.3 Issue Tracking & Project Management
+
+**GitHub Projects Integration:**
+- **Project Board:** Kanban board with columns: Backlog, To Do, In Progress, In Review, Done
+- **Issue Labels:**
+  - **Type:** `feature`, `bug`, `security`, `docs`, `chore`
+  - **Priority:** `P0-critical`, `P1-high`, `P2-medium`, `P3-low`
+  - **Module:** `auth`, `course`, `payment`, `live`, `peer`, `admin`
+  - **Status:** `blocked`, `needs-review`, `ready-for-test`
+
+**Issue Template (.github/ISSUE_TEMPLATE/bug_report.md):**
+```markdown
+## Bug Description
+A clear description of the bug.
+
+## Steps to Reproduce
+1. Go to '...'
+2. Click on '...'
+3. Scroll down to '...'
+4. See error
+
+## Expected Behavior
+What you expected to happen.
+
+## Actual Behavior
+What actually happened.
+
+## Environment
+- OS: [e.g., Windows 11, macOS 14, Ubuntu 22.04]
+- Node.js Version: [e.g., 22.1.0]
+- Browser (if applicable): [e.g., Chrome 120]
+
+## Logs/Screenshots
+Include relevant logs or screenshots.
+
+## Additional Context
+Any other context about the problem.
+```
+
+### 12.4 Development Workflow
+
+**Typical Development Cycle:**
+
+1. **Create Issue:**
+   - Describe feature/bug in GitHub Issues
+   - Assign labels and project board column
+   - Assign to developer
+
+2. **Create Branch:**
+   ```bash
+   git checkout -b feature/AUTH-BE-05-password-reset
+   ```
+
+3. **Development:**
+   - Write code
+   - Write tests (TDD encouraged)
+   - Run tests locally (`npm test`)
+   - Lint code (`npm run lint`)
+
+4. **Commit Changes:**
+   ```bash
+   git add src/controllers/authController.js tests/integration/auth.test.js
+   git commit -m "feat(auth): add password reset endpoint"
+   # Pre-commit hooks run: ESLint, Prettier, Gitleaks
+   ```
+
+5. **Push & Create Pull Request:**
+   ```bash
+   git push -u origin feature/AUTH-BE-05-password-reset
+   # Create PR on GitHub with description
+   ```
+
+6. **CI Pipeline:**
+   - Automated tests run
+   - Security scans execute
+   - Code coverage checked
+   - Build verification
+
+7. **Code Review:**
+   - Team member reviews code
+   - Requests changes or approves
+   - Author addresses feedback
+
+8. **Merge:**
+   - Squash and merge to develop (feature complete)
+   - Delete feature branch
+   - Update project board
+
+9. **Deployment:**
+   - Develop → Staging environment (automated)
+   - Staging → Production (manual, after QA)
+
+### 12.5 Release Management
+
+**Versioning Strategy (Semantic Versioning):**
+```
+MAJOR.MINOR.PATCH
+
+0.1.0 → Initial development release
+0.2.0 → New feature added
+0.2.1 → Bug fix
+1.0.0 → First production release
+1.1.0 → New feature (backward compatible)
+2.0.0 → Breaking changes
+```
+
+**Release Checklist:**
+- [ ] All tests passing
+- [ ] No open P0/P1 bugs
+- [ ] Documentation updated
+- [ ] Changelog updated (`CHANGELOG.md`)
+- [ ] Version bumped (`package.json`)
+- [ ] Git tag created (`v1.0.0`)
+- [ ] Release notes published (GitHub Releases)
+- [ ] Deployment completed
+- [ ] Smoke tests passed (production)
+
+---
+
+## Deployment Architecture & Operations
+
+### 13.1 Deployment Overview
+
+**Environment Strategy:**
+- **Development:** Local machines (Docker Compose)
+- **Staging:** Cloud VPS (DigitalOcean/AWS) — mirrors production
+- **Production:** Cloud infrastructure (AWS/GCP/Azure) with redundancy
+
+### 13.2 Production Architecture (Recommended)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Load Balancer                        │
+│                 (AWS ALB / NGINX)                        │
+│                 SSL Termination                          │
+└───────────────────┬─────────────────────────────────────┘
+                    │
+        ┌───────────┴───────────┐
+        │                       │
+┌───────▼───────┐       ┌───────▼───────┐
+│  App Server 1 │       │  App Server 2 │
+│  (Node.js)    │       │  (Node.js)    │
+│  PM2 Cluster  │       │  PM2 Cluster  │
+└───────┬───────┘       └───────┬───────┘
+        │                       │
+        └───────────┬───────────┘
+                    │
+        ┌───────────┴───────────┐
+        │                       │
+┌───────▼───────┐       ┌───────▼───────┐
+│  MongoDB      │       │  Redis        │
+│  Replica Set  │       │  Cluster      │
+│  (Primary +   │       │  (Master +    │
+│   Secondaries)│       │   Replicas)   │
+└───────────────┘       └───────────────┘
+```
+
+### 13.3 Docker Deployment
+
+**Production Dockerfile:**
+```dockerfile
+# Stage 1: Build
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies (production only)
+RUN npm ci --only=production
+
+# Copy source code
+COPY . .
+
+# Stage 2: Production image
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Copy dependencies from builder
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/package.json ./
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001 && \
+    chown -R nodejs:nodejs /app
+
+USER nodejs
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s \
+  CMD node -e "require('http').get('http://localhost:3000/api/v1/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+# Start application
+CMD ["node", "src/server.js"]
+```
+
+**docker-compose.yml (Production):**
+```yaml
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: hybrid-lms-api
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      MONGO_URI: mongodb://mongodb:27017/hybrid_lms
+      REDIS_URL: redis://redis:6379
+    env_file:
+      - .env.production
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - app-network
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  mongodb:
+    image: mongo:8
+    container_name: hybrid-lms-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: hybrid_lms
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - app-network
+    command: mongod --auth --bind_ip_all
+
+  redis:
+    image: redis:7-alpine
+    container_name: hybrid-lms-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: hybrid-lms-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+    networks:
+      - app-network
+
+volumes:
+  mongodb_data:
+  mongodb_config:
+  redis_data:
+
+networks:
+  app-network:
+    driver: bridge
+```
+
+### 13.4 Environment Configuration
+
+**Production Environment Variables (.env.production):**
+```bash
+# Application
+NODE_ENV=production
+PORT=3000
+BASE_URL=https://api.hybridlms.com
+
+# Database
+MONGO_URI=mongodb://admin:${MONGO_ROOT_PASSWORD}@mongodb:27017/hybrid_lms?authSource=admin
+REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+
+# Security
+JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET_PROD}
+JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET_PROD}
+ENCRYPTION_MASTER_KEY=${ENCRYPTION_MASTER_KEY_PROD}
+
+# External Services
+STRIPE_SECRET_KEY=${STRIPE_LIVE_SECRET_KEY}
+STRIPE_WEBHOOK_SECRET=${STRIPE_LIVE_WEBHOOK_SECRET}
+GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
+GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
+
+# Monitoring
+LOG_LEVEL=info
+ENABLE_MONITORING=true
+```
+
+### 13.5 Monitoring & Observability
+
+**Health Check Endpoint:**
+```javascript
+// src/routes/health.js
+router.get('/health', async (req, res) => {
+  const health = {
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    status: 'OK',
+    checks: {
+      mongodb: await checkMongoConnection(),
+      redis: await checkRedisConnection(),
+      disk: await checkDiskSpace(),
+      memory: {
+        used: process.memoryUsage().heapUsed,
+        limit: process.memoryUsage().heapTotal
+      }
+    }
+  };
+
+  const status = Object.values(health.checks).every(c => c === 'UP') ? 200 : 503;
+  res.status(status).json(health);
+});
+```
+
+**Logging Strategy:**
+- **Winston Logger:** Structured JSON logs
+- **Log Levels:** error, warn, info, http, verbose, debug
+- **Transports:**
+  - Console (development)
+  - File rotation (production)
+  - Cloud logging (AWS CloudWatch, GCP Cloud Logging)
+
+**Metrics to Monitor:**
+- Request rate (requests/second)
+- Response time (p50, p95, p99)
+- Error rate (4xx, 5xx)
+- Database connection pool utilization
+- Memory usage
+- CPU usage
+- Active WebSocket connections
+
+**Alerting Triggers:**
+- Error rate >5% for 5 minutes
+- P99 response time >2 seconds for 5 minutes
+- Memory usage >90% for 5 minutes
+- Database connection failures
+- Disk space <10% free
+
+---
+
+## Future Enhancements & Research Directions
+
+### 14.1 Planned Features (Roadmap)
+
+**Q1 2026:**
+- [ ] Mobile SDK (React Native) for native mobile apps
+- [ ] Advanced analytics dashboard (learning patterns, engagement metrics)
+- [ ] AI-powered course recommendations
+- [ ] Automated accessibility testing integration
+
+**Q2 2026:**
+- [ ] Blockchain-based certificate verification (Ethereum/Polygon)
+- [ ] Video streaming optimization (adaptive bitrate, CDN integration)
+- [ ] Gamification system (badges, leaderboards, achievements)
+- [ ] Multi-language support (i18n framework)
+
+**Q3 2026:**
+- [ ] GraphQL API (alternative to REST)
+- [ ] Microservices decomposition (auth, course, payment as separate services)
+- [ ] Event-driven architecture (Apache Kafka/RabbitMQ)
+- [ ] Kubernetes deployment manifests
+
+**Q4 2026:**
+- [ ] AI teaching assistant (GPT integration)
+- [ ] Real-time code editor (CodeMirror/Monaco)
+- [ ] Proctoring system for high-stakes assessments
+- [ ] Accessibility compliance WCAG 2.2 AAA
+
+### 14.2 Research Opportunities
+
+**Academic Research Topics:**
+
+1. **Adaptive Learning Algorithms:**
+   - Personalized learning paths based on student performance
+   - Reinforcement learning for curriculum optimization
+   - Knowledge tracing models (Deep Knowledge Tracing)
+
+2. **Blockchain in Education:**
+   - Decentralized credential verification
+   - Smart contracts for course enrollment
+   - Immutable academic transcripts
+
+3. **Cybersecurity:**
+   - Zero-trust architecture implementation
+   - Homomorphic encryption for sensitive data
+   - Federated identity management
+
+4. **Machine Learning Applications:**
+   - Automated essay grading (NLP)
+   - Plagiarism detection (document similarity)
+   - Student dropout prediction
+
+5. **Accessibility Research:**
+   - Screen reader optimization
+   - Cognitive load reduction techniques
+   - Universal design for learning (UDL)
+
+### 14.3 Technical Debt & Refactoring
+
+**Known Technical Debt:**
+1. **Mongoose to Prisma Migration:** Consider Prisma ORM for type safety
+2. **REST to GraphQL:** Reduce over-fetching and under-fetching
+3. **Monolith to Microservices:** Domain-driven design decomposition
+4. **Session Management:** Distributed tracing (OpenTelemetry)
+5. **File Storage:** Migrate to cloud storage (S3, GCS) from local filesystem
+
+---
+
+## References & Academic Sources
+
+### 15.1 Software Engineering Standards
+
+1. **IEEE 830-1998.** *IEEE Recommended Practice for Software Requirements Specifications.* Institute of Electrical and Electronics Engineers, 1998.
+
+2. **ISO/IEC/IEEE 29148:2018.** *Systems and Software Engineering — Life Cycle Processes — Requirements Engineering.* International Organization for Standardization, 2018.
+
+3. Martin, Robert C. *Clean Architecture: A Craftsman's Guide to Software Structure and Design.* Prentice Hall, 2017.
+
+4. Gamma, Erich, et al. *Design Patterns: Elements of Reusable Object-Oriented Software.* Addison-Wesley, 1994.
+
+5. Fowler, Martin. *Refactoring: Improving the Design of Existing Code.* 2nd ed., Addison-Wesley, 2018.
+
+### 15.2 Security & Cryptography Standards
+
+6. **OWASP Top Ten.** *OWASP Top 10:2021 — The Ten Most Critical Web Application Security Risks.* Open Web Application Security Project, 2021. [https://owasp.org/Top10/](https://owasp.org/Top10/)
+
+7. **NIST SP 800-63B.** *Digital Identity Guidelines: Authentication and Lifecycle Management.* National Institute of Standards and Technology, 2017.
+
+8. **NIST SP 800-53 Rev. 5.** *Security and Privacy Controls for Information Systems and Organizations.* National Institute of Standards and Technology, 2020.
+
+9. Schneier, Bruce. *Applied Cryptography: Protocols, Algorithms, and Source Code in C.* 2nd ed., Wiley, 1996.
+
+10. **RFC 6238.** *TOTP: Time-Based One-Time Password Algorithm.* Internet Engineering Task Force, 2011.
+
+11. **RFC 7519.** *JSON Web Token (JWT).* Internet Engineering Task Force, 2015.
+
+12. **RFC 6749.** *The OAuth 2.0 Authorization Framework.* Internet Engineering Task Force, 2012.
+
+### 15.3 Database & Distributed Systems
+
+13. Kleppmann, Martin. *Designing Data-Intensive Applications: The Big Ideas Behind Reliable, Scalable, and Maintainable Systems.* O'Reilly Media, 2017.
+
+14. Banker, Kyle. *MongoDB: The Definitive Guide.* 3rd ed., O'Reilly Media, 2019.
+
+15. Tanenbaum, Andrew S., and Maarten van Steen. *Distributed Systems: Principles and Paradigms.* 3rd ed., Prentice Hall, 2017.
+
+### 15.4 Educational Technology
+
+16. Garrison, D. Randy, Terry Anderson, and Walter Archer. "Critical Inquiry in a Text-Based Environment: Computer Conferencing in Higher Education." *The Internet and Higher Education*, vol. 2, no. 2-3, 2000, pp. 87-105.
+
+17. Bloom, Benjamin S. *Taxonomy of Educational Objectives: The Classification of Educational Goals.* David McKay Company, 1956.
+
+18. Rose, David H., and Anne Meyer. *Teaching Every Student in the Digital Age: Universal Design for Learning.* Association for Supervision and Curriculum Development, 2002.
+
+### 15.5 API Design & RESTful Services
+
+19. Fielding, Roy Thomas. *Architectural Styles and the Design of Network-based Software Architectures.* Doctoral dissertation, University of California, Irvine, 2000.
+
+20. Richardson, Chris, and Floyd Smith. *Microservices Patterns: With Examples in Java.* Manning Publications, 2018.
+
+### 15.6 Testing & Quality Assurance
+
+21. Beck, Kent. *Test-Driven Development: By Example.* Addison-Wesley, 2002.
+
+22. Meszaros, Gerard. *xUnit Test Patterns: Refactoring Test Code.* Addison-Wesley, 2007.
+
+23. **ISO/IEC/IEEE 29119-1:2013.** *Software Testing — Part 1: Concepts and Definitions.* International Organization for Standardization, 2013.
+
+### 15.7 DevOps & CI/CD
+
+24. Kim, Gene, et al. *The DevOps Handbook: How to Create World-Class Agility, Reliability, & Security in Technology Organizations.* IT Revolution Press, 2016.
+
+25. Humble, Jez, and David Farley. *Continuous Delivery: Reliable Software Releases through Build, Test, and Deployment Automation.* Addison-Wesley, 2010.
+
+### 15.8 Regulatory Compliance
+
+26. **GDPR (EU 2016/679).** *General Data Protection Regulation.* European Union, 2016.
+
+27. **COPPA.** *Children's Online Privacy Protection Act.* Federal Trade Commission, United States, 1998.
+
+28. **WCAG 2.1.** *Web Content Accessibility Guidelines.* World Wide Web Consortium (W3C), 2018. [https://www.w3.org/WAI/WCAG21/quickref/](https://www.w3.org/WAI/WCAG21/quickref/)
+
+---
+
+## Appendices
+
+### Appendix A: Command Reference
+
+**Development Commands:**
+```bash
+# Install dependencies
+npm install
+
+# Start development server (with hot reload)
+npm run dev
+
+# Start production server
+npm start
+
+# Run tests
+npm test
+
+# Run tests with coverage
+npm run test:coverage
+
+# Run tests in watch mode
+npm run test:watch
+
+# Lint code
+npm run lint
+
+# Fix linting issues
+npm run lint:fix
+
+# Format code with Prettier
+npm run format
+```
+
+**Database Commands:**
+```bash
+# Start Docker services
+docker compose up -d
+
+# Stop Docker services
+docker compose down
+
+# View logs
+docker compose logs -f
+
+# Seed development data
+npm run seed:dev-users
+npm run seed:live-demo
+npm run seed:peer-demo
+
+# Create production superadmin
+npm run seed:prod-superadmin
+```
+
+**Git Commands:**
+```bash
+# Create feature branch
+git checkout -b feature/MODULE-BE-NN-description
+
+# Stage changes
+git add src/file.js
+
+# Commit with conventional commit message
+git commit -m "feat(module): description"
+
+# Push to remote
+git push -u origin feature/MODULE-BE-NN-description
+
+# Create pull request (GitHub CLI)
+gh pr create --title "Title" --body "Description"
+```
+
+### Appendix B: Environment Variables Complete List
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `NODE_ENV` | Yes | `development` | Environment mode |
+| `PORT` | No | `3000` | Server port |
+| `BASE_URL` | Yes | - | API base URL |
+| `MONGO_URI` | Yes | - | MongoDB connection string |
+| `MONGO_TEST_URI` | Yes (test) | - | Test database URI |
+| `REDIS_URL` | Yes | - | Redis connection URL |
+| `JWT_ACCESS_SECRET` | Yes | - | JWT access token secret (64+ chars) |
+| `JWT_REFRESH_SECRET` | Yes | - | JWT refresh token secret (64+ chars) |
+| `JWT_ACCESS_EXPIRES_IN` | No | `15m` | Access token expiry |
+| `JWT_REFRESH_EXPIRES_IN` | No | `7d` | Refresh token expiry |
+| `ENCRYPTION_MASTER_KEY` | Yes | - | AES-256 encryption key (64 hex chars) |
+| `GOOGLE_OAUTH_CLIENT_ID` | Yes | - | Google OAuth client ID |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Yes | - | Google OAuth client secret |
+| `GOOGLE_OAUTH_REDIRECT_URI` | Yes | - | OAuth redirect URL |
+| `STRIPE_SECRET_KEY` | Yes | - | Stripe API secret key |
+| `STRIPE_PUBLISHABLE_KEY` | Yes | - | Stripe publishable key |
+| `STRIPE_WEBHOOK_SECRET` | Yes | - | Stripe webhook signing secret |
+| `CERT_SIGNING_PRIVATE_KEY_PEM` | Yes | - | Ed25519 private key (PEM) |
+| `CERT_SIGNING_PUBLIC_KEY_PEM` | Yes | - | Ed25519 public key (PEM) |
+| `GMAIL_CLIENT_ID` | Yes | - | Gmail OAuth2 client ID |
+| `GMAIL_CLIENT_SECRET` | Yes | - | Gmail OAuth2 client secret |
+| `GMAIL_REFRESH_TOKEN` | Yes | - | Gmail OAuth2 refresh token |
+| `GMAIL_USER` | Yes | - | Gmail sender email address |
+| `CLAMAV_HOST` | No | `localhost` | ClamAV server host |
+| `CLAMAV_PORT` | No | `3310` | ClamAV server port |
+| `CLAMAV_ENABLED` | No | `false` | Enable ClamAV malware scanning |
+| `UPLOAD_DIR` | No | `uploads` | File upload directory |
+| `MAX_FILE_SIZE_MB` | No | `500` | Maximum upload file size (MB) |
+| `RATE_LIMIT_WINDOW_MS` | No | `900000` | Rate limit window (ms) |
+| `RATE_LIMIT_MAX_REQUESTS` | No | `100` | Max requests per window |
+| `SESSION_SECRET` | Yes | - | Express session secret |
+| `CORS_ORIGIN` | No | `*` | CORS allowed origins |
+| `LOG_LEVEL` | No | `info` | Logging level |
+| `ENABLE_SWAGGER` | No | `false` | Enable Swagger API docs |
+
+### Appendix C: HTTP Status Codes Reference
+
+| Status Code | Meaning | Usage |
+|-------------|---------|-------|
+| **2xx Success** | | |
+| 200 | OK | Successful GET, PUT, PATCH |
+| 201 | Created | Successful POST creating resource |
+| 204 | No Content | Successful DELETE |
+| **4xx Client Errors** | | |
+| 400 | Bad Request | Invalid input, validation failed |
+| 401 | Unauthorized | Missing/invalid authentication |
+| 403 | Forbidden | Authenticated but insufficient permissions |
+| 404 | Not Found | Resource doesn't exist |
+| 409 | Conflict | State conflict (duplicate, etc.) |
+| 422 | Unprocessable Entity | Semantic validation failed |
+| 429 | Too Many Requests | Rate limit exceeded |
+| **5xx Server Errors** | | |
+| 500 | Internal Server Error | Unexpected server error |
+| 502 | Bad Gateway | Upstream service failure |
+| 503 | Service Unavailable | Server overloaded/maintenance |
+| 504 | Gateway Timeout | Upstream timeout |
+
+### Appendix D: Database Schema Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                       USER MANAGEMENT                            │
+├─────────────────┬───────────────┬────────────────┬──────────────┤
+│ users           │ sessions      │ mfaSecrets     │ auditLogs    │
+│ ─────           │ ────────      │ ──────────     │ ─────────    │
+│ _id (PK)        │ _id (PK)      │ _id (PK)       │ _id (PK)     │
+│ email (unique)  │ userId (FK)   │ userId (FK)    │ userId (FK)  │
+│ passwordHash    │ token         │ secret         │ action       │
+│ role            │ expiresAt     │ backupCodes[]  │ resource     │
+│ mfaEnabled      │ ipAddress     │ verified       │ timestamp    │
+└─────────────────┴───────────────┴────────────────┴──────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                       COURSE MANAGEMENT                          │
+├─────────────────┬───────────────┬────────────────┬──────────────┤
+│ courses         │ enrollments   │ progress       │ reviews      │
+│ ───────         │ ───────────   │ ────────       │ ───────      │
+│ _id (PK)        │ _id (PK)      │ _id (PK)       │ _id (PK)     │
+│ title           │ userId (FK)   │ enrollmentId   │ userId (FK)  │
+│ instructor (FK) │ courseId (FK) │ completedUnits │ courseId (FK)│
+│ units[] (embed) │ enrolledAt    │ percentage     │ rating (1-5) │
+│ price           │ status        │ lastAccessed   │ comment      │
+└─────────────────┴───────────────┴────────────────┴──────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                       ASSESSMENTS                                │
+├─────────────────┬───────────────┬────────────────┬──────────────┤
+│ quizzes         │ quizAttempts  │ assignments    │ submissions  │
+│ ───────         │ ────────────  │ ───────────    │ ───────────  │
+│ _id (PK)        │ _id (PK)      │ _id (PK)       │ _id (PK)     │
+│ courseId (FK)   │ userId (FK)   │ courseId (FK)  │ userId (FK)  │
+│ questions[]     │ quizId (FK)   │ title          │ assignmentId │
+│ timeLimit       │ answers[]     │ deadline       │ content      │
+│ passingScore    │ score         │ maxScore       │ submittedAt  │
+└─────────────────┴───────────────┴────────────────┴──────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                       PAYMENTS                                   │
+├─────────────────┬───────────────┬────────────────┬──────────────┤
+│ payments        │ invoices      │ refunds        │ payouts      │
+│ ────────        │ ────────      │ ───────        │ ───────      │
+│ _id (PK)        │ _id (PK)      │ _id (PK)       │ _id (PK)     │
+│ userId (FK)     │ paymentId (FK)│ paymentId (FK) │ instructorId │
+│ courseId (FK)   │ amount        │ amount         │ amount       │
+│ stripePaymentId │ pdfUrl        │ reason         │ status       │
+│ amount          │ issueDate     │ status         │ paidAt       │
+└─────────────────┴───────────────┴────────────────┴──────────────┘
+
+Legend:
+- PK: Primary Key (_id in MongoDB)
+- FK: Foreign Key (ObjectId reference)
+- (embed): Embedded subdocument
+- []: Array field
+```
+
+### Appendix E: Glossary of Terms
+
+| Term | Definition |
+|------|------------|
+| **Argon2id** | Password hashing algorithm combining argon2i and argon2d variants |
+| **CSRF** | Cross-Site Request Forgery; attack forcing authenticated users to perform unwanted actions |
+| **DevSecOps** | Integration of security practices into DevOps workflow |
+| **GDPR** | General Data Protection Regulation; EU data privacy law |
+| **JWT** | JSON Web Token; compact token format for authentication |
+| **MVCS** | Model-View-Controller-Service architecture pattern |
+| **OAuth 2.0** | Open standard for access delegation (social login) |
+| **RBAC** | Role-Based Access Control; permission model based on user roles |
+| **REST** | Representational State Transfer; architectural style for APIs |
+| **TOTP** | Time-based One-Time Password; MFA algorithm (RFC 6238) |
+| **WebSocket** | Full-duplex communication protocol for real-time features |
+| **XSS** | Cross-Site Scripting; injecting malicious scripts into web pages |
+
+### Appendix F: Contribution Guidelines
+
+**How to Contribute:**
+
+1. **Fork Repository:** Create personal fork on GitHub
+2. **Clone Fork:** `git clone <your-fork-url>`
+3. **Create Branch:** `git checkout -b feature/YOUR-FEATURE`
+4. **Make Changes:** Follow coding standards
+5. **Write Tests:** Ensure >80% coverage
+6. **Commit:** Use conventional commit format
+7. **Push:** `git push origin feature/YOUR-FEATURE`
+8. **Create Pull Request:** Submit PR with description
+9. **Code Review:** Address reviewer feedback
+10. **Merge:** Once approved and CI passes
+
+**Code Review Criteria:**
+- ✅ Follows coding standards (ESLint, Prettier)
+- ✅ Includes unit/integration tests
+- ✅ Maintains or improves code coverage
+- ✅ No security vulnerabilities introduced
+- ✅ Documentation updated
+- ✅ Commit messages follow convention
+- ✅ All CI checks passing
+
+### Appendix G: License & Academic Use
+
+**License:** UNLICENSED (Academic Project)
+
+This project is developed as part of academic coursework for Bachelor's degree at Syrian Virtual University (SVU). It is not licensed for commercial use, redistribution, or modification without explicit permission from the project authors and university.
+
+**Academic Use Policy:**
+- ✅ Reference in academic papers (with proper citation)
+- ✅ Study for educational purposes
+- ✅ Discuss in academic presentations
+- ❌ Copy for assignments without attribution
+- ❌ Commercial use or deployment
+- ❌ Redistribution without permission
+
+**Citation (APA 7th Edition):**
+```
+Joureah, Y. (2025). Hybrid Learning Management System — Backend API 
+(Version 0.1.0) [Computer software]. Syrian Virtual University, 
+BPR601 Bachelor Project.
+```
+
+---
+
+## Contact & Support
+
+**Project Lead:**  
+**Name:** Yazan Joureah  
+**Student ID:** 174681  
+**Role:** Backend Engineering & Cybersecurity Lead  
+**University:** Syrian Virtual University (SVU)  
+**Course:** BPR601 — Bachelor Project (Spring 2025)
+
+**Documentation:**
+- Technical Specifications: `docs/` directory
+- API Contract: `docs/REST_API_Contract_v1.2_Groups1-4.docx`
+- Database Design: `docs/Module_DB_Design_Specification_v1.3.docx`
+- Wireframes: `docs/AUTH_Wireframes_v1.2.html`
+
+**Issue Reporting:**
+- GitHub Issues: [Project Issues Page]
+- Security Vulnerabilities: Report privately to project lead
+
+**Last Updated:** September 3, 2026  
+**Document Version:** 2.0.0  
+**README Status:** ✅ Complete & Comprehensive
+
+---
+
+*This README represents a comprehensive academic-level documentation following software engineering standards and best practices. It has been designed to serve as both technical documentation and academic reference material for university evaluation.*
