@@ -47,4 +47,6 @@ router.post(
   kycController.requestCorrection
 );
 
+router.get('/my-status', requireAuth, kycController.getMyStatus);
+
 module.exports = router;

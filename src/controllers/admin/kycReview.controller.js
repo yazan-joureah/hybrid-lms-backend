@@ -92,16 +92,26 @@ async function approveKyc(req, res, next) {
       adminUserId: req.user.id,
       documentBirthDate: new Date(req.validatedBody.documentBirthDate),
       optionalNote: req.validatedBody.optionalNote,
-      confirmYellowTier: req.validatedBody.confirmYellowTier || false,
+      confirmYellowTier: req.validatedBody.confirmYellowTier === true,
       req,
     });
 
     if (!result.success) {
-      const status = result.reason === 'AGE_DISCREPANCY_REQUIRES_CONFIRMATION' ? 409 : 400;
-      throw new AppError(status, result.reason, 'Could not process the approval.', {
-        tier: result.tier,
-        discrepancyYears: result.discrepancyYears,
-      });
+      // AGE_DISCREPANCY_REQUIRES_CONFIRMATION carries tier/discrepancyYears
+      // the frontend needs to render the confirmation prompt — must not be
+      // swallowed into a generic AppError with no body.
+      if (result.reason === 'AGE_DISCREPANCY_REQUIRES_CONFIRMATION') {
+        return res.status(409).json({
+          success: false,
+          error: {
+            code: result.reason,
+            message: 'Age discrepancy requires explicit confirmation before approval.',
+            tier: result.tier,
+            discrepancyYears: result.discrepancyYears,
+          },
+        });
+      }
+      throw new AppError(400, result.reason, 'Could not process the approval.');
     }
 
     return res.status(200).json({ success: true, data: { outcome: result.outcome } });
