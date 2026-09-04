@@ -96,7 +96,13 @@ const totpVerifySchema = z.object({
 
 const mfaLoginVerifySchema = z.object({
   mfaTempToken: z.string().min(1),
-  code: z.string().regex(/^\d{6}$/, 'Code must be exactly 6 digits'),
+  // يقبل إما رمز TOTP (6 أرقام) أو رمز نسخ احتياطي (8 محارف base64url
+  // كما تُولَّد فعلياً عبر generateOpaqueToken — أحرف/أرقام/-/_).
+  // التمييز الفعلي بينهما يصير داخل completeMfaLogin وليس هنا.
+  code: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9_-]{6,20}$/, 'Code must be a valid TOTP or backup code'),
 });
 
 const googleLinkConfirmSchema = z.object({

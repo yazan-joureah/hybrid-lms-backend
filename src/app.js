@@ -18,6 +18,7 @@ const quizRoutes = require('./routes/quizRoutes');
 const userRoutes = require('./routes/userRoutes');
 const certRoutes = require('./routes/certRoutes');
 const reportRoutes = require('./routes/reportRoutes');
+const aiRoutes = require('./routes/aiRoutes');
 const { AppError } = require('./middleware/errorHandler');
 
 const env = require('./config/env');
@@ -73,6 +74,7 @@ app.use('/api/v1/quizzes', quizRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/certificates', certRoutes);
 app.use('/api/v1/report', reportRoutes);
+app.use('/api/v1/ai', aiRoutes);
 // ── 404 + Error handling (must be last) ──────────────────────────────────
 
 app.use(notFoundHandler);
