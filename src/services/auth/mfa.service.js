@@ -10,7 +10,7 @@ const {
   buildProvisioningUri,
   verifyTotpCode,
 } = require('../../utils/totp');
-const { hashPassword, generateOpaqueToken } = require('../../utils/crypto');
+const { hashPassword, verifyPassword, generateOpaqueToken } = require('../../utils/crypto');
 const { verifyMfaTempToken, JwtError } = require('../../utils/jwt');
 const { createUserSession, computeRedirectTo } = require('./session.service');
 const auditService = require('../auditService');
@@ -109,6 +109,12 @@ async function confirmTotpSetup({ userId, code, req }) {
 /**
  * POST /auth/mfa/login/verify — completes UC-AUTH-05's MFA challenge
  * issued by loginUser().
+ *
+ * يقبل إما رمز TOTP (6 أرقام) أو رمز نسخ احتياطي واحد الاستخدام. الأول
+ * يُحدَّد شكلياً (6 أرقام بالضبط) ويُتحقَّق منه عبر TOTP مباشرة؛ أي شكل
+ * آخر يُعامَل كمحاولة backup code — بما إنها مُخزَّنة كـ hash (Argon2id)
+ * لا يمكن الاستعلام عنها مباشرة، فنفحص كل الرموز غير المُستخدَمة لهذا
+ * المستخدم (حد أقصى BACKUP_CODE_COUNT=10، تكلفة مقبولة لعملية دخول واحدة).
  */
 async function completeMfaLogin({ mfaTempToken, code, req }) {
   let decoded;
@@ -131,7 +137,35 @@ async function completeMfaLogin({ mfaTempToken, code, req }) {
     return { error: 'MFA_CHALLENGE_INVALID' };
   }
 
-  const isValid = await verifyTotpCode(mfaConfig.secret_encrypted, code);
+  const looksLikeTotp = /^\d{6}$/.test(code);
+  let isValid = false;
+  let matchedBackupCode = null;
+
+  if (looksLikeTotp) {
+    isValid = await verifyTotpCode(mfaConfig.secret_encrypted, code);
+  }
+
+  // Fallback إلى backup codes: إما لأن الشكل مش TOTP أصلاً، أو TOTP فشل
+  // (نسمح بالمحاولتين على نفس القيمة تحسباً لتشابه صدفوي بالشكل — نادر
+  // لكن غير مستحيل نظرياً، والتكلفة الإضافية هنا مقبولة).
+  if (!isValid) {
+    const unusedCodes = await BackupCode.find({
+      user_id: user._id,
+      mfa_config_id: mfaConfig._id,
+      used: false,
+    });
+
+    for (const backupCode of unusedCodes) {
+      // eslint-disable-next-line no-await-in-loop -- سلسلة Argon2id على حد أقصى 10 عناصر، تكلفة عملية دخول واحدة لا أكثر
+      const matches = await verifyPassword(code, backupCode.code_hash);
+      if (matches) {
+        isValid = true;
+        matchedBackupCode = backupCode;
+        break;
+      }
+    }
+  }
+
   if (!isValid) {
     await auditService.record({
       actorId: user._id,
@@ -144,6 +178,24 @@ async function completeMfaLogin({ mfaTempToken, code, req }) {
     return { error: 'INVALID_CODE' };
   }
 
+  // رمز احتياطي واحد الاستخدام — يُعطَّل فوراً بعد نجاح المطابقة، قبل أي
+  // خطوة لاحقة، حتى لا يُستخدَم مرتين حتى لو فشلت خطوة تالية لاحقاً.
+  if (matchedBackupCode) {
+    matchedBackupCode.used = true;
+    matchedBackupCode.used_at = new Date();
+    await matchedBackupCode.save();
+
+    await auditService.record({
+      actorId: user._id,
+      actorRole: user.role,
+      action: 'MFA_BACKUP_CODE_USED',
+      resourceType: 'user',
+      resourceId: user._id,
+      metadata: { backup_code_id: matchedBackupCode._id },
+      req,
+    });
+  }
+
   const { accessToken, refreshTokenRaw, session } = await createUserSession({ user, req });
 
   session.mfa_verified = true;
@@ -152,7 +204,7 @@ async function completeMfaLogin({ mfaTempToken, code, req }) {
   await auditService.record({
     actorId: user._id,
     actorRole: user.role,
-    action: 'LOGIN_SUCCESS_VIA_MFA',
+    action: matchedBackupCode ? 'LOGIN_SUCCESS_VIA_MFA_BACKUP_CODE' : 'LOGIN_SUCCESS_VIA_MFA',
     resourceType: 'user',
     resourceId: user._id,
     req,

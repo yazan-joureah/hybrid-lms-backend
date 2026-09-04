@@ -85,6 +85,22 @@ const openBadges = {
   issuerLogoUrl: process.env.OPEN_BADGES_ISSUER_LOGO_URL || null,
 };
 
+const ai = {
+  provider: process.env.AI_PROVIDER || 'stub',
+  deepseek: {
+    apiKey: process.env.DEEPSEEK_API_KEY || null,
+    model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+  },
+  ollama: {
+    apiKey: process.env.OLLAMA_API_KEY || null, // Ollama doesn't need an API key for local runs
+    model: process.env.OLLAMA_MODEL || 'llama3.2',
+  },
+  // Dedicated TinyLlama config (if you want to use a separate provider name)
+  tinyllama: {
+    model: process.env.TINYLLAMA_MODEL || 'tinyllama',
+  },
+};
+
 module.exports = {
   nodeEnv,
   port,
@@ -104,4 +120,5 @@ module.exports = {
   payment,
   certSigning,
   openBadges,
+  ai,
 };

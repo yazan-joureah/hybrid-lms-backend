@@ -219,7 +219,7 @@ async function updateContent({
 }
 
 async function deleteContent({ courseId, unitId, contentId, instructorId, req }) {
-  const { safeCourseId, safeInstructorId } = await loadOwnedCourse({
+  const { course, safeCourseId, safeInstructorId } = await loadOwnedCourse({
     courseId,
     instructorId,
     req,
@@ -246,13 +246,25 @@ async function deleteContent({ courseId, unitId, contentId, instructorId, req })
     });
   }
 
+  let revertedToDraft = false;
+  if (course.status === 'published') {
+    revertedToDraft = await revertToDraftOnPublishedEdit({
+      course,
+      instructorId: safeInstructorId,
+      changeType: 'CONTENT_DELETED',
+      changesSnapshot: { content_id: safeContentId.toString() },
+      req,
+    });
+    await course.save();
+  }
+
   await auditService.record({
     actorId: safeInstructorId,
     actorRole: 'Instructor',
     action: 'CONTENT_DELETED',
     resourceType: 'CourseContent',
     resourceId: safeContentId.toString(),
-    metadata: { unit_id: safeUnitId },
+    metadata: { unit_id: safeUnitId, reverted_to_draft: revertedToDraft },
     req,
   });
 
