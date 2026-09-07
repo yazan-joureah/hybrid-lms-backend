@@ -49,6 +49,7 @@ async function requestRefund({ studentId, paymentId, reason, req }) {
     docData: {
       payment_id: safePaymentId,
       student_id: safeStudentId,
+      reason: reason || null,
       status: 'review_pending',
       idempotency_key: idempotencyKey,
     },

@@ -11,13 +11,28 @@ const PRESENT_THRESHOLD_RATIO = 0.75;
 /**
  * UC-ATT-01 خطوات 1-2 — تُستدعى من UC-LIVE-04 عند نجاح الانضمام فعلياً.
  * Idempotent عبر القيد الفريد { sessionId, studentId } في النموذج.
+ *
+ * التعديل: إذا وُجد سجل مغلق (leftAt != null) فهذا يعني أن الطالب يعيد الدخول بعد
+ * مغادرة سابقة — نُعيد فتح السجل بتحديث joinedAt إلى الآن وتفريغ leftAt و durationSeconds
+ * وإعادة status إلى 'preliminary'، لاحتساب المدة الجديدة عند المغادرة التالية.
  */
 async function recordAttendanceAutomatically({ studentId, sessionId, courseId }) {
   const existing = await Attendance.findOne({ sessionId, studentId });
+
   if (existing) {
-    return { success: true, data: existing };
+    // إذا كان الطالب قد غادر سابقاً (leftAt موجود) وعاد الآن، نُعيد فتح السجل
+    if (existing.leftAt) {
+      existing.joinedAt = new Date(); // نُحدّث وقت الدخول إلى الآن
+      existing.leftAt = null; // نُفرغ وقت الخروج
+      existing.durationSeconds = null; // نُفرغ المدة لحسابها لاحقاً
+      existing.status = 'preliminary'; // نُعيد الحالة إلى أولية
+      await existing.save();
+      return { success: true, data: existing, resumed: true };
+    }
+    return { success: true, data: existing, resumed: false };
   }
 
+  // لا يوجد سجل — ننشئ واحداً جديداً
   const record = await Attendance.create({
     sessionId,
     studentId,
@@ -27,7 +42,7 @@ async function recordAttendanceAutomatically({ studentId, sessionId, courseId })
     source: 'auto_join',
   });
 
-  return { success: true, data: record };
+  return { success: true, data: record, resumed: false };
 }
 
 /**
