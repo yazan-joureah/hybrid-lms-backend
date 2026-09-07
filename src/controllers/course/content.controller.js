@@ -85,21 +85,52 @@ async function reorderContent(req, res, next) {
   }
 }
 
-/**  file streaming — Student/Instructor/Admin. */
+/** file streaming — Student/Instructor/Admin. */
 async function downloadFile(req, res, next) {
   try {
     const userId = req.user.id;
     const role = req.verifiedRole || req.user.role;
     const { courseId, contentId } = req.params;
 
-    const { stream, contentType, filename } = await streamContentFile({
-      userId,
-      role,
-      courseId,
-      contentId,
-    });
+    // نحلل Range header القياسي (bytes=start-end) القادم من عنصر <video>
+    // بالمتصفح — هذا هو ما يسمح بالبث التدريجي والـ seek الفوري بدل
+    // إجبار تحميل الفيديو كاملاً أولاً (نفس آلية YouTube/Coursera).
+    // صيغة "آخر N بايت" (bytes=-500) غير مدعومة حالياً — نادرة الاستخدام
+    // من عناصر <video>، ويُتجاهل الهيدر فيها فيُقدَّم الملف كاملاً كـ fallback آمن.
+    let range = null;
+    const rangeHeader = req.headers.range;
+    if (rangeHeader) {
+      const match = /^bytes=(\d+)-(\d*)$/.exec(rangeHeader);
+      if (match) {
+        range = {
+          start: parseInt(match[1], 10),
+          end: match[2] !== '' ? parseInt(match[2], 10) : null,
+        };
+      }
+    }
+
+    const { stream, contentType, filename, fileSize, isPartial, start, end } =
+      await streamContentFile({ userId, role, courseId, contentId, range });
+
+    // Range غير صالح (تجاوز حجم الملف) → 416 حسب المواصفة، بدل إرسال
+    // بيانات فاسدة أو استثناء غير واضح للمتصفح.
+    if (range && start >= fileSize) {
+      res.setHeader('Content-Range', `bytes */${fileSize}`);
+      return res.status(416).end();
+    }
+
     res.setHeader('Content-Type', contentType || 'application/octet-stream');
     res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.setHeader('Accept-Ranges', 'bytes');
+
+    if (isPartial) {
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader('Content-Length', end - start + 1);
+    } else {
+      res.setHeader('Content-Length', fileSize);
+    }
+
     stream.on('error', (err) => next(err));
     stream.pipe(res);
   } catch (err) {

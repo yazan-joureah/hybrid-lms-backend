@@ -75,8 +75,12 @@ async function deleteFile({ fileId, userId, actorRole, req }) {
 }
 
 // Opens a readable stream for a GridFS file by ID, for piping directly
-//into an HTTP response.
-async function getDownloadStream({ fileId }) {
+// into an HTTP response.
+// range (اختياري): { start, end } بالبايت — end اختياري أيضاً (يعني حتى
+// نهاية الملف). عند تمريره، نفتح جزءاً فقط من الملف بدل تحميله كاملاً —
+// هذا هو الأساس الذي يجعل البث التدريجي (seek/buffering مثل YouTube)
+// ممكناً بدل إجبار المتصفح على انتظار الملف كاملاً.
+async function getDownloadStream({ fileId, range = null }) {
   const db = mongoose.connection.db;
   if (!db) {
     throw new Error('Database connection not established');
@@ -90,12 +94,33 @@ async function getDownloadStream({ fileId }) {
   if (files.length === 0) {
     throw new Error('FILE_NOT_FOUND_IN_GRIDFS');
   }
+  const fileMeta = files[0];
+  const fileSize = fileMeta.length;
 
-  const stream = bucket.openDownloadStream(objectId);
+  let isPartial = false;
+  let start = 0;
+  let end = fileSize - 1;
+  const openOptions = {};
+
+  if (range) {
+    start = range.start;
+    end = range.end != null ? Math.min(range.end, fileSize - 1) : fileSize - 1;
+    // GridFS: `end` بمواصفة السائق exclusive (يوقف قبله)، لذلك +1 لتضمين
+    // آخر بايت مطلوب فعلياً.
+    openOptions.start = start;
+    openOptions.end = end + 1;
+    isPartial = true;
+  }
+
+  const stream = bucket.openDownloadStream(objectId, openOptions);
   return {
     stream,
-    contentType: files[0].contentType,
-    filename: files[0].filename,
+    contentType: fileMeta.contentType,
+    filename: fileMeta.filename,
+    fileSize,
+    isPartial,
+    start,
+    end,
   };
 }
 
