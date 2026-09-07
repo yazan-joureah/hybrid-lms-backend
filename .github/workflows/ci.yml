@@ -85,13 +85,11 @@ jobs:
           ENCRYPTION_MASTER_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
-          # CERT_SIGNING_PRIVATE_KEY_PEM / CERT_SIGNING_PUBLIC_KEY_PEM already
-          # exported to the job environment by the "Generate ephemeral cert
-          # signing keypair" step above via GITHUB_ENV — GitHub Actions makes
-          # them available to every subsequent step in this job automatically.
+          # 👇 NEW: required for Stripe Checkout URL validation in pay tests
+          DEMO_FRONTEND_ORIGIN: http://localhost:3000
 
       - name: Dependency vulnerability audit
-      # DEVIATION: GHSA-mh99-v99m-4gvg (brace-expansion) has no
+        # DEVIATION: GHSA-mh99-v99m-4gvg (brace-expansion) has no
         # CommonJS-compatible patched release — fixed only in the pure-ESM
         # 5.0.8+ line, which breaks require()-based tooling (Jest/ESLint
         # internals). Same accepted-residual-risk pattern as file-type
