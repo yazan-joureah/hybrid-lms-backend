@@ -123,6 +123,7 @@ async function downloadFile(req, res, next) {
     res.setHeader('Content-Type', contentType || 'application/octet-stream');
     res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
     res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
 
     if (isPartial) {
       res.status(206);
