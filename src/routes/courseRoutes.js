@@ -5,6 +5,7 @@ const router = express.Router();
 const courseController = require('../controllers/courseController');
 const progressController = require('../controllers/progress.controller');
 const { requireAuth } = require('../middleware/authMiddleware');
+const { requireAuthOrStreamTicket } = require('../middleware/requireAuthOrStreamTicket.middleware');
 const { attachUserIfPresent } = require('../middleware/attachUserIfPresent');
 const { requireRole } = require('../middleware/requireRole');
 const { rateLimit } = require('../middleware/rateLimiter');
@@ -162,9 +163,19 @@ router.patch(
   courseController.reorderContent
 );
 
+// UC-COURSE — SF-COURSE-03: يُصدر تذكرة بث بعد نفس فحص requireAuth الصارم
+// العادي (طلب التذكرة نفسه يمر عبر axios بترويسة Authorization كالمعتاد —
+// فقط الاستهلاك اللاحق عبر <video> هو ما يحتاج البديل).
+router.get(
+  '/:courseId/content/:contentId/stream-ticket',
+  requireAuth,
+  requireRole(['Student', 'Instructor', 'Admin', 'SuperAdmin']),
+  courseController.issueStreamTicket
+);
+
 router.get(
   '/:courseId/content/:contentId/file',
-  requireAuth,
+  requireAuthOrStreamTicket,
   requireRole(['Student', 'Instructor', 'Admin', 'SuperAdmin']),
   courseController.downloadFile
 );

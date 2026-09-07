@@ -31,6 +31,10 @@ const env = require('../config/env');
 
 const ACCESS_TOKEN_TTL = '15m'; // matches REST_API_Contract_v1.2 §1 (Access Token)
 const MFA_TEMP_TOKEN_TTL = '5m'; // matches REST_API_Contract_v1.2 §1 (MFA Temp Token)
+// طويلة نسبياً مقارنة بـ Access Token العادي (15 دقيقة) — لكن هذا مبرَّر لأن
+// نطاقها ضيّق جداً (ملف واحد محدَّد، لا شيء آخر) على عكس Access Token الذي
+// يفتح كل الـ API. نفس فلسفة AWS S3 Presigned URLs: مدة أطول تقابلها صلاحية أضيق.
+const MEDIA_STREAM_TICKET_TTL = '2h';
 const ALLOWED_ALGORITHMS = ['HS256'];
 
 class JwtError extends Error {
@@ -168,6 +172,40 @@ function verifyOAuthGuardianPendingToken(token) {
   return decoded;
 }
 
+/**
+ * Issues a narrow-scoped ticket allowing <video>/<embed> tags to stream one
+ * specific content file WITHOUT an Authorization header (which browsers
+ * cannot attach to media elements). Deliberately carries `courseId` +
+ * `contentId` in the payload — the caller (requireAuthOrStreamTicket
+ * middleware) MUST compare these against req.params before trusting the
+ * ticket, exactly like every other narrow-purpose token in this file is
+ * validated by its caller, not by verifyRaw alone. Uses the SAME
+ * env.jwt.accessSecret as every other token type here (consistent with the
+ * existing oauth_*_pending pattern) — the `type` claim + verifyRaw's
+ * algorithm allow-list is what prevents type confusion, not a separate
+ * secret (see file docstring, FR-34b).
+ */
+function signMediaStreamTicket({ userId, courseId, contentId }) {
+  return jwt.sign(
+    {
+      sub: String(userId),
+      courseId: String(courseId),
+      contentId: String(contentId),
+      type: 'media_stream',
+    },
+    env.jwt.accessSecret,
+    { algorithm: 'HS256', expiresIn: MEDIA_STREAM_TICKET_TTL }
+  );
+}
+
+function verifyMediaStreamTicket(token) {
+  const decoded = verifyRaw(token);
+  if (decoded.type !== 'media_stream') {
+    throw new JwtError('INVALID', 'Token is not a media streaming ticket');
+  }
+  return decoded; // { sub, courseId, contentId, type, iat, exp }
+}
+
 module.exports = {
   signAccessToken,
   signMfaTempToken,
@@ -180,4 +218,6 @@ module.exports = {
   verifyOAuthRegistrationPendingToken,
   signOAuthGuardianPendingToken,
   verifyOAuthGuardianPendingToken,
+  signMediaStreamTicket,
+  verifyMediaStreamTicket,
 };
