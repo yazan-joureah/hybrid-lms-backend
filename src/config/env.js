@@ -15,8 +15,8 @@ function required(name) {
 // Define all values as constants
 const nodeEnv = process.env.NODE_ENV || 'development';
 const port = parseInt(process.env.PORT, 10) || 3000;
-const appUrl = process.env.APP_URL || 'http://localhost:3000';
-const frontUrl = process.env.DEMO_FRONTEND_ORIGIN || 'http://localhost:5173';
+const appUrl = process.env.APP_URL;
+const frontUrl = process.env.DEMO_FRONTEND_ORIGIN;
 const mongoUri = required('MONGO_URI');
 const redisUrl = required('REDIS_URL');
 

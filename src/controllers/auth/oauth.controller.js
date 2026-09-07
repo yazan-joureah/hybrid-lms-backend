@@ -58,7 +58,7 @@ function finishOAuthLogin(result, res) {
  * Browser GET request direct from Google redirect
  */
 async function googleCallback(req, res) {
-  const frontendUrl = env.frontUrl || 'http://localhost:5173';
+  const frontendUrl = env.frontUrl;
 
   try {
     const result = await authService.handleGoogleCallback({
