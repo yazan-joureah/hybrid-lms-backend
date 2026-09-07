@@ -15,6 +15,7 @@ const refundRequestSchema = new Schema(
     },
     idempotency_key: { type: String, required: true, unique: true },
     reviewer_id: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    reason: { type: String, default: null },
     decision_reason: { type: String, default: null },
     reviewed_at: { type: Date, default: null },
   },

@@ -106,7 +106,10 @@ async function listMyEnrollments({ studentId, queryParams = {} }) {
     query: { student_id: safeStudentId },
     queryParams,
     sort: { enrolled_at: -1 },
-    populate: { path: 'course_id', select: 'title category course_type is_synchronous' },
+    populate: {
+      path: 'course_id',
+      select: 'title category course_type is_synchronous price cover_image_storage_path',
+    },
   });
   return { success: true, data: { enrollments, meta } };
 }
