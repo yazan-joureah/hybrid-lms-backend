@@ -5,6 +5,7 @@ const {
   deleteContent,
   reorderContents,
   streamContentFile,
+  issueContentStreamTicket,
 } = require('../../services/courseService');
 
 async function createContent(req, res, next) {
@@ -138,10 +139,25 @@ async function downloadFile(req, res, next) {
   }
 }
 
+/** UC-COURSE — SF-COURSE-03: يُصدر تذكرة بث للاستخدام المباشر في <video src>. */
+async function issueStreamTicket(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const role = req.verifiedRole || req.user.role;
+    const { courseId, contentId } = req.params;
+
+    const result = await issueContentStreamTicket({ userId, role, courseId, contentId });
+    return res.status(200).json({ success: true, data: result.data });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 module.exports = {
   createContent,
   updateOneContent,
   removeContent,
   reorderContent,
   downloadFile,
+  issueStreamTicket,
 };

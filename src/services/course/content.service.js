@@ -11,6 +11,7 @@ const { revertToDraftOnPublishedEdit } = require('./reviewState.service');
 const { toObjectId } = require('../../utils/objectId.util');
 const { loadOwnedCourse } = require('./courseAccess.util');
 const { COURSE_CONTENT_POLICY } = require('../../config/uploadPolicies');
+const { signMediaStreamTicket } = require('../../utils/jwt');
 
 const FILE_BACKED_TYPES = ['video', 'document'];
 const ADMIN_ROLES = ['Admin', 'SuperAdmin'];
@@ -306,8 +307,14 @@ async function reorderContents({ courseId, unitId, instructorId, orderedContentI
   return { success: true, data: { content } };
 }
 
-// Streams a content item's file — ownership rule differs per role, kept separate from loadOwnedCourse.
-async function streamContentFile({ userId, role, courseId, contentId, range = null }) {
+// SECURITY: single source of truth for "who may access this content item's
+// file" — shared by BOTH streamContentFile (direct download with a real
+// Authorization header) AND issueContentStreamTicket (media ticket for
+// <video>/<embed>), so the eligibility rule can never drift between the two
+// entry points. Ownership rule differs per role, kept separate from
+// loadOwnedCourse (that helper is instructor-only; this one also serves
+// Student/Admin/SuperAdmin read access).
+async function assertContentAccess({ userId, role, courseId, contentId }) {
   const safeUserId = toObjectId(userId, 'userId');
   const safeCourseId = toObjectId(courseId, 'courseId');
   const safeContentId = toObjectId(contentId, 'contentId');
@@ -336,6 +343,13 @@ async function streamContentFile({ userId, role, courseId, contentId, range = nu
     throw new AppError(404, 'FILE_NOT_FOUND', 'File not found for this content item.');
   }
 
+  return { safeCourseId, safeContentId, content };
+}
+
+// Streams a content item's file — assumes access was already validated.
+async function streamContentFile({ userId, role, courseId, contentId, range = null }) {
+  const { content } = await assertContentAccess({ userId, role, courseId, contentId });
+
   const fileId = content.storage_path.split('/').pop();
   const result = await fileStorage.getDownloadStream({ fileId, range });
   return {
@@ -349,10 +363,32 @@ async function streamContentFile({ userId, role, courseId, contentId, range = nu
   };
 }
 
+// UC-COURSE — SF-COURSE-03: يصدر تذكرة بث موقَّعة قصيرة الصلاحية لعنصر <video>/
+// <embed> بعد إجراء نفس فحص الأهلية أعلاه بالضبط — لا فتح لأي Stream هنا،
+// فقط إصدار التذكرة. re-usable لاحقاً من وحدة LIVE لتسجيلات الجلسات (UC-LIVE-03)
+// بنفس نمط SF-COURSE-02.
+async function issueContentStreamTicket({ userId, role, courseId, contentId }) {
+  const { safeCourseId, safeContentId } = await assertContentAccess({
+    userId,
+    role,
+    courseId,
+    contentId,
+  });
+
+  const ticket = signMediaStreamTicket({
+    userId,
+    courseId: safeCourseId.toString(),
+    contentId: safeContentId.toString(),
+  });
+
+  return { success: true, data: { stream_ticket: ticket, expires_in_seconds: 7200 } };
+}
+
 module.exports = {
   addContent,
   updateContent,
   deleteContent,
   reorderContents,
   streamContentFile,
+  issueContentStreamTicket,
 };
