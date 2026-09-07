@@ -25,6 +25,8 @@ const env = require('./config/env');
 
 const app = express();
 
+app.set('trust proxy', 1);
+
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -37,7 +39,11 @@ app.use(
 // ثابت بدون شرط بيئة، يعني كانت مسموحة حتى بالإنتاج (ثغرة CORS).
 const allowedOrigins = [env.appUrl];
 if (env.nodeEnv !== 'production') {
-  allowedOrigins.push('http://localhost:8443', 'http://localhost:5173','https://hybrid-lms-frontend-3q9avf94z-yazan-joureahs-projects.vercel.app');
+  allowedOrigins.push(
+    'http://localhost:8443',
+    'http://localhost:5173',
+    'https://hybrid-lms-frontend-3q9avf94z-yazan-joureahs-projects.vercel.app'
+  );
 }
 if (process.env.DEMO_FRONTEND_ORIGIN) {
   allowedOrigins.push(process.env.DEMO_FRONTEND_ORIGIN);
