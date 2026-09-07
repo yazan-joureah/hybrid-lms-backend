@@ -209,6 +209,7 @@ async function startQuizAttempt({ studentId, quizId, req }) {
     data: {
       attempt_id: attempt._id,
       expires_at: attempt.expires_at,
+      server_time: new Date().toISOString(),
       quiz: sanitizeQuizForStudent({ quiz, shuffledOrder }),
     },
   };
@@ -311,6 +312,7 @@ async function getAttemptForResume({ studentId, attemptId }) {
     data: {
       attempt_id: attempt._id,
       expires_at: attempt.expires_at,
+      server_time: new Date().toISOString(),
       quiz: sanitizeQuizForStudent({ quiz, shuffledOrder: attempt.shuffled_question_order }),
       previous_answers: attempt.answers.map((a) => ({
         question_id: a.question_id,
@@ -345,6 +347,7 @@ async function getCurrentAttempt({ studentId, quizId, req }) {
     data: {
       attempt_id: attempt._id,
       expires_at: attempt.expires_at,
+      server_time: new Date().toISOString(),
       quiz: sanitizeQuizForStudent({ quiz, shuffledOrder: attempt.shuffled_question_order }),
       previous_answers: attempt.answers.map((a) => ({
         question_id: a.question_id,
