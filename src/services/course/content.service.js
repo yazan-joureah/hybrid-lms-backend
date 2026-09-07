@@ -307,7 +307,7 @@ async function reorderContents({ courseId, unitId, instructorId, orderedContentI
 }
 
 // Streams a content item's file — ownership rule differs per role, kept separate from loadOwnedCourse.
-async function streamContentFile({ userId, role, courseId, contentId }) {
+async function streamContentFile({ userId, role, courseId, contentId, range = null }) {
   const safeUserId = toObjectId(userId, 'userId');
   const safeCourseId = toObjectId(courseId, 'courseId');
   const safeContentId = toObjectId(contentId, 'contentId');
@@ -337,8 +337,16 @@ async function streamContentFile({ userId, role, courseId, contentId }) {
   }
 
   const fileId = content.storage_path.split('/').pop();
-  const { stream, contentType, filename } = await fileStorage.getDownloadStream({ fileId });
-  return { stream, contentType: contentType || content.mime_type, filename };
+  const result = await fileStorage.getDownloadStream({ fileId, range });
+  return {
+    stream: result.stream,
+    contentType: result.contentType || content.mime_type,
+    filename: result.filename,
+    fileSize: result.fileSize,
+    isPartial: result.isPartial,
+    start: result.start,
+    end: result.end,
+  };
 }
 
 module.exports = {
