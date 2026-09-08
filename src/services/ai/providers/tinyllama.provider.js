@@ -13,7 +13,7 @@
 // NOTE: The ngrok tunnel must be closed immediately after the presentation.
 
 const OLLAMA_API_URL = process.env.OLLAMA_API_URL || 'http://localhost:11434/api/chat'; //[cite: 6]
-const REQUEST_TIMEOUT_MS = 30000000000000; //[cite: 6]
+const REQUEST_TIMEOUT_MS = 220000; //[cite: 6]
 
 async function generateCompletion({ systemPrompt, userMessage }) {
   //[cite: 6]
