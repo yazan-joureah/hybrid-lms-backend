@@ -27,10 +27,21 @@ const app = express();
 
 app.set('trust proxy', 1);
 
+const frameAncestors = ["'self'", env.appUrl];
+if (env.nodeEnv !== 'production') {
+  frameAncestors.push('http://localhost:8443', 'http://localhost:5173');
+}
+if (process.env.DEMO_FRONTEND_ORIGIN) {
+  frameAncestors.push(process.env.DEMO_FRONTEND_ORIGIN);
+}
+
 app.use(
   helmet({
     contentSecurityPolicy: {
-      directives: { defaultSrc: ["'self'"], objectSrc: ["'none'"] },
+      directives: {
+        defaultSrc: ["'self'"],
+        objectSrc: ["'none'"],
+      },
     },
   })
 );
