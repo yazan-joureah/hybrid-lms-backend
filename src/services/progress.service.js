@@ -271,11 +271,7 @@ async function recordLiveSessionCompletion({ studentId, courseId, unitId, sessio
 }
 
 /**
- * Peer-assignment counterpart of recordProgress/recordLiveSessionCompletion.
- *
- * forceFinal=true (يُستدعى من grading.service.js بعد calculateFinalGrades أو
- * overrideSubmissionGrade): يتجاوز شرط الـ threshold الأصلي طالما فيه درجة فعلية
- * واحدة على الأقل — لأن التقييم أصبح نهائياً ولن تصل مراجعات إضافية بعد الآن.
+ * Peer-assignment counterpart of recordProgress.
  */
 async function checkAndRecordPeerSubmissionCompletion({ submissionId, req, forceFinal = false }) {
   const submission = await PeerSubmission.findById(submissionId);

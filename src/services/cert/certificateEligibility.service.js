@@ -1,9 +1,4 @@
-// src/services/quiz/certificateEligibility.service.js
-// UC-QUIZ-05 — Link Exam Result to Certificate Eligibility
-//
-// Triggered automatically as the final step of UC-QUIZ-04 (Grade Quiz &
-// Log Results) — see gradeAttempt() in quizSession.service.js.
-
+// src/services/cert/certificateEligibility.service.js
 const Quiz = require('../../models/quiz.model');
 const Enrollment = require('../../models/Enrollment');
 const Certificate = require('../../models/certificate.model');
@@ -16,9 +11,6 @@ const { issueCertificate } = require('./certificate.service');
 const auditService = require('../auditService');
 const emailService = require('../emailService');
 
-//UC-QUIZ-05 — re-evaluates course completion right after a quiz attempt
-//is graded, and issues a certificate if the student JUST became eligible.
-
 async function checkCertificateEligibilityAfterGrading({ attempt, req }) {
   try {
     const quiz = await Quiz.findById(attempt.quiz_id).select('course_id').lean();
@@ -27,9 +19,6 @@ async function checkCertificateEligibilityAfterGrading({ attempt, req }) {
     const safeStudentId = toObjectId(attempt.student_id, 'studentId');
     const safeCourseId = toObjectId(quiz.course_id, 'courseId');
 
-    // Prevents ever re-issuing a duplicate
-    // certificate if this check somehow runs twice for the same student
-    // + course
     const alreadyIssued = await Certificate.exists({
       student_id: safeStudentId,
       course_id: safeCourseId,
@@ -59,7 +48,6 @@ async function checkCertificateEligibilityAfterGrading({ attempt, req }) {
       return;
     }
 
-    // Step 3: all conditions met
     try {
       await issueCertificate({ studentId: safeStudentId, courseId: safeCourseId, req });
     } catch (issueErr) {

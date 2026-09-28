@@ -163,9 +163,6 @@ router.patch(
   courseController.reorderContent
 );
 
-// UC-COURSE — SF-COURSE-03: يُصدر تذكرة بث بعد نفس فحص requireAuth الصارم
-// العادي (طلب التذكرة نفسه يمر عبر axios بترويسة Authorization كالمعتاد —
-// فقط الاستهلاك اللاحق عبر <video> هو ما يحتاج البديل).
 router.get(
   '/:courseId/content/:contentId/stream-ticket',
   requireAuth,

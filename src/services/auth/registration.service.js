@@ -1,7 +1,5 @@
 /**
- * Registration & Guardian Approval — Bounded Context.
- * Covers: UC-AUTH-01, UC-AUTH-02, email verification State Machine.
- */
+ * Registration & Guardian Approval  */
 const User = require('../../models/User');
 const AuthToken = require('../../models/AuthToken');
 const GuardianApproval = require('../../models/GuardianApproval');
@@ -66,15 +64,15 @@ async function registerUser({
     req,
   });
 
-  const { raw: verifyCode, hash: verifyHash } = generateNumericOtp(); // CHANGED
+  const { raw: verifyCode, hash: verifyHash } = generateNumericOtp();
   await AuthToken.create({
     user_id: user._id,
     token_hash: verifyHash,
     token_type: 'EMAIL_VERIFICATION',
-    expires_at: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000), // CHANGED
+    expires_at: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000),
   });
   try {
-    await emailService.sendVerificationEmail(user.email, verifyCode); // CHANGED — sends the code, not a URL
+    await emailService.sendVerificationEmail(user.email, verifyCode);
   } catch (err) {
     logger.error('Verification email failed to send — registration still succeeds', {
       userId: user._id,

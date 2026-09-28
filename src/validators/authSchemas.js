@@ -1,7 +1,3 @@
-/**
- * Zod validation schemas for AUTH endpoints (FR-31 — server-side validation
- * on every endpoint). Source: REST_API_Contract_v1.2_Groups1-4.docx.
- */
 const { z } = require('zod');
 const { isMinor } = require('../utils/ageCalculator');
 
@@ -47,9 +43,6 @@ const registerSchema = z
     message: 'guardian_email is required for users under 18',
     path: ['guardian_email'],
   })
-  // SECURITY: قاصر لا يجوز أن يسجّل كـ Instructor مهما توفّرت موافقة ولي
-  // الأمر — صلاحيات المدرّس (نشر محتوى، أهلية دفع، KYC مستقل) لا تناسب
-  // حساباً خاضعاً أصلاً لإشراف ولي أمر (منع تجاوز عبر role في الطلب).
   .refine((data) => !(isMinor(data.birth_date) && data.role === 'Instructor'), {
     message: 'Instructors must be 18 years or older. Minors may register as Student only.',
     path: ['role'],
@@ -70,10 +63,6 @@ const guardianApproveSchema = z
 
 const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
-  // Deliberately NO length/blocklist policy here — this endpoint verifies
-  // an EXISTING credential against a stored hash; password strength rules
-  // belong only to registration/reset (NFR-01/02), not to every login
-  // attempt.
   password: z.string().min(1, 'password is required'),
 });
 
@@ -96,9 +85,6 @@ const totpVerifySchema = z.object({
 
 const mfaLoginVerifySchema = z.object({
   mfaTempToken: z.string().min(1),
-  // يقبل إما رمز TOTP (6 أرقام) أو رمز نسخ احتياطي (8 محارف base64url
-  // كما تُولَّد فعلياً عبر generateOpaqueToken — أحرف/أرقام/-/_).
-  // التمييز الفعلي بينهما يصير داخل completeMfaLogin وليس هنا.
   code: z
     .string()
     .trim()

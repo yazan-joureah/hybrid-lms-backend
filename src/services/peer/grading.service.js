@@ -1,5 +1,4 @@
 // src/services/peer/grading.service.js
-// UC-PEER-04 — Calculate Final Peer Grade & Alert Instructor
 
 const PeerAssignment = require('../../models/peerAssignment.model');
 const PeerSubmission = require('../../models/peerSubmission.model');
@@ -8,22 +7,8 @@ const { AppError } = require('../../middleware/errorHandler');
 const { toObjectId } = require('../../utils/objectId.util');
 const auditService = require('../auditService');
 
-// If the difference between the highest and lowest reviewer score exceeds 20%,
-// the submission is flagged for instructor review.
 const GRADE_VARIANCE_ALERT_THRESHOLD_PERCENT = 20;
 
-/**
- * Calculate final grades for all submissions of a given assignment.
- *
- * This function can be called in two modes:
- * 1. lockAssignment = true  (default): Closes the assignment (status → 'completed')
- *    after grading. Used for synchronous courses or final course closure.
- * 2. lockAssignment = false : Calculates grades but keeps the assignment open
- *    ('distributed') for late-joining students. Used for self-paced (async) courses.
- *
- * It skips any submission that has been manually overridden by the instructor
- * (gradeOverridden = true) to preserve the instructor's decision.
- */
 async function calculateFinalGrades({
   assignmentId,
   actorId = null,
@@ -58,14 +43,11 @@ async function calculateFinalGrades({
 
   const submissions = await PeerSubmission.find({ assignmentId: safeAssignmentId });
   const flaggedSubmissionIds = [];
-  const gradedSubmissionIds = []; // Submissions that actually received a numeric score.
+  const gradedSubmissionIds = [];
   const bulkOps = [];
 
   for (const submission of submissions) {
-    // === CRITICAL: Respect instructor overrides ===
     // If the instructor manually set this grade, we never recalculate it.
-    // We still include it in gradedSubmissionIds so that progress is reconciled
-    // (in case the progress event was missed during the original override).
     if (submission.gradeOverridden) {
       gradedSubmissionIds.push(submission._id);
       continue;
@@ -141,8 +123,6 @@ async function calculateFinalGrades({
     assignment.completedAt = new Date();
     await assignment.save();
   }
-  // If lockAssignment is false, we DO NOT save the assignment,
-  // keeping it in 'distributed' state intentionally.
 
   await auditService.record({
     actorId,
@@ -158,7 +138,6 @@ async function calculateFinalGrades({
     req,
   });
 
-  // === Force progress reconciliation ===
   // For every submission that received a score (even if only 1 reviewer),
   // we force the progress service to mark the unit as complete.
   // This is critical because in async courses, the original threshold
@@ -171,7 +150,7 @@ async function calculateFinalGrades({
       await progressService.checkAndRecordPeerSubmissionCompletion({
         submissionId,
         req,
-        forceFinal: true, // Bypasses the review threshold check.
+        forceFinal: true,
       });
     } catch (err) {
       console.error(
@@ -180,8 +159,6 @@ async function calculateFinalGrades({
       );
     }
   }
-
-  // TODO(email): Notify the instructor with details for each flagged submission (UC-PEER-04 step 4).
 
   return {
     success: true,
@@ -195,20 +172,7 @@ async function calculateFinalGrades({
 }
 
 /**
- * === INSTRUCTOR MANUAL OVERRIDE ===
- *
  * Allows an instructor to manually set the final grade for a specific submission.
- * This is the ultimate quality-control mechanism.
- *
- * Key behaviours:
- * - Permitted in ANY assignment status EXCEPT 'distributing' (to avoid race conditions).
- *   This means instructors can override grades even when the assignment is still 'open'
- *   (e.g., the "1 student" edge case) or 'distributed' (async courses that never close).
- * - Sets gradeOverridden = true, which permanently prevents ALL future auto-grading
- *   (batch calculations, event-driven updates, lazy safety nets) from touching this
- *   submission.
- * - Fully audited: stores who overrode it, when, the previous score, and the reason.
- * - Automatically reconciles course progress after the override.
  */
 async function overrideSubmissionGrade({
   instructorId,
@@ -222,15 +186,12 @@ async function overrideSubmissionGrade({
   const safeSubmissionId = toObjectId(submissionId, 'submissionId');
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
 
-  // Load the assignment and verify that the instructor owns this course (prevents IDOR).
   const { loadOwnedAssignment } = require('./assignment.service');
   const assignment = await loadOwnedAssignment(safeAssignmentId, safeInstructorId, {
     req,
     unauthorizedAction: 'UNAUTHORIZED_PEER_GRADE_OVERRIDE_ATTEMPT',
   });
 
-  // The ONLY state where we block an override is during active distribution.
-  // This is a transient state (milliseconds) and the instructor can retry immediately.
   if (assignment.status === 'distributing') {
     throw new AppError(
       409,
@@ -239,7 +200,6 @@ async function overrideSubmissionGrade({
     );
   }
 
-  // Verify that the submission exists and belongs to this assignment.
   const submission = await PeerSubmission.findOne({
     _id: safeSubmissionId,
     assignmentId: safeAssignmentId,
@@ -250,18 +210,16 @@ async function overrideSubmissionGrade({
 
   const previousScore = submission.finalScorePercentage;
 
-  // Apply the new grade and lock the submission against future auto-updates.
   submission.finalScore = finalScorePercentage;
   submission.finalScorePercentage = finalScorePercentage;
-  submission.gradingFlagged = false; // Override clears any previous flags.
+  submission.gradingFlagged = false;
   submission.gradingFlagReason = 'INSTRUCTOR_OVERRIDE';
-  submission.gradeOverridden = true; // PERMANENT LOCK: auto-grading will skip this forever.
+  submission.gradeOverridden = true;
   submission.overriddenBy = safeInstructorId;
   submission.overriddenAt = new Date();
   submission.overrideReason = reason || null;
   await submission.save();
 
-  // Audit trail: essential for academic integrity and accountability.
   await auditService.record({
     actorId: safeInstructorId,
     actorRole: 'Instructor',
@@ -277,7 +235,6 @@ async function overrideSubmissionGrade({
     req,
   });
 
-  // Reconcile course progress (idempotent, so it's safe to call even if already recorded).
   const progressService = require('../progress.service');
   try {
     await progressService.checkAndRecordPeerSubmissionCompletion({
@@ -297,9 +254,6 @@ async function overrideSubmissionGrade({
 
 /**
  * Get a grade summary for a student or instructor.
- *
- * For students: returns their own grade and the completed reviews they received.
- * For instructors: returns all submissions with student details and flags.
  */
 async function getGradeSummary({ userId, role, assignmentId }) {
   const safeAssignmentId = toObjectId(assignmentId, 'assignmentId');

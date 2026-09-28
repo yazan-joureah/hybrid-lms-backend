@@ -10,9 +10,6 @@ const choiceSchema = new Schema(
   { _id: true }
 );
 
-// ---------------------------------------------------------------------------
-// Question sub-schema.
-// ---------------------------------------------------------------------------
 const questionSchema = new Schema(
   {
     question_type: { type: String, enum: ['mcq', 'true_false'], required: true },

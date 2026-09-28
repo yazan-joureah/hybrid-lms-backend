@@ -1,6 +1,4 @@
 // src/services/live/session.service.js
-// UC-LIVE-01 (Create/Schedule) | UC-LIVE-02 (Edit/Cancel) | UC-LIVE-03 (View Schedule)
-// UC-LIVE-08 (End & Process Recording)
 
 const LiveSession = require('../../models/liveSession.model');
 const CourseUnit = require('../../models/CourseUnit');
@@ -12,7 +10,6 @@ const { toObjectId } = require('../../utils/objectId.util');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 
-/** يتحقق أن المحاضر يملك الكورس فعلياً — نفس فحص الملكية المستخدم في COURSE */
 async function assertInstructorOwnsCourse({ instructorId, courseId, req }) {
   const course = await Course.findById(courseId);
   if (!course) {
@@ -61,7 +58,6 @@ async function assertUnitBelongsToCourseIfProvided({ unitId, courseId }) {
   return safeUnitId;
 }
 
-/** يتحقق أن المحاضر يملك الجلسة فعلياً، ويعيدها (وثيقة Mongoose قابلة للتعديل) */
 async function assertInstructorOwnsSession({ instructorId, sessionId, req }) {
   const safeSessionId = toObjectId(sessionId, 'sessionId');
   const session = await LiveSession.findById(safeSessionId);
@@ -83,7 +79,6 @@ async function assertInstructorOwnsSession({ instructorId, sessionId, req }) {
   return session;
 }
 
-/** يتحقق من وجود تعارض زمني مع جلسة أخرى لنفس الكورس (باستثناء الجلسة الحالية عند التعديل) */
 async function findConflictingSession({ courseId, startTime, endTime, excludeSessionId = null }) {
   const query = {
     courseId,
@@ -98,7 +93,7 @@ async function findConflictingSession({ courseId, startTime, endTime, excludeSes
 }
 
 /**
- * UC-LIVE-01 — Create/Schedule Session
+ * Create/Schedule Session
  */
 async function createSession({ instructorId, sessionData, req }) {
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
@@ -165,7 +160,7 @@ async function createSession({ instructorId, sessionData, req }) {
 }
 
 /**
- * UC-LIVE-02 — Edit Session
+ * Edit Session
  */
 async function updateSession({ instructorId, sessionId, updateData, req }) {
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
@@ -243,15 +238,11 @@ async function updateSession({ instructorId, sessionId, updateData, req }) {
     req,
   });
 
-  // TODO(email): إشعار الطلاب المسجلين بالتعديل — يعيد استخدام نمط
-  // sendLiveSessionScheduledNotification في emailService.js إن كانت موجودة
-  // بنفس التوقيع المفترَض سابقاً (افتراض معلَّق من UC-LIVE-01 الأصلية).
-
   return { success: true, data: { session } };
 }
 
 /**
- * UC-LIVE-02 — Cancel Session
+ * Cancel Session
  */
 async function cancelSession({ instructorId, sessionId, reason, req }) {
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
@@ -282,8 +273,6 @@ async function cancelSession({ instructorId, sessionId, reason, req }) {
     metadata: { reason: reason || null },
     req,
   });
-
-  // TODO(email): إشعار الطلاب المسجلين بالإلغاء (نفس ملاحظة updateSession أعلاه)
 
   return { success: true, data: { session } };
 }
@@ -321,9 +310,7 @@ async function getSessionById({ userId, role, sessionId }) {
   return { success: true, data: { session } };
 }
 /**
- * UC-LIVE-03 — View Live Schedule
- * الطالب: جلسات كورساته المسجَّل بها فقط (فحص خادمي عبر Enrollment، وليس ثقة بالعميل)
- * المحاضر: جلساته الخاصة فقط
+ * View Live Schedule
  */
 async function listSessionsForViewer({ userId, role, queryParams = {} }) {
   const safeUserId = toObjectId(userId, 'userId');
@@ -390,7 +377,7 @@ async function startSession({ instructorId, sessionId, req }) {
 }
 
 /**
- * UC-LIVE-08 — End Session
+ * End Session
  */
 async function endSession({ instructorId, sessionId, req }) {
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
@@ -422,9 +409,6 @@ async function endSession({ instructorId, sessionId, req }) {
     req,
   });
 
-  // إشعار أي طالب متصل حالياً بغرفة Jitsi بأن المحاضر أنهى المحاضرة فعلياً —
-  // بنفس نمط toggleStudentsAccess (emitToSession)، حتى تُطرَد الواجهة فوراً
-  // بدل ما يضل الطالب على شاشة بث مقطوعة بصمت.
   const { emitToSession } = require('../../sockets/liveSocketEmitter');
   emitToSession(session._id.toString(), 'session:ended', {});
 
@@ -432,7 +416,7 @@ async function endSession({ instructorId, sessionId, req }) {
     const { finalizeSessionAttendance } = require('../attendance/tracking.service');
     await finalizeSessionAttendance({ sessionId: session._id, req });
   } catch (err) {
-    // eslint-disable-next-line no-console -- سيُستبدل بـ logger.js لاحقاً
+    // eslint-disable-next-line no-console
     console.error('finalizeSessionAttendance failed (non-critical):', err.message);
   }
 
@@ -452,7 +436,7 @@ async function endSession({ instructorId, sessionId, req }) {
         student_id: studentId,
         status: 'active',
       });
-      if (!enrollment) continue; // ليس نشطاً (منسحب/مكتمل بالفعل) — لا شيء لفعله
+      if (!enrollment) continue;
 
       const { percentage } = await getCompletionCounts({
         courseId: session.courseId,
@@ -466,8 +450,7 @@ async function endSession({ instructorId, sessionId, req }) {
       });
     }
   } catch (err) {
-    // غير حرج: فشل إعادة فحص الاكتمال لا يجب أن يمنع إنهاء الجلسة نفسها
-    // eslint-disable-next-line no-console -- سيُستبدل بـ logger.js لاحقاً
+    // eslint-disable-next-line no-console
     console.error('Post-end completion re-check failed (non-critical):', err.message);
   }
 
@@ -510,10 +493,7 @@ async function toggleStudentsAccess({ instructorId, sessionId, allowed, req }) {
 }
 
 /**
- * UC-LIVE-08 — Attach Recording (بعد اكتمال المعالجة/الرفع للسحابة خارجياً)
- * DEVIATION: رفع الفيديو الفعلي للسحابة خارج نطاق هذا التسليم — هذه الدالة
- * تُسجِّل فقط الرابط النهائي بعد اكتمال المعالجة (استدعاء لاحق يدوي من
- * المحاضر أو Webhook من خدمة المعالجة الخارجية).
+ * Attach Recording
  */
 async function attachRecording({ instructorId, sessionId, recordingUrl, req }) {
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
@@ -545,7 +525,7 @@ async function attachRecording({ instructorId, sessionId, recordingUrl, req }) {
 }
 
 /**
- * UC-LIVE — Participant Leaves Session
+ * Participant Leaves Session
  *
  * Records the participant's departure without changing
  * the overall LiveSession status.

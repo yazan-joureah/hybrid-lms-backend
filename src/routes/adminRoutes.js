@@ -17,8 +17,6 @@ const {
 } = require('../validators/adminSchemas');
 const { rateLimit } = require('../middleware/rateLimiter');
 
-// ⚠️ إلزامي على كل مسارات /admin/*: مصادقة + تحقق ثنائي مفعّل (إذا الدور
-// Admin أو SuperAdmin). موضوعة مرة وحدة هون بدل تكرارها بكل route.
 router.use(requireAuth, requireAdminMfa);
 
 // --- Course moderation ---
@@ -65,7 +63,7 @@ router.post(
   adminController.rejectKyc
 );
 
-// --- Account Management (UC-AUTH-08 + UC-AUTH-14) ---
+// --- Account Management  ---
 router.get('/accounts', requireRole(['Admin', 'SuperAdmin']), adminController.listAccountsHandler);
 
 router.patch(
@@ -109,15 +107,12 @@ router.post(
   adminController.reviewDeletionRequestHandler
 );
 
-// --- Security Audit Statistics (UC-REPORT-04) — SuperAdmin only ---
-// No rateLimit() here, matching every other read-only /admin/* GET route
-// in this file — already gated by requireAuth + requireAdminMfa (applied
-// globally above) + requireRole('SuperAdmin').
+// --- Security Audit Statistics ---
 router.get('/security-audit/overview', requireRole(['SuperAdmin']), adminController.getOverview);
 router.get('/security-audit/events', requireRole(['SuperAdmin']), adminController.listEvents);
 router.get('/security-audit/actions', requireRole(['SuperAdmin']), adminController.listActions);
 
-// --- Analytics Dashboard (UC-REPORT-01) — Admin AND SuperAdmin ---
+// --- Analytics Dashboard — Admin AND SuperAdmin ---
 router.get(
   '/analytics/overview',
   requireRole(['Admin', 'SuperAdmin']),

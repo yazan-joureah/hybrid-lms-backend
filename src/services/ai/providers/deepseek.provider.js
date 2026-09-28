@@ -1,11 +1,3 @@
-// src/services/ai/providers/deepseek.provider.js
-//
-// مزوّد DeepSeek — للاختبار المؤقت فقط (منحة الحساب المجاني محدودة بمدة
-// قصيرة نسبياً — راجع القرار الموثَّق بأعلى llmProvider.service.js). لا
-// يُستخدم افتراضياً؛ يُفعَّل فقط عبر متغيّر البيئة AI_PROVIDER=deepseek.
-//
-// واجهة OpenAI-compatible القياسية (DeepSeek تدعمها مباشرة) — لا حاجة
-// لأي SDK إضافي، فقط fetch القياسي (Node >= 18).
 const env = require('../../../config/env');
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 const DEEPSEEK_MODEL = env.ai.deepseek.model;
@@ -36,8 +28,7 @@ async function generateCompletion({ systemPrompt, userMessage }) {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage },
         ],
-        // درجة حرارة منخفضة نسبياً — مساعد أكاديمي يحتاج ثباتاً أكثر من
-        // إبداعاً حراً، بصرف النظر عن mode (طالب/محاضر).
+
         temperature: 0.4,
         max_tokens: 800,
       }),

@@ -1,4 +1,4 @@
-// src/controllers/aiController.js — Facade (نفس نمط peerController.js)
+// src/controllers/aiController.js
 const instructorSessionController = require('./ai/instructorSession.controller');
 const studentSessionController = require('./ai/studentSession.controller');
 const studentQueryController = require('./ai/studentQuery.controller');

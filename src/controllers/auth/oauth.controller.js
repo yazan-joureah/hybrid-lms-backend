@@ -67,10 +67,6 @@ async function googleCallback(req, res) {
       req,
     });
 
-    // ✅ حالة خاصة: الحساب guardian_pending لكن معه guardianManageToken
-    // (مُدوَّر لتوّه من oauth.service.js) — نوجّه المستخدم مباشرة لخطوة
-    // "guardian-pending" بصفحة /login بدل رسالة خطأ عامة، بنفس نمط باقي
-    // خطوات oauth_step (mfa / google-register / google-link).
     if (result.error === 'GUARDIAN_PENDING' && result.guardianManageToken) {
       return res.redirect(
         `${frontendUrl}/login?oauth_step=guardian-pending&token=${encodeURIComponent(result.guardianManageToken)}`

@@ -11,8 +11,6 @@ async function requestOwnDeletion(req, res, next) {
       req,
     });
 
-    // 200 للحذف الفوري (Student)، 202 Accepted للطلب المعلَّق مراجعة
-    // (Instructor/Admin) — تمييز HTTP دقيق بين "تم" و"قيد الانتظار".
     return res.status(result.immediate ? 200 : 202).json({
       success: true,
       data: result.immediate
@@ -25,16 +23,11 @@ async function requestOwnDeletion(req, res, next) {
 }
 
 /**
- * POST /auth/account/restore/request — step 1. Deliberately NOT behind
- * requireAuth: the account is 'deleted' and holds no valid session/JWT
- * to authenticate with — identical reasoning to forgotPassword.
- */
+ * POST /auth/account/restore/request*/
 async function requestRestore(req, res, next) {
   try {
     await authService.requestAccountRestore({ email: req.validatedBody.email, req });
 
-    // Same generic success message regardless of match/eligibility —
-    // mirrors forgotPassword's anti-enumeration discipline (MUC-AUTH-02).
     return res.status(200).json({
       success: true,
       data: { message: 'If a deleted account matches this email, a restore code has been sent.' },

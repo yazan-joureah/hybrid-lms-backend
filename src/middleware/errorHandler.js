@@ -1,17 +1,8 @@
-/**
- * Centralized error handler.
- * Returns the standard API error envelope: { success: false, error: { code, message } }
- * Never leaks stack traces or internal details (OWASP A09).
- */
+//Centralized error handler.
+
 const logger = require('../utils/logger');
 
 class AppError extends Error {
-  /**
-   * @param {number} statusCode
-   * @param {string} code - machine-readable error code (e.g. 'INVALID_CREDENTIALS')
-   * @param {string} message - safe, user-facing message (never internal details)
-   * @param {object|null} clientData - extra fields merged into response.data (e.g. { next_step: 'verify_email' })
-   */
   constructor(statusCode, code, message, clientData = null) {
     super(message);
     this.statusCode = statusCode;
@@ -27,7 +18,6 @@ const MULTER_ERROR_MESSAGES = {
 };
 
 function errorHandler(err, req, res, _next) {
-  // Normalize Multer's third-party error shape into our AppError contract
   if (err.name === 'MulterError') {
     const message = MULTER_ERROR_MESSAGES[err.code] || 'File upload failed.';
     err = new AppError(400, err.code, message);

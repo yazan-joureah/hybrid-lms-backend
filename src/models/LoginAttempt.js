@@ -1,15 +1,3 @@
-/**
- * E11 — LoginAttempt
- * Source: Module_DB_Design_Specification_v1.3, Section 4.
- *
- * Deliberately SEPARATE from AuditLog: this exists specifically to record
- * attempts against emails that DON'T belong to any real account
- * (`user_id: null`) — something AuditLog (which always implies a
- * meaningful actor/resource pair) is not designed for. This is what lets
- * us later detect systematic User Enumeration probing (many distinct
- * `email_entered` values from one IP) without polluting the security
- * audit trail with noise from non-existent accounts.
- */
 const mongoose = require('mongoose');
 const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;

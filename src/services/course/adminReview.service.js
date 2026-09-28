@@ -163,9 +163,6 @@ async function setCourseStatus({ adminId, courseId, status, req }) {
     throw new AppError(409, 'ALREADY_IN_STATUS', `Course is already ${status}.`);
   }
 
-  // إعادة التفعيل (unsuspend) مسار خاص — مسموح فقط من suspended إلى
-  // published، عشان ما ينكسر منطق "publish الأصلي" (assertContentCompleteForPublish
-  // إلخ) اللي بينفّذ فقط ضمن reviewCourse. هون إحنا بس عم نعكس تعليق سابق.
   if (status === 'published') {
     if (course.status !== 'suspended') {
       throw new AppError(

@@ -2,11 +2,6 @@
 const User = require('../models/User');
 const { AppError } = require('./errorHandler');
 
-/**
- * يمنع أي Admin/SuperAdmin من الوصول لأي مسار تحت /admin/* قبل ما يفعّل
- * التحقق الثنائي (MFA). يجب أن يوضع بعد requireAuth مباشرة (يعتمد على
- * req.user.id). لا يؤثر على أي دور آخر لأنه فقط موجود على راوتر الإدارة.
- */
 async function requireAdminMfa(req, res, next) {
   try {
     const user = await User.findById(req.user.id).select('role mfa_enabled');

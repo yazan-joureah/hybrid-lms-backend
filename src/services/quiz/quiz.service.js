@@ -100,8 +100,7 @@ async function createQuiz({ instructorId, quizData, req }) {
         'This course already has a final exam. Delete or edit the existing one instead of creating a new one.'
       );
     }
-    // The only mandatory timing rule across the entire platform: a final exam
-    // within a synchronous course must have a defined time window.
+    // a final exam within a synchronous course must have a defined time window.
     if (course.is_synchronous && (!quizData.start_time || !quizData.end_time)) {
       throw new AppError(
         400,

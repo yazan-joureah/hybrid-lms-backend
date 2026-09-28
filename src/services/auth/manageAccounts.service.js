@@ -9,7 +9,7 @@ const { generateNumericOtp } = require('../../utils/crypto');
 const emailService = require('../emailService');
 const logger = require('../../utils/logger');
 
-const ADMIN_SETUP_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes, consistent with password reset
+const ADMIN_SETUP_TOKEN_TTL_MS = 15 * 60 * 1000;
 const env = require('../../config/env');
 
 function assertCanManageTarget({ actorRole, targetRole }) {
@@ -82,7 +82,6 @@ async function setAccountStatus({ actorId, actorRole, targetUserId, action, reas
  * The route MUST enforce `requireRole('SuperAdmin')`; this function also double‑checks.
  */
 async function createAdminAccount({ actorId, actorRole, email, fullName, req }) {
-  // Extra safety: only SuperAdmin may call this
   if (actorRole !== 'SuperAdmin') {
     throw new AppError(403, 'FORBIDDEN', 'Only SuperAdmin can create Admin accounts.');
   }
@@ -102,7 +101,7 @@ async function createAdminAccount({ actorId, actorRole, email, fullName, req }) 
     password_hash: null,
     role: 'Admin',
     status: 'active',
-    email_verified_at: new Date(), // created by a trusted party – no public verification flow needed
+    email_verified_at: new Date(),
   });
 
   const { raw: code, hash } = generateNumericOtp();
@@ -118,7 +117,6 @@ async function createAdminAccount({ actorId, actorRole, email, fullName, req }) 
   try {
     await emailService.sendAdminAccountCreatedEmail(newAdmin.email, code, activationLink);
   } catch (err) {
-    // Account is created; email failure is logged but does not block the operation
     logger.error('Admin account creation email failed to send — account still created', {
       newAdminId: newAdmin._id,
       error: err.message,
@@ -139,13 +137,7 @@ async function createAdminAccount({ actorId, actorRole, email, fullName, req }) 
 }
 
 /**
- * POST /admin/accounts/:id – UC-AUTH-08.4 + 08.5.
- * Deletion here means the User document is soft-deleted (status='deleted',
- * deleted_at=now) — NOT anonymized yet. Anonymization (full_name/email →
- * "Deleted User [id]") happens via a separate scheduled job after the
- * 30-day restore window (per decision #12/#17 — out of scope for this
- * synchronous request/response flow).
- */
+ * POST /admin/accounts/:id  */
 async function deleteAccount({ actorId, actorRole, targetUserId, reason, req }) {
   const targetUser = await User.findById(targetUserId).select('role status full_name email');
   if (!targetUser) {

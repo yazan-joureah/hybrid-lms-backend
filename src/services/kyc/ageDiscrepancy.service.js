@@ -1,15 +1,4 @@
 // src/services/kyc/ageDiscrepancy.service.js
-//
-// تنفيذ EXT-KYC-01. يُعيد استخدام calculateAge من ageCalculator.js لحساب
-// السنوات الكاملة (لا تكرار)، لكنه يضيف حساباً كسرياً دقيقاً خاصاً به
-// (calculatePreciseFractionalYears) للتصنيف الأمني الحدّي — لأن Floor
-// وحدها غير كافية عند حدود مثل "1 سنة و11 شهراً" (راجع سجل الإصلاح: كان
-// يُصنَّف خطأً كـ"أخضر" بدل "أصفر" قبل هذا التعديل).
-//
-// المرجع: FR-48, FR-48b | القرار المُغلَق:
-//   فارق ≤ 1 سنة  → أخضر
-//   فارق 1–2 سنة  → أصفر (يُعرض بالأشهر)
-//   فارق > 2 سنة  → أحمر (تعليق تلقائي)
 
 const { calculateAge } = require('../../utils/ageCalculator');
 
@@ -32,10 +21,6 @@ function calculateYearsDifference(dateA, dateB) {
   return calculateAge(earlier, later);
 }
 
-/**
- * دقة كسرية حقيقية (وليس Floor) — للاستخدام الداخلي في evaluateAgeDiscrepancy
- * فقط، حيث الدقة عند الحدود حاسمة أمنياً.
- */
 function calculatePreciseFractionalYears(earlier, later) {
   const fullYears = calculateAge(earlier, later);
   const anniversaryDate = addFullYears(earlier, fullYears);
@@ -54,9 +39,6 @@ function classifyDiscrepancy(discrepancyYears) {
   return 'red';
 }
 
-/**
- * للعرض فقط، لا يدخل إطلاقاً في التصنيف الأمني.
- */
 function calculateExtraMonths(dateA, dateB) {
   const a = new Date(dateA);
   const b = new Date(dateB);
@@ -74,10 +56,6 @@ function calculateExtraMonths(dateA, dateB) {
   return Math.max(0, months);
 }
 
-/**
- * الواجهة المصدَّرة الرئيسية — دالة نقية بالكامل، تمنع أي تجاوز يدوي
- * للتصنيف من طرف Admin (منع MUC-KYC-03).
- */
 function evaluateAgeDiscrepancy(accountBirthDate, documentBirthDate) {
   const a = new Date(accountBirthDate);
   const b = new Date(documentBirthDate);

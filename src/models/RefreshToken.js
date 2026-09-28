@@ -1,17 +1,3 @@
-/**
- * E03 — RefreshToken
- * Source: Module_DB_Design_Specification_v1.3, Section 4.
- *
- * NOT a JWT (see src/utils/jwt.js docstring) — an opaque random value,
- * persisted ONLY as its SHA-256 hash (DP-08), exactly like AuthToken.
- *
- * Critical security invariant (FR-03b — Session Revocation after
- * Password Reset): `token_version` here must match `User.token_version`
- * at verification time. Every successful Password Reset increments
- * User.token_version by 1, which instantly invalidates every RefreshToken
- * issued before that moment — without needing to enumerate and delete
- * them individually. This is the mechanism, not a side detail.
- */
 const mongoose = require('mongoose');
 const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;

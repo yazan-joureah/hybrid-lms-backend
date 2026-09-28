@@ -1,4 +1,4 @@
-// src/controllers/attendanceController.js — Facade (نفس نمط courseController.js)
+// src/controllers/attendanceController.js
 const reportController = require('./attendance/report.controller');
 
 module.exports = {

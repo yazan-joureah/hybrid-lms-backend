@@ -1,6 +1,5 @@
 /**
- * Google OAuth Login — Bounded Context.
- * Source: UC-AUTH-11, UC-AUTH-12, UC-AUTH-13, MUC-AUTH-14/15.
+ * Google OAuth Login
  */
 const User = require('../../models/User');
 const ExternalIdentity = require('../../models/ExternalIdentity');
@@ -98,9 +97,6 @@ async function completeLoginForLinkedUser({ userId, req }) {
     return { error: 'ACCOUNT_SUSPENDED' };
   }
   if (user.status === 'guardian_pending') {
-    // ✅ نفس منطق session.service.js:loginUser تمامًا — تسجيل الدخول عبر
-    // Google أثبت ملكية الحساب فعليًا، فآمن تمامًا نُدوِّر (rotate)
-    // student_access_token_hash ونرجعه، بدل ما نكتفي برسالة خطأ عامة.
     const approval = await GuardianApproval.findOne({
       user_id: user._id,
       status: 'pending',
@@ -228,10 +224,6 @@ async function confirmGoogleRegistration({ rawToken, birthDate, role, req }) {
 
   const minor = isMinor(birthDate);
 
-  // SECURITY: نفس قيد UC-AUTH-01 المُضاف للتسجيل العادي — قاصر لا يجوز
-  // أن يختار دور Instructor عبر Google OAuth أيضاً، بغض النظر عن موافقة
-  // ولي الأمر اللاحقة. يُفحَص هنا (وليس بـ Zod) لأن guardian_email غير
-  // متوفر في هذه الخطوة أصلاً — القرار يعتمد فقط على birth_date + role.
   if (minor && role === 'Instructor') {
     return { error: 'MINOR_CANNOT_BE_INSTRUCTOR' };
   }

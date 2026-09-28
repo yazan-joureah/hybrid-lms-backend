@@ -1,4 +1,4 @@
-// src/controllers/peerController.js — Facade (نفس نمط courseController.js)
+// src/controllers/peerController.js
 const assignmentController = require('./peer/assignment.controller');
 const submissionController = require('./peer/submission.controller');
 const allocationController = require('./peer/allocation.controller');

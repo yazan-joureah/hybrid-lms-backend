@@ -1,11 +1,5 @@
 // src/routes/peerRoutes.js
-/**
- * Peer Assessment Module (PEER) — UC-PEER-01..04 (+ submission phase)
- * Mounted in app.js at: /api/v1/peer
- *
- * Fully independent module (same principle as LIVE/ATT) with read-only dependencies:
- * Course (for ownership checks) and Enrollment (for enrollment checks).
- */
+
 const express = require('express');
 const { requireAuth } = require('../middleware/authMiddleware');
 const { requireRole } = require('../middleware/requireRole');
@@ -32,7 +26,7 @@ router.use(requireAuth);
 
 /* ───────────────────────── 1) Assignment Management ───────────────────────── */
 
-// UC-PEER-01 — Create Peer Assessment Task
+// Create Peer Assessment Task
 router.post(
   '/assignments',
   requireRole(['Instructor']),
@@ -91,10 +85,8 @@ router.get(
   submissionController.listSubmissions
 );
 
-/* ─────────────── 3) Distribution (manual fallback — primary via Cron) ─────────────── */
+/* ─────────────── 3) Distribution ─────────────── */
 
-// UC-PEER-02 — automatically triggered by jobs/peerCron.job.js after submission deadline;
-// this endpoint is only for manual test / early distribution if needed.
 router.post(
   '/assignments/:assignmentId/distribute',
   requireRole(['Instructor', 'Admin', 'SuperAdmin']),
@@ -103,7 +95,7 @@ router.post(
 
 /* ───────────────────────── 4) Review Phase ───────────────────────── */
 
-// UC-PEER-03 — List review tasks assigned to the student
+// List review tasks assigned to the student
 router.get(
   '/assignments/:assignmentId/my-reviews',
   requireRole(['Student']),
@@ -132,27 +124,20 @@ router.post(
   peerController.submitReview
 );
 
-/* ────────── 5) Grades (manual fallback for calculation — primary via Cron) ────────── */
+/* ────────── 5) Grades ────────── */
 
-// UC-PEER-04 — automatically triggered by jobs/peerCron.job.js after review deadline;
-// this endpoint is only a manual fallback.
 router.post(
   '/assignments/:assignmentId/calculate-grades',
   requireRole(['Instructor', 'Admin', 'SuperAdmin']),
   peerController.calculateGrades
 );
 
-// Student: final grade + reviewer feedback (without identities)
-// Instructor/Admin: full breakdown for all students
 router.get(
   '/assignments/:assignmentId/grades',
   requireRole(['Student', 'Instructor', 'Admin', 'SuperAdmin']),
   peerController.getGrades
 );
 
-// Instructor: manual override للحالات التي فشل فيها الحساب الآلي (NO_REVIEWER_COMPLETED)
-// أو حالات flagged بفارق مراجعين كبير راجعها المدرب يدوياً وقرر الدرجة النهائية.
-// متاحة فقط بعد اكتمال الحساب الآلي (assignment.status === 'completed').
 router.patch(
   '/assignments/:assignmentId/submissions/:submissionId/override-grade',
   requireRole(['Instructor']),

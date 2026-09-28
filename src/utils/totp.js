@@ -7,7 +7,6 @@
  *
  * Verified against the OFFICIAL RFC 4226 Appendix D test vectors
  * (secret="12345678901234567890", counters 0-9) — all 10 match exactly.
- * See project chat log for the verification script and output.
  */
 const crypto = require('crypto');
 const { encryptSecret, decryptSecret } = require('./crypto');
@@ -16,7 +15,7 @@ const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 const TIME_STEP_SECONDS = 30; // RFC 6238 default
 const CODE_DIGITS = 6;
 const SECRET_BYTES = 20; // 160 bits — RFC 4226 recommended minimum
-const VERIFY_WINDOW_STEPS = 1; // ±30s tolerance, matches UC-AUTH-02 SF-AUTH-02 ("النافذة الزمنية 30 ثانية ±1")
+const VERIFY_WINDOW_STEPS = 1; // ±30s tolerance
 const APP_ISSUER_NAME = 'Hybrid LMS';
 
 function base32Encode(buffer) {
@@ -82,13 +81,11 @@ function buildProvisioningUri(rawSecret, userEmail) {
 }
 
 /**
- * Verifies a code within a ±1 time-step window (matches SF-AUTH-02's
- * documented tolerance). Uses crypto.timingSafeEqual — NOT `===` — to
- * prevent timing-attack-based code guessing (same discipline already
- * applied to Argon2id comparison in crypto.js).
+ * Verifies a code within a ±1 time-step window.
+ * Uses crypto.timingSafeEqual — NOT `===` — to prevent timing-attack-based code guessing
  */
 async function verifyTotpCode(encryptedSecret, code) {
-  if (!/^\d{6}$/.test(code)) return false; // defensive; Zod already enforces this at the route layer
+  if (!/^\d{6}$/.test(code)) return false;
 
   const rawSecret = decryptSecret(encryptedSecret);
   const secretBuffer = base32Decode(rawSecret);

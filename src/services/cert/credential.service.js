@@ -134,10 +134,6 @@ async function verifyCredentialJwt(token) {
   }
 }
 
-/**
- * Convenience: build + sign in one call — the normal issue/verify path.
- * Now async because signing is async.
- */
 async function issueCredentialJwt({ certificate, criteriaNarrative, courseDescription }) {
   const built = buildCredential({ certificate, criteriaNarrative, courseDescription });
   const token = await signCredential(built);
@@ -145,15 +141,9 @@ async function issueCredentialJwt({ certificate, criteriaNarrative, courseDescri
 }
 
 /**
- * Generates the QR code image for a certificate. The QR encodes the
- * PUBLIC verification URL, not the JWT itself — this keeps the QR small
- * and reliably scannable, and means revocation/re-issuance never requires
- * regenerating the QR image, since the URL always resolves to whatever
- * the certificate's CURRENT status is at scan time.
+ * Generates the QR code image for a certificate.
  */
 async function generateCertificateQrCode(certificateId) {
-  // ✅ لازم يشاور على صفحة الفرونت (اللي فيها عرض بصري للطرف الثالث)،
-  // مو مباشرة على الـ API endpoint (اللي بيرجع JSON خام).
   const verificationUrl = `${env.frontUrl}/verify/${certificateId}`;
   try {
     const qrCodeImage = await QRCode.toBuffer(verificationUrl, {

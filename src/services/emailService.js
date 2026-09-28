@@ -1,21 +1,5 @@
 /**
- * Email delivery service — Gmail HTTP REST API via OAuth2 (NOT SMTP).
- *
- * Architectural decision (supersedes the earlier generic-SMTP version):
- * We authenticate to Gmail using the OAuth2 client defined in
- * `../config/googleOAuth.js`, which itself relies on a Refresh Token scoped
- * ONLY to `gmail.send` (least privilege — RFC 9700 §2.1).
- * * By using the Gmail REST API (googleapis) instead of SMTP (Nodemailer),
- * we avoid the '535 Bad Credentials' error, as Google's SMTP servers strictly
- * require the full mail scope, whereas the REST API perfectly accepts the
- * restricted 'gmail.send' scope.
- *
- * Dev/CI fallback: if Gmail credentials are not configured (e.g. a
- * teammate running locally without Google Cloud setup yet, or the CI
- * pipeline — which must NEVER send real email, see ci.yml discussion),
- * emails are logged to the console instead. This keeps the full
- * registration/guardian flow testable without any real or paid service
- * (principle #7/#8).
+ * Email delivery service — Gmail HTTP REST API via OAuth2.
  */
 const { google } = require('googleapis');
 const env = require('../config/env');
@@ -53,7 +37,7 @@ function createMimeMessage({ to, subject, html }) {
     'Content-Type: text/html; charset=utf-8',
     'MIME-Version: 1.0',
     `Subject: ${utf8Subject}`,
-    '', // Empty line separates headers from body
+    '',
     html,
   ];
 

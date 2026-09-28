@@ -2,10 +2,6 @@
 const Course = require('../../models/Course');
 const { paginateQuery } = require('./courseAccess.util');
 
-/**
- * SECURITY: escapes regex special characters in user-supplied search terms
- * before use in $regex — prevents both ReDoS and unintended pattern injection.
- */
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

@@ -6,11 +6,8 @@ const courseProgressEventSchema = new Schema(
   {
     course_id: { type: Schema.Types.ObjectId, ref: 'Course', required: true },
     student_id: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    // Optional now: peer_assignment events are not necessarily linked to a unit.
     unit_id: { type: Schema.Types.ObjectId, ref: 'CourseUnit', default: null },
 
-    // DEVIATION/SECURITY: Enforced validation — source_type determines which of the two fields is required,
-    // instead of two separate tables, consistent with "simpler is always better" in Abstraction v2.0 §1.
     content_id: {
       type: Schema.Types.ObjectId,
       ref: 'CourseContent',
@@ -48,7 +45,7 @@ const courseProgressEventSchema = new Schema(
       type: String,
       enum: ['content', 'live_session', 'peer_assignment'],
       required: true,
-      default: 'content', // Default maintains compatibility with old records.
+      default: 'content',
     },
 
     event_type: {

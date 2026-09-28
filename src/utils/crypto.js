@@ -47,8 +47,8 @@ function sha256(value) {
 /**
  * Symmetric encryption (AES-256-GCM) for data that must be DECRYPTABLE
  * later (unlike password/token hashing above, which is one-way).
- * Use cases: MFAConfiguration.secret_encrypted (UC-AUTH-09), and later
- * KYCDocument encryption (FR-47) — deliberately generic, not TOTP-specific.
+ * Use cases: MFAConfiguration.secret_encrypted, and
+ * KYCDocument encryption — deliberately generic, not TOTP-specific.
  *
  * GCM mode chosen (not CBC) because it provides AUTHENTICATED encryption:
  * the auth tag detects any tampering with the ciphertext, not just
@@ -89,7 +89,8 @@ function encryptSecret(plaintext) {
 function decryptSecret(encryptedBase64) {
   const data = Buffer.from(encryptedBase64, 'base64');
   const iv = data.subarray(0, GCM_IV_BYTES);
-  const authTag = data.subarray(GCM_IV_BYTES, GCM_IV_BYTES + 16); // GCM auth tag is always 16 bytes
+  // GCM auth tag is always 16 bytes
+  const authTag = data.subarray(GCM_IV_BYTES, GCM_IV_BYTES + 16);
   const ciphertext = data.subarray(GCM_IV_BYTES + 16);
 
   const decipher = nodeCrypto.createDecipheriv(ENCRYPTION_ALGORITHM, getEncryptionKey(), iv);
@@ -106,7 +107,7 @@ function decryptSecret(encryptedBase64) {
 // so there is no need to store additional salts per user — just the user_id
 // (which already exists as a Foreign Key).
 
-const HKDF_SALT = Buffer.from('hybrid-lms-kyc-hkdf-salt-v1', 'utf8'); // ثابت على مستوى التطبيق، وليس سرياً بذاته
+const HKDF_SALT = Buffer.from('hybrid-lms-kyc-hkdf-salt-v1', 'utf8');
 const HKDF_KEY_LENGTH = 32;
 
 function deriveUserKey(userId, purpose = 'kyc-document-key') {

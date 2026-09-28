@@ -47,8 +47,6 @@ app.use(
   })
 );
 
-// ✅ localhost:8443/5173 مقيّدة الآن بالتطوير فقط — كانت مكتوبة بشكل
-// ثابت بدون شرط بيئة، يعني كانت مسموحة حتى بالإنتاج (ثغرة CORS).
 const allowedOrigins = [env.appUrl];
 if (env.nodeEnv !== 'production') {
   allowedOrigins.push(
@@ -93,8 +91,8 @@ app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/certificates', certRoutes);
 app.use('/api/v1/report', reportRoutes);
 app.use('/api/v1/ai', aiRoutes);
-// ── 404 + Error handling (must be last) ──────────────────────────────────
 
+// ── 404 + Error handling (must be last) ──────────────────────────────────
 app.use(notFoundHandler);
 app.use(errorHandler);
 

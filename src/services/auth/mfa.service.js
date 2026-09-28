@@ -1,7 +1,3 @@
-/**
- * MFA (TOTP) — Bounded Context.
- * Source: UC-AUTH-09 (Setup MFA), UC-AUTH-05 (Enforce MFA during Login).
- */
 const User = require('../../models/User');
 const MFAConfiguration = require('../../models/MFAConfiguration');
 const BackupCode = require('../../models/BackupCode');
@@ -18,7 +14,7 @@ const auditService = require('../auditService');
 const BACKUP_CODE_COUNT = 10;
 const BACKUP_CODE_BYTES = 6;
 
-/** POST /auth/mfa/totp/setup — UC-AUTH-09 steps 1-4. Does NOT enable MFA yet. */
+/** POST /auth/mfa/totp/setup  */
 async function setupTotp({ userId, req }) {
   const user = await User.findById(userId);
   if (!user) {
@@ -55,7 +51,7 @@ async function setupTotp({ userId, req }) {
   return { error: null, provisioningUri, rawSecret };
 }
 
-/** POST /auth/mfa/totp/verify — UC-AUTH-09 steps 5-8. Activates MFA on User AND MFAConfiguration. */
+/** POST /auth/mfa/totp/verify */
 async function confirmTotpSetup({ userId, code, req }) {
   const mfaConfig = await MFAConfiguration.findOne({ user_id: userId });
 
@@ -107,15 +103,7 @@ async function confirmTotpSetup({ userId, code, req }) {
 }
 
 /**
- * POST /auth/mfa/login/verify — completes UC-AUTH-05's MFA challenge
- * issued by loginUser().
- *
- * يقبل إما رمز TOTP (6 أرقام) أو رمز نسخ احتياطي واحد الاستخدام. الأول
- * يُحدَّد شكلياً (6 أرقام بالضبط) ويُتحقَّق منه عبر TOTP مباشرة؛ أي شكل
- * آخر يُعامَل كمحاولة backup code — بما إنها مُخزَّنة كـ hash (Argon2id)
- * لا يمكن الاستعلام عنها مباشرة، فنفحص كل الرموز غير المُستخدَمة لهذا
- * المستخدم (حد أقصى BACKUP_CODE_COUNT=10، تكلفة مقبولة لعملية دخول واحدة).
- */
+ * POST /auth/mfa/login/verify */
 async function completeMfaLogin({ mfaTempToken, code, req }) {
   let decoded;
   try {
@@ -145,9 +133,6 @@ async function completeMfaLogin({ mfaTempToken, code, req }) {
     isValid = await verifyTotpCode(mfaConfig.secret_encrypted, code);
   }
 
-  // Fallback إلى backup codes: إما لأن الشكل مش TOTP أصلاً، أو TOTP فشل
-  // (نسمح بالمحاولتين على نفس القيمة تحسباً لتشابه صدفوي بالشكل — نادر
-  // لكن غير مستحيل نظرياً، والتكلفة الإضافية هنا مقبولة).
   if (!isValid) {
     const unusedCodes = await BackupCode.find({
       user_id: user._id,
@@ -156,7 +141,7 @@ async function completeMfaLogin({ mfaTempToken, code, req }) {
     });
 
     for (const backupCode of unusedCodes) {
-      // eslint-disable-next-line no-await-in-loop -- سلسلة Argon2id على حد أقصى 10 عناصر، تكلفة عملية دخول واحدة لا أكثر
+      // eslint-disable-next-line no-await-in-loop
       const matches = await verifyPassword(code, backupCode.code_hash);
       if (matches) {
         isValid = true;
@@ -178,8 +163,6 @@ async function completeMfaLogin({ mfaTempToken, code, req }) {
     return { error: 'INVALID_CODE' };
   }
 
-  // رمز احتياطي واحد الاستخدام — يُعطَّل فوراً بعد نجاح المطابقة، قبل أي
-  // خطوة لاحقة، حتى لا يُستخدَم مرتين حتى لو فشلت خطوة تالية لاحقاً.
   if (matchedBackupCode) {
     matchedBackupCode.used = true;
     matchedBackupCode.used_at = new Date();

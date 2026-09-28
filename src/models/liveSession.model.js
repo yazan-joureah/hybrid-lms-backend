@@ -1,10 +1,5 @@
-/* ==========================================================================
-   src/models/liveSession.model.js
-   يغطي: UC-LIVE-01 (Create/Schedule) .. UC-LIVE-08 (End & Recording)
-   ========================================================================== */
-
 const mongoose = require('mongoose');
-const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util'); // أعلى الملف
+const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 
 const liveSessionSchema = new mongoose.Schema(
   {
@@ -38,7 +33,7 @@ const liveSessionSchema = new mongoose.Schema(
     },
     moderatorPassword: {
       type: String,
-      select: false, // hidden by default
+      select: false,
       default: null,
     },
     startTime: {
@@ -50,9 +45,6 @@ const liveSessionSchema = new mongoose.Schema(
       required: true,
     },
 
-    // UC-LIVE-02 / UC-LIVE-08 — دورة حياة الجلسة
-    // scheduled: مجدولة ولم تبدأ | ongoing: بدأت فعلياً (endSession لم يُستدعَ بعد)
-    // ended: أُنهيت من المحاضر | cancelled: أُلغيت قبل انعقادها
     status: {
       type: String,
       enum: ['scheduled', 'ongoing', 'ended', 'cancelled'],
@@ -72,9 +64,6 @@ const liveSessionSchema = new mongoose.Schema(
       default: null,
     },
 
-    // UC-LIVE-05 — التحكم في غرفة الانتظار
-    // false (افتراضي): انضمام مباشر فور نجاح SF-LIVE-01
-    // true: الطالب يدخل بحالة "انتظار" حتى يقبله المحاضر صراحةً
     lobbyEnabled: {
       type: Boolean,
       default: false,
@@ -85,7 +74,6 @@ const liveSessionSchema = new mongoose.Schema(
       default: false,
     },
 
-    // UC-LIVE-07 — التحكم بالصلاحيات والأداء (الحالة اللحظية الحالية للجلسة)
     mutedParticipantIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     allMuted: {
       type: Boolean,
@@ -98,7 +86,6 @@ const liveSessionSchema = new mongoose.Schema(
     },
     removedParticipantIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 
-    // UC-LIVE-08 — إنهاء البث وحفظ التسجيل
     recordingStatus: {
       type: String,
       enum: ['none', 'processing', 'ready', 'failed'],

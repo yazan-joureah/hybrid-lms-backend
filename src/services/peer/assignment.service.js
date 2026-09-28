@@ -211,9 +211,6 @@ async function updateAssignment({ instructorId, assignmentId, updateData, req })
     req,
   });
 
-  // === إصلاح: كانت الدالة الوحيدة بين دوال assignment التي لا تستدعي
-  // ensureAssignmentUpToDate قبل الإرجاع (على عكس create/get/list) — كانت تُرجع
-  // حالة قديمة للمدرب مباشرة بعد التعديل بدل الحالة المحدَّثة فعلياً.
   const { assignment: refreshed, pendingIssue } = await ensureAssignmentUpToDate({ assignment });
   const plain = typeof refreshed.toObject === 'function' ? refreshed.toObject() : refreshed;
 

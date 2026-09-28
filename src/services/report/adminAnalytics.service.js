@@ -1,5 +1,4 @@
 // src/services/report/adminAnalytics.service.js
-// UC-REPORT-01 — View Admin Analytics Dashboard
 const Enrollment = require('../../models/Enrollment');
 const Payment = require('../../models/Payment');
 const Attendance = require('../../models/attendance.model');
@@ -56,10 +55,6 @@ async function getAdminAnalyticsOverview({ actorId, actorRole, req }) {
   const paidRevenueCount = revenueAgg[0]?.count || 0;
   const totalEnrollmentsForSplit = freeActiveCount + paidActiveCount;
 
-  // SECURITY: absolute revenue figures are SuperAdmin-only — UC-REPORT-01
-  // ext [a4]: "Admin Super يرى الأرقام الكاملة — Admin يرى التوزيع النسبي
-  // فقط دون الأرقام المطلقة". Same financial-permission split already
-  // established in UC-PAY-08 (API Keys reveal).
   const revenue =
     actorRole === 'SuperAdmin'
       ? { totalAmount: paidRevenueTotal, paidTransactionCount: paidRevenueCount }

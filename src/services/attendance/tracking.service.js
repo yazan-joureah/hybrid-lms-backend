@@ -1,38 +1,25 @@
 // src/services/attendance/tracking.service.js
-// UC-ATT-01 — Auto-Record Attendance
 
 const Attendance = require('../../models/attendance.model');
 const { AppError } = require('../../middleware/errorHandler');
 
-// حد أدنى لاعتبار الحضور "كاملاً" مقابل "جزئياً" — نسبة من مدة الجلسة
-// (قيمة افتراضية معقولة؛ حوّليها لاحقاً إلى حقل قابل للتهيئة لكل كورس عند الحاجة)
 const PRESENT_THRESHOLD_RATIO = 0.75;
 
-/**
- * UC-ATT-01 خطوات 1-2 — تُستدعى من UC-LIVE-04 عند نجاح الانضمام فعلياً.
- * Idempotent عبر القيد الفريد { sessionId, studentId } في النموذج.
- *
- * التعديل: إذا وُجد سجل مغلق (leftAt != null) فهذا يعني أن الطالب يعيد الدخول بعد
- * مغادرة سابقة — نُعيد فتح السجل بتحديث joinedAt إلى الآن وتفريغ leftAt و durationSeconds
- * وإعادة status إلى 'preliminary'، لاحتساب المدة الجديدة عند المغادرة التالية.
- */
 async function recordAttendanceAutomatically({ studentId, sessionId, courseId }) {
   const existing = await Attendance.findOne({ sessionId, studentId });
 
   if (existing) {
-    // إذا كان الطالب قد غادر سابقاً (leftAt موجود) وعاد الآن، نُعيد فتح السجل
     if (existing.leftAt) {
-      existing.joinedAt = new Date(); // نُحدّث وقت الدخول إلى الآن
-      existing.leftAt = null; // نُفرغ وقت الخروج
-      existing.durationSeconds = null; // نُفرغ المدة لحسابها لاحقاً
-      existing.status = 'preliminary'; // نُعيد الحالة إلى أولية
+      existing.joinedAt = new Date();
+      existing.leftAt = null;
+      existing.durationSeconds = null;
+      existing.status = 'preliminary';
       await existing.save();
       return { success: true, data: existing, resumed: true };
     }
     return { success: true, data: existing, resumed: false };
   }
 
-  // لا يوجد سجل — ننشئ واحداً جديداً
   const record = await Attendance.create({
     sessionId,
     studentId,
@@ -45,20 +32,12 @@ async function recordAttendanceAutomatically({ studentId, sessionId, courseId })
   return { success: true, data: record, resumed: false };
 }
 
-/**
- * UC-ATT-01 خطوات 3-4 — تُستدعى عند مغادرة الطالب (endpoint صريح أو قطع اتصال Socket).
- * تحسب مدة البقاء الفعلية وتحدد الحالة النهائية بمقارنتها بمدة الجلسة.
- *
- * التعديل: إضافة req، واستعلام session ليشمل unit_id و courseId،
- * واستدعاء recordLiveSessionCompletion عند الحضور الكامل.
- */
 async function recordAttendanceLeave({ studentId, sessionId, req }) {
   const record = await Attendance.findOne({ sessionId, studentId });
   if (!record) {
     throw new AppError(404, 'ATTENDANCE_NOT_FOUND', 'لا يوجد سجل حضور لهذا الطالب في هذه الجلسة.');
   }
 
-  // Idempotent: مغادرة مسجَّلة مسبقاً لا تُعاد كتابتها (مثلاً قطع اتصال متبوع بطلب مغادرة صريح)
   if (record.leftAt) {
     return { success: true, data: record };
   }
@@ -69,7 +48,6 @@ async function recordAttendanceLeave({ studentId, sessionId, req }) {
   record.leftAt = now;
   record.durationSeconds = durationSeconds;
 
-  // جلب معلومات الجلسة (بما فيها unit_id و courseId)
   const LiveSession = require('../../models/liveSession.model');
   const session = await LiveSession.findById(sessionId)
     .select('startTime endTime unit_id courseId')
@@ -88,7 +66,6 @@ async function recordAttendanceLeave({ studentId, sessionId, req }) {
 
   await record.save();
 
-  // DEVIATION: غير حرج عمداً — فشل تسجيل حدث التقدّم لا يجب أن يمنع تسجيل الحضور نفسه.
   if (session && record.status === 'present') {
     try {
       const { recordLiveSessionCompletion } = require('../progress.service');
@@ -108,23 +85,6 @@ async function recordAttendanceLeave({ studentId, sessionId, req }) {
   return { success: true, data: record };
 }
 
-/**
- * UC-LIVE-08 (تمديد) — تُستدعى من endSession() لحسم أي سجل حضور "مفتوح"
- * (leftAt: null) وقت إنهاء الجلسة.
- *
- * نقطة أساسية (واقعية): المرجع لحساب نسبة الحضور هو "المدة الفعلية التي
- * انعقدت فيها المحاضرة"، وليس المدة المجدولة دائماً:
- *   - إنهاء طبيعي (now >= endTime): المرجع = endTime - startTime (كالمعتاد).
- *   - إنهاء مبكر (now < endTime): المرجع = now - startTime (أي المدة
- *     الفعلية التي حاضر فيها المحاضر)، وليس الوقت المجدول أصلاً — طالب
- *     حضر من البداية للحظة الإنهاء الفعلي هو "حاضر كاملاً"، حتى لو
- *     المحاضرة انتهت أقصر من المخطط.
- *
- * الاحتساب بالتقدّم: كل سجل يُغلق هنا (present أو partial) يُحتسب "مكتمل"
- * بتقدّم الكورس — بخلاف recordAttendanceLeave العادية (التي تحتسب present
- * فقط)، لأن هنا الجلسة انتهت نهائياً ولا توجد فرصة أخرى للطالب ليحضر أكثر؛
- * القرار بيد المحاضر لا الطالب.
- */
 async function finalizeSessionAttendance({ sessionId, req }) {
   const LiveSession = require('../../models/liveSession.model');
   const { recordLiveSessionCompletion } = require('../progress.service');
@@ -139,7 +99,6 @@ async function finalizeSessionAttendance({ sessionId, req }) {
   const scheduledEnd = new Date(session.endTime);
   const endedEarly = now < scheduledEnd;
 
-  // المرجع الفعلي لطول المحاضرة المُنجزة فعلياً — وليس المخطط له بالضرورة.
   const effectiveDurationSeconds = endedEarly
     ? Math.max(1, Math.round((now - scheduledStart) / 1000))
     : Math.max(1, Math.round((scheduledEnd - scheduledStart) / 1000));
@@ -155,9 +114,6 @@ async function finalizeSessionAttendance({ sessionId, req }) {
     record.status = ratio >= PRESENT_THRESHOLD_RATIO ? 'present' : 'partial';
     await record.save();
 
-    // الجلسة انتهت نهائياً هنا (مبكراً أو بموعدها) — أي حالة حضور مسجَّلة
-    // (present أو partial) تُحتسب مكتملة بالتقدّم، لأن الطالب لا يملك أي
-    // فرصة إضافية ليحضر أكثر مما حضر.
     try {
       await recordLiveSessionCompletion({
         studentId: record.studentId,

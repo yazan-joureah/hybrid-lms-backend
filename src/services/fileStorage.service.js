@@ -76,10 +76,6 @@ async function deleteFile({ fileId, userId, actorRole, req }) {
 
 // Opens a readable stream for a GridFS file by ID, for piping directly
 // into an HTTP response.
-// range (اختياري): { start, end } بالبايت — end اختياري أيضاً (يعني حتى
-// نهاية الملف). عند تمريره، نفتح جزءاً فقط من الملف بدل تحميله كاملاً —
-// هذا هو الأساس الذي يجعل البث التدريجي (seek/buffering مثل YouTube)
-// ممكناً بدل إجبار المتصفح على انتظار الملف كاملاً.
 async function getDownloadStream({ fileId, range = null }) {
   const db = mongoose.connection.db;
   if (!db) {
@@ -105,8 +101,7 @@ async function getDownloadStream({ fileId, range = null }) {
   if (range) {
     start = range.start;
     end = range.end != null ? Math.min(range.end, fileSize - 1) : fileSize - 1;
-    // GridFS: `end` بمواصفة السائق exclusive (يوقف قبله)، لذلك +1 لتضمين
-    // آخر بايت مطلوب فعلياً.
+
     openOptions.start = start;
     openOptions.end = end + 1;
     isPartial = true;
@@ -124,9 +119,7 @@ async function getDownloadStream({ fileId, range = null }) {
   };
 }
 
-// Safely deletes a file from GridFS — deletion failure (file already missing,
-// temporary connection issues, etc.) must not stop the calling operation
-// (update/delete of a resource).
+// Safely deletes a file from GridFS.
 async function safeDeleteFile({ fileId, userId, actorRole, req }) {
   try {
     await deleteFile({ fileId, userId, actorRole, req });

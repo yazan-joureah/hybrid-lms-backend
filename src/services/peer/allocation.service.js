@@ -49,21 +49,6 @@ function shuffle(array) {
   return result;
 }
 
-/**
- * Distributes peer reviews for a given assignment.
- * - Locks the assignment to 'distributing' to prevent concurrent runs.
- * - Validates that the submission deadline has passed (if set) and there are enough submissions.
- * - Builds a circular allocation and creates review documents.
- * - On success, updates assignment status to 'distributed'.
- * - On failure, rolls back to 'open'.
- *
- * @param {Object} params
- * @param {string} params.assignmentId - The peer assignment ID.
- * @param {string|null} params.actorId - ID of the user initiating the action.
- * @param {string} params.actorRole - Role of the actor (e.g., 'System', 'Instructor').
- * @param {Object|null} params.req - Express request object (for audit logging).
- * @returns {Promise<{ success: boolean, data: Object }>}
- */
 async function distributeReviews({
   assignmentId,
   actorId = null,
@@ -72,7 +57,7 @@ async function distributeReviews({
 }) {
   const safeAssignmentId = toObjectId(assignmentId, 'assignmentId');
 
-  // Atomic claim: only proceed if status is 'open'
+  // Only proceed if status is 'open'
   const claimed = await PeerAssignment.findOneAndUpdate(
     { _id: safeAssignmentId, status: 'open' },
     { $set: { status: 'distributing' } }
@@ -129,7 +114,7 @@ async function distributeReviews({
       claimed.reviewersPerSubmission
     );
 
-    // Assign displaySequentialId (1‑based) to each submission for UI ordering
+    // Assign displaySequentialId to each submission
     const bulkSubmissionOps = shuffledSubmissions.map((sub, index) => ({
       updateOne: {
         filter: { _id: sub._id },
@@ -198,19 +183,6 @@ async function distributeReviews({
 
 /**
  * Top‑up allocation for asynchronous (self‑paced) courses.
- * Called when new submissions arrive after the initial distribution.
- *
- * This function:
- * 1. Finds newcomers (submissions without displaySequentialId).
- * 2. Builds a pool of existing submitters who **still have remaining review quota**.
- * 3. Assigns reviewers from the eligible pool to each newcomer.
- * 4. Also assigns review targets (existing submissions) for each newcomer to review.
- * 5. If no eligible reviewers remain, falls back to the full pool (with a warning and audit flag).
- *
- * @param {Object} params
- * @param {string} params.assignmentId - The peer assignment ID.
- * @param {Object|null} params.req - Optional Express request object for audit.
- * @returns {Promise<{ newcomerCount: number, reviewsCreated: number } | null>}
  */
 async function topUpAllocation({ assignmentId, req = null }) {
   const safeAssignmentId = toObjectId(assignmentId, 'assignmentId');
@@ -235,9 +207,7 @@ async function topUpAllocation({ assignmentId, req = null }) {
 
   if (existingPool.length === 0) return null;
 
-  // =============================================================
-  // NEW: Filter existing pool to ONLY those who HAVEN'T met their quota
-  // =============================================================
+  //Filter existing pool to ONLY those who HAVEN'T met their quota
   const quota = assignment.reviewersPerSubmission;
 
   // 3. Aggregate completed review counts for each existing student
@@ -262,7 +232,7 @@ async function topUpAllocation({ assignmentId, req = null }) {
     completedCountMap[item._id.toString()] = item.count;
   }
 
-  // 4. Keep only students who completed < quota reviews (they still have capacity)
+  // 4. Keep only students who they still have capacity
   const availableReviewers = existingPool.filter(
     (sub) => (completedCountMap[sub.studentId.toString()] || 0) < quota
   );
@@ -294,7 +264,7 @@ async function topUpAllocation({ assignmentId, req = null }) {
   const effectiveReviewers = Math.min(
     assignment.reviewersPerSubmission,
     maxSafeReviewers,
-    poolToUse.length // Use the filtered pool length as a limit
+    poolToUse.length
   );
 
   // 8. Build review documents
@@ -358,20 +328,6 @@ async function topUpAllocation({ assignmentId, req = null }) {
 
 /**
  * Re‑allocates new reviewers for a submission that has been re‑submitted after grading (retry).
- *
- * This function:
- * 1. Builds a pool of existing submissions (excluding the retry submission itself)
- *    that already have a displaySequentialId.
- * 2. Assigns a new displaySequentialId to the retry submission (one greater than the current max).
- * 3. Shuffles the pool and selects up to reviewersPerSubmission reviewers.
- * 4. Creates new PeerReview documents for the fresh attempt, preserving the old reviews as historical records.
- * 5. Does NOT modify or delete old reviews.
- *
- * @param {Object} params
- * @param {string} params.assignmentId - The peer assignment ID.
- * @param {string} params.submissionId - The ID of the retry submission.
- * @param {Object|null} params.req - Optional Express request object for audit.
- * @returns {Promise<{ reviewersAssigned: number, attemptNumber: number } | null>}
  */
 async function reallocateReviewersForRetry({ assignmentId, submissionId, req = null }) {
   const safeAssignmentId = toObjectId(assignmentId, 'assignmentId');
@@ -381,7 +337,7 @@ async function reallocateReviewersForRetry({ assignmentId, submissionId, req = n
   const submission = await PeerSubmission.findById(submissionId);
   if (!submission) return null;
 
-  // Pool of all existing submissions except this one that have a displaySequentialId.
+  // Pool of all existing submissions
   const pool = await PeerSubmission.find({
     assignmentId: safeAssignmentId,
     _id: { $ne: submission._id },
@@ -389,7 +345,6 @@ async function reallocateReviewersForRetry({ assignmentId, submissionId, req = n
   }).select('_id studentId displaySequentialId');
 
   if (pool.length === 0) {
-    // No other students yet – will be retried later via lifecycle.service as a safety net.
     return null;
   }
 
@@ -408,7 +363,7 @@ async function reallocateReviewersForRetry({ assignmentId, submissionId, req = n
     submissionId: submission._id,
     reviewerId: reviewer.studentId,
     status: 'assigned',
-    attemptNumber: submission.attemptNumber, // Ensure the review is linked to the correct attempt
+    attemptNumber: submission.attemptNumber,
   }));
 
   let insertedCount = 0;
@@ -441,6 +396,6 @@ module.exports = {
   distributeReviews,
   buildCrossAllocation,
   topUpAllocation,
-  reallocateReviewersForRetry, // NEW
+  reallocateReviewersForRetry,
   MIN_SUBMISSIONS_FOR_DISTRIBUTION,
 };

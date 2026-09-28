@@ -1,16 +1,3 @@
-/**
- * E01 — User (Aggregate Root)
- * Source: Module_DB_Design_Specification_v1.3, Section 4.
- *
- * Security invariants enforced at the schema level:
- *  - role / status / kyc_status are NEVER settable from client input —
- *    only services running server-side may write them (FR-34, FR-42).
- *  - email is a Partial Unique Index (nullable to support Pseudonymization —
- *    DP-05). Mongoose index is declared with `sparse: true` as the
- *    closest native equivalent; the true Partial Filter Expression
- *    (`{ email: { $type: "string" } }`) is created via a raw index
- *    command in the migration script (see docs/).
- */
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
@@ -40,9 +27,9 @@ const privacyConsentSchema = new Schema(
 
 const userSchema = new Schema(
   {
-    full_name: { type: String, default: null }, // nullable — Pseudonymization (DP-05)
+    full_name: { type: String, default: null },
     email: { type: String, default: null, lowercase: true, trim: true },
-    password_hash: { type: String, default: null }, // null for OAuth-only accounts
+    password_hash: { type: String, default: null },
     birth_date: { type: Date, default: null },
     phone: { type: String, default: null, trim: true },
     bio: { type: String, default: null, trim: true, maxlength: 500 },
@@ -92,8 +79,6 @@ const userSchema = new Schema(
   }
 );
 
-// Partial Unique Index equivalent — see class doc comment above for the
-// exact MongoDB command used to create the true partial filter expression.
 userSchema.index({ email: 1 }, { unique: true, sparse: true });
 userSchema.index({ role: 1 });
 userSchema.index({ status: 1 });

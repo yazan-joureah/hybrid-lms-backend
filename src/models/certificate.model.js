@@ -1,13 +1,3 @@
-// src/models/certificate.model.js
-// UC-CERT-01 (Issue) | UC-CERT-02 (QR) | UC-CERT-04 (Verify via VC-JWT)
-// UC-CERT-05 (Re-issue on data change)
-//
-// No signature/hash fields are stored here anymore — the Open Badges
-// credential (and its EdDSA signature) is built and signed on-demand at
-// verification/download time from these snapshot fields, via
-// credential.service.js. This means revocation is reflected instantly
-// everywhere without ever needing to re-sign or update stored bytes.
-
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');

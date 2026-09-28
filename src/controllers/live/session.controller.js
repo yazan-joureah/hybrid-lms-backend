@@ -1,8 +1,7 @@
 // src/controllers/live/session.controller.js
-// UC-LIVE-01 | UC-LIVE-02 | UC-LIVE-03 | UC-LIVE-08
 const liveService = require('../../services/liveService');
 
-/** UC-LIVE-01 — POST /api/v1/live/sessions */
+/** POST /api/v1/live/sessions */
 async function createSession(req, res, next) {
   try {
     const instructorId = req.user.id;
@@ -21,7 +20,7 @@ async function createSession(req, res, next) {
   }
 }
 
-/** UC-LIVE-02 — PUT /api/v1/live/sessions/:sessionId */
+/** PUT /api/v1/live/sessions/:sessionId */
 async function updateSession(req, res, next) {
   try {
     const instructorId = req.user.id;
@@ -38,7 +37,7 @@ async function updateSession(req, res, next) {
   }
 }
 
-/** UC-LIVE-02 — POST /api/v1/live/sessions/:sessionId/cancel */
+/** POST /api/v1/live/sessions/:sessionId/cancel */
 async function cancelSession(req, res, next) {
   try {
     const instructorId = req.user.id;
@@ -57,7 +56,7 @@ async function cancelSession(req, res, next) {
   }
 }
 
-/** UC-LIVE-03 — GET /api/v1/live/sessions */
+/** GET /api/v1/live/sessions */
 async function listSessions(req, res, next) {
   try {
     const result = await liveService.listSessionsForViewer({
@@ -81,7 +80,7 @@ async function startSession(req, res, next) {
     return next(err);
   }
 }
-/** UC-LIVE-08 — POST /api/v1/live/sessions/:sessionId/end */
+/** POST /api/v1/live/sessions/:sessionId/end */
 async function endSession(req, res, next) {
   try {
     const instructorId = req.user.id;
@@ -99,7 +98,6 @@ async function getSession(req, res, next) {
     const { sessionId } = req.params;
     const userId = req.user.id;
     const role = req.verifiedRole;
-    // Delegate to a new service function (implement in session.service.js)
     const result = await liveService.getSessionById({ userId, role, sessionId });
     return res.status(200).json({ success: true, data: result.data });
   } catch (err) {
@@ -107,7 +105,7 @@ async function getSession(req, res, next) {
   }
 }
 
-/** UC-LIVE-08 — POST /api/v1/live/sessions/:sessionId/recording */
+/** POST /api/v1/live/sessions/:sessionId/recording */
 async function attachRecording(req, res, next) {
   try {
     const instructorId = req.user.id;

@@ -15,7 +15,6 @@ const env = require('../../config/env');
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-//UC-AUTH-04 — Lock Account after Failures. Auto-unlock handled at read-time in loginUser().
 async function handleFailedLogin({ user, req }) {
   user.failed_login_count += 1;
 
@@ -75,7 +74,7 @@ async function createUserSession({ user, req }) {
   return { accessToken, refreshTokenRaw, session };
 }
 
-// POST /auth/login — UC-AUTH-03 + SF-AUTH-04.
+// POST /auth/login
 async function loginUser({ email, password, req }) {
   const user = await User.findOne({ email });
 
@@ -133,14 +132,9 @@ async function loginUser({ email, password, req }) {
     }).sort({ created_at: -1 });
 
     if (!approval) {
-      // لا يوجد سجل موافقة معلَّق فعلياً (تناقض بيانات) — فشل آمن بالرسالة
-      // العامة القديمة بدل توليد توكن لطلب غير موجود.
       return { error: 'GUARDIAN_PENDING' };
     }
 
-    // SECURITY: تسجيل الدخول أثبت ملكية الحساب (كلمة مرور صحيحة) — آمن
-    // تماماً أن نُدوِّر توكن الإدارة ونُعيده مباشرة. أي نسخة سابقة من
-    // الرابط (ضاعت أو انتهت صلاحيتها) تُبطَل تلقائياً بهذا التدوير.
     const { raw: studentAccessRaw, hash: studentAccessHash } = generateOpaqueToken();
     approval.student_access_token_hash = studentAccessHash;
     await approval.save();
@@ -206,7 +200,7 @@ async function loginUser({ email, password, req }) {
   };
 }
 
-/** POST /auth/logout — UC-AUTH-07. Idempotent by design. */
+/** POST /auth/logout  */
 async function logoutUser({ sessionId, req }) {
   const session = await Session.findById(sessionId);
 
@@ -232,7 +226,7 @@ async function logoutUser({ sessionId, req }) {
   return { error: null };
 }
 
-// POST /auth/refresh — UC-AUTH-07. Token Rotation is mandatory.
+// POST /auth/refresh
 async function refreshSession({ rawRefreshToken, req }) {
   if (!rawRefreshToken) {
     return { error: 'TOKEN_MISSING' };

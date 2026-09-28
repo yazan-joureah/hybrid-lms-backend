@@ -1,12 +1,3 @@
-/**
- * E07 — ExternalIdentity
- * Source: Module_DB_Design_Specification_v1.3, Section 4.
- *
- * Links a User to an external OAuth provider account. Designed to
- * support multiple providers in the future (enum includes MICROSOFT,
- * APPLE, GITHUB even though only GOOGLE is implemented now) — per the
- * spec's own forward-looking design note.
- */
 const mongoose = require('mongoose');
 const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;
@@ -25,9 +16,6 @@ const externalIdentitySchema = new Schema(
   }
 );
 
-// Compound UNIQUE — prevents the same external account (e.g. one Google
-// account) from ever being linked to two different local Users
-// simultaneously (MUC-AUTH-15, explicitly documented in the DB spec).
 externalIdentitySchema.index({ provider: 1, provider_user_id: 1 }, { unique: true });
 externalIdentitySchema.index({ user_id: 1 });
 

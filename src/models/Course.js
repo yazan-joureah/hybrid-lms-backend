@@ -45,7 +45,6 @@ const courseSchema = new Schema(
   }
 );
 
-// Enforce integrity rules
 applyReferentialIntegrity(courseSchema, [
   { path: 'owner_instructor_id', ref: 'User', required: true },
   { path: 'suspended_by', ref: 'User', required: false },

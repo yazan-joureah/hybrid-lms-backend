@@ -9,18 +9,16 @@ const fileStorage = require('../fileStorage.service');
 const auditService = require('../auditService');
 
 /**
- * UC-PEER-03 step 1-2 — Shows the student the list of review tasks assigned to them
- * for a specific assignment, without revealing the identity of the author
- * (only a temporary hash — here: "work number N").
+ * Shows the student the list of review tasks assigned to them
+ * for a specific assignment, without revealing the identity of the author.
  */
 async function listMyReviewTasks({ reviewerId, assignmentId }) {
   const safeAssignmentId = toObjectId(assignmentId, 'assignmentId');
   const safeReviewerId = toObjectId(reviewerId, 'reviewerId');
 
-  // Lazy require to avoid circular dependency.
   const { ensureAssignmentUpToDate } = require('./lifecycle.service');
   const assignment = await PeerAssignment.findById(safeAssignmentId).lean();
-  // No need for authorisation check here: the query below is already restricted by reviewerId.
+
   if (assignment) await ensureAssignmentUpToDate({ assignment });
 
   const reviews = await PeerReview.find({
@@ -31,7 +29,6 @@ async function listMyReviewTasks({ reviewerId, assignmentId }) {
     .sort({ createdAt: 1 })
     .lean();
 
-  // Explicit sanitisation: we do not return any field that might leak the author's identity.
   const sanitized = reviews.map((r) => ({
     reviewId: r._id,
     status: r.status,
@@ -44,13 +41,8 @@ async function listMyReviewTasks({ reviewerId, assignmentId }) {
 }
 
 /**
- * UC-PEER-03 step 2 — Fetches the submission content (text / download link) that the
- * student must review, after strict authorisation check that this user is indeed
- * the assigned reviewer for that specific submission (prevents IDOR — cannot guess
- * submissionId and view it).
- *
- * Once the review has been submitted (status = 'completed'), access is permanently
- * blocked to maintain academic integrity (similar to Coursera's behaviour).
+ * Fetches the submission content (text / download link) that the
+ * student must review.
  */
 async function getReviewSubmissionContent({ reviewerId, reviewId }) {
   const safeReviewId = toObjectId(reviewId, 'reviewId');
@@ -63,7 +55,6 @@ async function getReviewSubmissionContent({ reviewerId, reviewId }) {
     throw new AppError(403, 'FORBIDDEN', 'You are not the assigned reviewer for this task.');
   }
 
-  // Lock after submission: once the review is completed, the reviewer cannot view the submission again.
   if (review.status === 'completed') {
     throw new AppError(
       409,
@@ -75,8 +66,6 @@ async function getReviewSubmissionContent({ reviewerId, reviewId }) {
   const submission = review.submissionId;
   let downloadUrl = null;
   if (submission.fileId) {
-    // We do not return the raw fileId (which could be used for direct GridFS access)
-    // — instead, a dedicated route that goes through the same authorisation check each time.
     downloadUrl = `/api/v1/peer/reviews/${safeReviewId}/submission/download`;
   }
 
@@ -91,10 +80,6 @@ async function getReviewSubmissionContent({ reviewerId, reviewId }) {
   };
 }
 
-/**
- * Opens a download stream for the submission file — with the same authorisation and lock check
- * as getReviewSubmissionContent. Prevents downloading the file after the review has been submitted.
- */
 async function streamReviewSubmissionFile({ reviewerId, reviewId }) {
   const safeReviewId = toObjectId(reviewId, 'reviewId');
   const review = await PeerReview.findById(safeReviewId).populate('submissionId');
@@ -123,7 +108,7 @@ async function streamReviewSubmissionFile({ reviewerId, reviewId }) {
 }
 
 /**
- * UC-PEER-03 step 5-6 — Saves the student's review (scores per criterion + text feedback).
+ * Saves the student's review.
  * Prevents resubmission once the review is marked as completed.
  */
 async function submitReview({ reviewerId, reviewId, scores, feedbackText, req }) {
@@ -151,7 +136,7 @@ async function submitReview({ reviewerId, reviewId, scores, feedbackText, req })
     throw new AppError(400, 'REVIEW_DEADLINE_PASSED', 'The review deadline has passed.');
   }
 
-  // [a5] "All criteria must be evaluated before submission."
+  // "All criteria must be evaluated before submission."
   const requiredCriteria = assignment.rubric.map((r) => r.criterion);
   const providedCriteria = scores.map((s) => s.criterion);
   const missing = requiredCriteria.filter((c) => !providedCriteria.includes(c));
@@ -163,8 +148,7 @@ async function submitReview({ reviewerId, reviewId, scores, feedbackText, req })
     );
   }
 
-  // Calculate weighted sum according to the rubric defined in the assignment
-  // (not the client‑sent values — we read weight/maxScore from assignment.rubric exclusively).
+  // Calculate weighted sum according to the rubric defined in the assignment.
   let totalScore = 0;
   for (const criterionDef of assignment.rubric) {
     const provided = scores.find((s) => s.criterion === criterionDef.criterion);
@@ -174,7 +158,7 @@ async function submitReview({ reviewerId, reviewId, scores, feedbackText, req })
 
   review.scores = scores;
   review.feedbackText = feedbackText || null;
-  review.totalScore = Math.round(totalScore * 100) / 100; // percentage out of 100
+  review.totalScore = Math.round(totalScore * 100) / 100;
   review.status = 'completed';
   review.submittedAt = new Date();
   await review.save();
@@ -189,8 +173,7 @@ async function submitReview({ reviewerId, reviewId, scores, feedbackText, req })
     req,
   });
 
-  // Updates the progress of the *submission owner* who was just reviewed — criterion: 3 completed reviews received
-  // (or as many as were actually assigned if the class is small). Non‑critical: failure here should not fail submitReview itself.
+  // Updates the progress.
   try {
     const progressService = require('../progress.service'); // lazy
     await progressService.checkAndRecordPeerSubmissionCompletion({
@@ -204,14 +187,6 @@ async function submitReview({ reviewerId, reviewId, scores, feedbackText, req })
   return { success: true, data: { review } };
 }
 
-/**
- * Instructor-only quality-control view: full content of every review submitted
- * for an assignment, grouped per submission → per attempt (timeline), so the
- * instructor can see how a student's grade evolved across retries and compare
- * reviewer quality/consistency between attempts.
- * Identity is intentionally NOT hidden here — the instructor needs to identify
- * low-effort or abusive reviewers.
- */
 async function listReviewsForInstructor({ instructorId, assignmentId }) {
   const safeAssignmentId = toObjectId(assignmentId, 'assignmentId');
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
@@ -281,7 +256,7 @@ async function listReviewsForInstructor({ instructorId, assignmentId }) {
           reviews: attemptReviews,
           reviewsCompleted: completed.length,
           reviewsAssigned: attemptReviews.length,
-          averageScore: average, // may differ slightly from finalScorePercentage if overridden later – only for historical reference
+          averageScore: average,
         };
       });
 
@@ -294,7 +269,7 @@ async function listReviewsForInstructor({ instructorId, assignmentId }) {
       currentFinalScorePercentage: submission.finalScorePercentage,
       gradeOverridden: submission.gradeOverridden,
       totalAttempts: submission.attemptNumber || 1,
-      attempts, // Full timeline — from attempt 1 to the current one
+      attempts,
     };
   });
 

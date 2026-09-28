@@ -1,33 +1,4 @@
 // src/services/kyc/kycReview.service.js
-//
-// UC-KYC-02 + EXT-KYC-01 (v2 — "Minor-First Firewall")
-//
-// SECURITY FIX (this session — supersedes the previous implementation):
-// The ORIGINAL logic computed the discrepancy TIER first, and only
-// checked minority as a side-effect of the tier being "red". Two
-// critical flaws followed directly from that ordering:
-//
-//  1. An ADULT whose registered birth_date was simply mistyped by >2
-//     years was being forced through the Guardian Approval flow — a
-//     real 25-year-old should never need a guardian's email over a
-//     data-entry typo.
-//  2. Far more serious: a MINOR who registered claiming to be 18+ (to
-//     bypass the guardian requirement at signup, MUC-AUTH-08/09) could
-//     submit a KYC document revealing their true age, but if the
-//     discrepancy between the FALSE registered date and the TRUE
-//     document date happened to land ≤1 year, the system classified it
-//     "green" and let an Admin approve it WITHOUT EVER checking the
-//     applicant's real age — completely defeating minor protection.
-//
-// THE FIX: true age (from the Admin-verified documentBirthDate — the one
-// server-side value this entire review process exists to establish) is
-// checked FIRST, unconditionally, before any discrepancy math runs.
-// Discrepancy tiering (Green/Yellow/Red) now only ever answers a
-// narrower, LATER question — "is this specific person's own account
-// data internally consistent?" — never "should minor protections
-// apply?". That question is answered exclusively by the firewall below.
-//
-// References: FR-42, FR-45, FR-46, FR-48, FR-48b | MUC-KYC-01, MUC-KYC-03
 
 const User = require('../../models/User');
 const KYCRequest = require('../../models/KYCRequest');
@@ -56,12 +27,6 @@ async function getRequestForReview(kycRequestId) {
   return { kycRequest, applicant };
 }
 
-// ---------------------------------------------------------------------------
-// PURE decision function — no I/O, no DB writes, no side effects.
-// Deliberately separated so it can be unit-tested exhaustively (every
-// branch below) without touching Mongo at all — the highest-value tests
-// in this whole module, given how much depends on getting this right.
-// ---------------------------------------------------------------------------
 function determineReviewOutcome({
   applicantRole,
   applicantBirthDate,
@@ -73,30 +38,15 @@ function determineReviewOutcome({
 
   // === STEP 1/2 — MINOR-FIRST FIREWALL ===
   if (trueAgeIsMinor) {
-    // Hard block: a minor cannot hold Instructor privileges under ANY
-    // circumstance, guardian consent included (same rule already
-    // enforced at registration — UC-AUTH-01 [8a] / oauth.service.js
-    // MINOR_CANNOT_BE_INSTRUCTOR). No tier math is relevant here at all.
     if (applicantRole === 'Instructor') {
       return { decision: 'HARD_REJECT_SUSPEND_MINOR_INSTRUCTOR' };
     }
 
-    // Bypass detection: the account claimed to be an adult at
-    // registration (no guardian flow was ever completed for it), but
-    // the verified document proves otherwise. Tier is IGNORED entirely
-    // — even a 1-year "green" discrepancy is irrelevant once we know
-    // the true age is under 18 and no guardian is on file.
     const registeredAsMinor = isMinor(applicantBirthDate);
     if (!registeredAsMinor) {
       return { decision: 'FLAG_FOR_GUARDIAN_CORRECTION', bypassDetected: true };
     }
 
-    // Legitimate minor — guardian approval already exists on file from
-    // registration. Still runs the "honesty" tier check below, but a
-    // RED result here means "re-verify with the guardian", never the
-    // adult's silent-auto-correct path (a >2yr gap for an existing
-    // minor is unusual enough to warrant a fresh guardian confirmation,
-    // not a one-line data fix).
     const ageResult = evaluateAgeDiscrepancy(applicantBirthDate, documentDate);
     if (ageResult.tier === 'red') {
       return { decision: 'FLAG_FOR_GUARDIAN_CORRECTION', bypassDetected: false, ageResult };
@@ -111,9 +61,6 @@ function determineReviewOutcome({
   const ageResult = evaluateAgeDiscrepancy(applicantBirthDate, documentDate);
 
   if (ageResult.tier === 'red') {
-    // The "clumsy adult": a genuine data-entry mistake >2 years off,
-    // but definitively an adult. No guardian anywhere in this path —
-    // standard rejection + silent self-service correction instead.
     return { decision: 'REJECT_DATA_MISMATCH_AND_CORRECT', ageResult, documentDate };
   }
   if (ageResult.tier === 'yellow' && !confirmYellowTier) {
@@ -121,11 +68,6 @@ function determineReviewOutcome({
   }
   return { decision: 'APPROVE_AND_SYNC', ageResult, documentDate };
 }
-
-// ---------------------------------------------------------------------------
-// DB-writing branch handlers — one per terminal decision. Kept separate
-// so approveKycRequest() itself stays a short, readable dispatcher.
-// ---------------------------------------------------------------------------
 
 async function hardRejectSuspendMinorInstructor({
   kycRequest,
@@ -142,11 +84,6 @@ async function hardRejectSuspendMinorInstructor({
 
   await User.findByIdAndUpdate(applicant._id, { kyc_status: 'rejected', status: 'suspended' });
 
-  // SECURITY: this is a fraud/misrepresentation attempt (falsely
-  // claiming adulthood to obtain Instructor privileges), not an
-  // ordinary account action — kill every live session/OAuth link
-  // immediately, same mechanism already used for admin-suspended
-  // accounts (accountRevocation.service.js), reused verbatim.
   await revokeAllSessionsAndOAuth({
     userId: applicant._id,
     reason: 'KYC_REVEALED_MINOR_CLAIMING_INSTRUCTOR',
@@ -191,17 +128,13 @@ async function flagForGuardianCorrection({
     resourceType: 'KYCRequest',
     resourceId: String(kycRequest._id),
     metadata: {
-      bypassDetected, // true = account registered claiming adulthood, doc proved otherwise
+      bypassDetected,
       discrepancyYears: ageResult?.discrepancyYears ?? null,
       tier: ageResult?.tier ?? null,
     },
     req,
   });
 
-  // Downstream: applicant.requestAgeCorrection() (ageCorrection.service.js)
-  // — UNCHANGED, already correctly handles both bypassDetected and
-  // legitimate-minor sub-cases identically (student supplies a guardian
-  // email, GuardianApproval flow re-runs). No edit needed there.
   return { success: true, outcome: 'age_flagged' };
 }
 
@@ -221,10 +154,6 @@ async function rejectForDataMismatchAndCorrect({
   kycRequest.reviewed_at = new Date();
   await kycRequest.save();
 
-  // Silent self-service correction — no guardian, no admin follow-up
-  // step required. The applicant is a confirmed adult; the corrected
-  // birth_date is exactly what UC-KYC-01's RESUBMITTABLE_KYC_STATUSES
-  // already expects ('rejected' → resubmit immediately with new docs).
   await User.findByIdAndUpdate(applicant._id, {
     kyc_status: 'rejected',
     birth_date: documentDate,
@@ -295,9 +224,6 @@ async function approveAndSyncBirthDate({
   return { success: true, outcome: 'verified' };
 }
 
-// ---------------------------------------------------------------------------
-// Public entry point — thin dispatcher over determineReviewOutcome().
-// ---------------------------------------------------------------------------
 async function approveKycRequest({
   kycRequestId,
   adminUserId,
@@ -362,14 +288,10 @@ async function approveKycRequest({
       });
 
     default:
-      // Unreachable — exhaustive switch over determineReviewOutcome()'s
-      // fixed decision set. Thrown, not silently ignored, in case a
-      // future branch is added to one without the other.
       throw new Error(`Unhandled KYC review decision: ${outcome.decision}`);
   }
 }
 
-/** UC-KYC-02 ext [b7] — unchanged, manual Admin rejection, classified reason. */
 async function rejectKycRequest({ kycRequestId, adminUserId, rejectionReason, req }) {
   if (!REJECTION_REASONS.includes(rejectionReason)) {
     return { success: false, reason: 'INVALID_REJECTION_REASON' };
@@ -409,7 +331,7 @@ async function rejectKycRequest({ kycRequestId, adminUserId, rejectionReason, re
 
 module.exports = {
   getRequestForReview,
-  determineReviewOutcome, // exported for direct pure-function unit testing
+  determineReviewOutcome,
   approveKycRequest,
   rejectKycRequest,
   REJECTION_REASONS,

@@ -1,4 +1,4 @@
-// src/services/aiService.js — Facade (نفس نمط peerService.js / courseService.js)
+// src/services/aiService.js
 const sessionService = require('./ai/session.service');
 const studentQueryService = require('./ai/studentQuery.service');
 const instructorQueryService = require('./ai/instructorQuery.service');

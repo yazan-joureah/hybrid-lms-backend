@@ -18,10 +18,7 @@ const {
   getCurrentAttempt,
 } = require('../services/quiz/quizSession.service');
 
-// ---------------------------------------------------------------------------
-// Instructor: CRUD
-// ---------------------------------------------------------------------------
-
+// Instructor
 async function create(req, res, next) {
   try {
     const instructorId = req.user.id;
@@ -158,10 +155,7 @@ async function list(req, res, next) {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Admin
-// ---------------------------------------------------------------------------
-
 async function listForAdminReview(req, res, next) {
   try {
     const { courseId } = req.params;
@@ -172,10 +166,7 @@ async function listForAdminReview(req, res, next) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Student Browse
-// ---------------------------------------------------------------------------
-
+// Student
 async function listAvailable(req, res, next) {
   try {
     const studentId = req.user.id;
@@ -186,10 +177,6 @@ async function listAvailable(req, res, next) {
     return next(err);
   }
 }
-
-// ---------------------------------------------------------------------------
-// Student Attempt
-// ---------------------------------------------------------------------------
 
 async function start(req, res, next) {
   try {

@@ -1,11 +1,3 @@
-/**
- * E04 — AuthToken (Lean Domain Model)
- * Source: Module_DB_Design_Specification_v1.3, Section 4.
- *
- * Unified entity for all transient tokens: email verification, password
- * reset, email OTP, and account restore. Only the SHA-256 hash is ever
- * persisted (DP-08) — the raw value exists only in the outbound email.
- */
 const mongoose = require('mongoose');
 const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;

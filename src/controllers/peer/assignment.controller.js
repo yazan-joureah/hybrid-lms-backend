@@ -1,5 +1,4 @@
 // src/controllers/peer/assignment.controller.js
-// UC-PEER-01 — Create Peer Assessment Task
 const peerService = require('../../services/peerService');
 
 /** POST /api/v1/peer/assignments */
