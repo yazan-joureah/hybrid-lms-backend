@@ -41,6 +41,7 @@ app.use(
       directives: {
         defaultSrc: ["'self'"],
         objectSrc: ["'none'"],
+        frameAncestors: frameAncestors,
       },
     },
   })
