@@ -33,21 +33,12 @@ async function login(req, res, next) {
     const result = await authService.loginUser({ ...req.validatedBody, req });
 
     if (result.error) {
-      // SECURITY: only a genuine wrong-credential guess (or hammering an
-      // already-locked account) is charged against the Redis budget —
-      // NIST SP 800-63B §3.2.2 throttles FAILED authentication attempts,
-      // not every request. EMAIL_NOT_VERIFIED / GUARDIAN_PENDING /
-      // ACCOUNT_SUSPENDED all imply the password was ALREADY correct
-      // (SF-AUTH-04 runs before the account-status check, UC-AUTH-03
-      // steps 2-3) — never charge those.
       if (result.error === 'INVALID_CREDENTIALS' || result.error === 'ACCOUNT_LOCKED') {
         await recordFailure(req, 'login', loginIdentifier);
       }
 
       const info = LOGIN_ERRORS[result.error];
-      // دمج clientData الثابت (next_step) مع guardianManageToken الديناميكي
-      // — نبني data فقط إذا كان في شي فعلاً، حتى ما نضيف {} فاضية لباقي
-      // أخطاء اللوجن (INVALID_CREDENTIALS مثلاً) يلي ما إلها clientData أصلاً
+
       const clientData =
         info.clientData || result.guardianManageToken
           ? {
@@ -60,9 +51,6 @@ async function login(req, res, next) {
       throw new AppError(info.status, result.error, info.message, clientData);
     }
 
-    // SECURITY: credentials verified correctly here (whether MFA is
-    // required next or not) — clear any near-miss hits so a mistyped
-    // password earlier this session doesn't linger into the next window.
     await recordSuccess(req, 'login', loginIdentifier);
 
     if (result.mfaRequired) {

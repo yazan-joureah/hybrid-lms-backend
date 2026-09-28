@@ -1,7 +1,5 @@
 /**
  * Pure function — computes age in full years from a birth date.
- * Used to detect minors (< 18) at registration time (UC-AUTH-01 step 8a,
- * triggers Guardian Approval extension per UC-AUTH-02).
  */
 
 function calculateAge(birthDate, referenceDate = new Date()) {

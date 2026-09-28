@@ -1,14 +1,3 @@
-/**
- * E02 — Session
- * Source: Module_DB_Design_Specification_v1.3, Section 4.
- *
- * Represents ONE logged-in browser/device instance. A single User can
- * have multiple concurrent active Sessions (e.g. phone + laptop) — this
- * is why `mfa_verified` lives HERE and not on User: MFA is proven per
- * SESSION, not permanently on the account (UC-AUTH-05, FR-37). A device
- * that hasn't completed the second factor in ITS OWN session must not
- * silently inherit MFA-verified status from another device's session.
- */
 const mongoose = require('mongoose');
 const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;

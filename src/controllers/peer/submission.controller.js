@@ -12,7 +12,7 @@ async function submitAssignment(req, res, next) {
       studentId,
       assignmentId,
       textContent,
-      file: req.file, // multer .single('file') — optional
+      file: req.file,
       req,
     });
     return res

@@ -1,4 +1,4 @@
-// src/services/attendanceService.js — Facade (نفس نمط courseService.js)
+// src/services/attendanceService.js
 const trackingService = require('./attendance/tracking.service');
 const reportService = require('./attendance/report.service');
 

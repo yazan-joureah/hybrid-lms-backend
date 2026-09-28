@@ -1,11 +1,3 @@
-/**
- * E05 — MFAConfiguration
- * Source: Module_DB_Design_Specification_v1.3, Section 4.
- *
- * Only `method` is needed by loginUser() right now (to tell the client
- * whether to render a TOTP or Email-OTP input) — `secret_encrypted` will
- * only be written/read once UC-AUTH-09 (Setup MFA via TOTP) is built.
- */
 const mongoose = require('mongoose');
 const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;

@@ -1,20 +1,14 @@
-/**
- * Zod validation schemas for Admin account-management endpoints.
- * Source: UC-AUTH-08 (all subflows), REST_API_Contract_v1.1 additions
- * (restore endpoints).
- */
 const { z } = require('zod');
 
 const REASON_MAX_LENGTH = 500;
 
-// UC-AUTH-08.1 / 08.2 — suspend/activate. `reason` is mandatory per the
-// UC's literal text for BOTH subflows ("توثيق السبب إلزامي").
+// suspend/activate. `reason` is mandatory per the
 const setAccountStatusSchema = z.object({
   action: z.enum(['suspend', 'activate']),
   reason: z.string().trim().min(1, 'reason is required').max(REASON_MAX_LENGTH),
 });
 
-// UC-AUTH-08.3 — create Admin. No password field: the account is
+// create Admin. No password field: the account is
 // provisioned password-less and completes setup via emailed OTP
 // (see manageAccounts.service.js design note).
 const createAdminAccountSchema = z.object({
@@ -22,19 +16,18 @@ const createAdminAccountSchema = z.object({
   fullName: z.string().trim().min(2).max(100),
 });
 
-// UC-AUTH-08.4 / 08.5 — delete (Admin-initiated, on someone else's account).
+// delete (Admin-initiated, on someone else's account).
 const deleteAccountSchema = z.object({
   reason: z.string().trim().min(1, 'reason is required').max(REASON_MAX_LENGTH),
 });
 
-// UC-AUTH-08.6 — self-service deletion request.
+// self-service deletion request.
 const requestOwnDeletionSchema = z.object({
   reason: z.string().trim().min(1, 'reason is required').max(REASON_MAX_LENGTH),
 });
 
 // SuperAdmin review of a pending self-deletion request. decisionReason is
-// mandatory only on rejection — mirrors guardianApproveSchema's
-// conditional-requirement pattern in authSchemas.js.
+// mandatory only on rejection.
 const reviewDeletionRequestSchema = z
   .object({
     decision: z.enum(['approve', 'reject']),

@@ -1,5 +1,4 @@
 // src/controllers/peer/grading.controller.js
-// UC-PEER-04 — Calculate Final Peer Grade & Alert Instructor
 
 const peerService = require('../../services/peerService');
 
@@ -22,8 +21,6 @@ const peerService = require('../../services/peerService');
 async function calculateGrades(req, res, next) {
   try {
     const { assignmentId } = req.params;
-    // Default to locking (true) for synchronous courses.
-    // Instructors can pass lockAssignment=false for async courses.
     const lockAssignment = req.query.lockAssignment !== 'false';
     const result = await peerService.calculateFinalGrades({
       assignmentId,
@@ -67,7 +64,7 @@ async function getGrades(req, res, next) {
  * PATCH /api/v1/peer/assignments/:assignmentId/submissions/:submissionId/override-grade
  *
  * Allows an instructor to manually override the final grade for a specific submission.
- * This is the ultimate quality‑control tool for edge cases such as:
+ * This is the quality‑control tool for edge cases such as:
  *   - Only 1 student submitted (no distribution possible, status stays 'open').
  *   - Peer reviewers disagree significantly (variance flagged).
  *   - No reviewers completed their task (NO_REVIEWER_COMPLETED flag).
@@ -75,15 +72,6 @@ async function getGrades(req, res, next) {
  * Once overridden, the submission's gradeOverridden flag is set to true,
  * permanently preventing any future auto‑grading (event‑driven, lazy, or batch)
  * from modifying this grade.
- *
- * Request Body:
- *   {
- *     "finalScorePercentage": 85.5,   // Required: 0‑100
- *     "reason": "Peer reviewer was overly harsh; student met all criteria." // Optional
- *   }
- *
- * Security: The instructor must own the course (validated via loadOwnedAssignment).
- * Full audit trail is recorded.
  */
 async function overrideGrade(req, res, next) {
   try {

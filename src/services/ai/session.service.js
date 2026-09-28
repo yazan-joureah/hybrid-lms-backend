@@ -1,6 +1,4 @@
 // src/services/ai/session.service.js
-// UC-AI-04 — Start Instructor AI Session
-// UC-AI-01 — Start Student AI Session
 
 const Course = require('../../models/Course');
 const CourseUnit = require('../../models/CourseUnit');
@@ -13,8 +11,6 @@ const { toObjectId } = require('../../utils/objectId.util');
 const auditService = require('../auditService');
 const { buildInstructorSystemPrompt, buildStudentSystemPrompt } = require('./systemPrompt.service');
 
-/** يتحقق أن المحاضر يملك الكورس فعلياً — نسخة محلية لهذه الوحدة، نفس نمط
- *  الفحص المكرَّر عمداً في كل وحدة (COURSE/LIVE/PEER) بدل اعتمادية متبادلة. */
 async function assertInstructorOwnsCourse({ instructorId, courseId, req }) {
   const course = await Course.findById(courseId);
   if (!course) {
@@ -35,7 +31,6 @@ async function assertInstructorOwnsCourse({ instructorId, courseId, req }) {
   return course;
 }
 
-/** إحصاءات مُجمَّعة ومجهولة الهوية للمحاضر — بلا أي اسم أو معرِّف طالب. */
 async function getAggregatedPerformance(courseId) {
   const [activeEnrollmentCount, attendanceAgg] = await Promise.all([
     Enrollment.countDocuments({ course_id: courseId, status: 'active' }),
@@ -52,10 +47,6 @@ async function getAggregatedPerformance(courseId) {
   return { activeEnrollmentCount, avgAttendanceMinutes };
 }
 
-/**
- * UC-AI-04 — يفتح/يُحدِّث جلسة مساعد AI للمحاضر لكورس معيَّن.
- * include SF-AI-01 (حقن System Prompt) — إلزامي، لا استثناء.
- */
 async function startInstructorSession({ instructorId, courseId, req }) {
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
   const safeCourseId = toObjectId(courseId, 'courseId');
@@ -72,7 +63,6 @@ async function startInstructorSession({ instructorId, courseId, req }) {
     .lean();
   const aggregatedPerformance = await getAggregatedPerformance(safeCourseId);
 
-  // SF-AI-01 — include إلزامي، يُبنى من بيانات الخادم حصراً
   const { systemPrompt } = buildInstructorSystemPrompt({
     courseTitle: course.title,
     unitTitles: units.map((u) => u.title),
@@ -107,10 +97,6 @@ async function startInstructorSession({ instructorId, courseId, req }) {
   };
 }
 
-/**
- * UC-AI-01 — يفتح/يُحدِّث جلسة مساعد AI للطالب لكورس معيَّن.
- * include SF-AI-02 (حقن System Prompt) — إلزامي، لا استثناء.
- */
 async function startStudentSession({ studentId, courseId, req }) {
   const safeStudentId = toObjectId(studentId, 'studentId');
   const safeCourseId = toObjectId(courseId, 'courseId');
@@ -148,7 +134,6 @@ async function startStudentSession({ studentId, courseId, req }) {
     .filter((u) => completedIdSet.has(u._id.toString()))
     .map((u) => u.title);
 
-  // SF-AI-02 — include إلزامي، يُبنى من بيانات الخادم حصراً
   const { systemPrompt } = buildStudentSystemPrompt({
     courseTitle: course.title,
     unitTitles: units.map((u) => u.title),

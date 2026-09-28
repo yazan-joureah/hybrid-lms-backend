@@ -1,6 +1,4 @@
 // src/services/attendance/report.service.js
-// UC-ATT-02 — Export Attendance Reports
-// UC-ATT-03 — Manual Attendance Correction
 
 const mongoose = require('mongoose');
 const Attendance = require('../../models/attendance.model');
@@ -12,7 +10,6 @@ const { buildCsv } = require('../../utils/csv.util');
 const auditService = require('../auditService');
 const { recordLiveSessionCompletion } = require('../progress.service');
 
-/** يتحقق أن المحاضر يملك الكورس، أو أن المستخدم Admin/SuperAdmin */
 async function assertCanViewCourseAttendance({ userId, role, courseId }) {
   if (role === 'Admin' || role === 'SuperAdmin') return;
 
@@ -25,9 +22,6 @@ async function assertCanViewCourseAttendance({ userId, role, courseId }) {
   }
 }
 
-/**
- * UC-ATT-02 — تقرير حضور جلسة واحدة (JSON) مع اسم الطالب وبريده
- */
 async function getSessionAttendanceReport({ userId, role, sessionId }) {
   const safeSessionId = toObjectId(sessionId, 'sessionId');
   const session = await LiveSession.findById(safeSessionId).lean();
@@ -45,9 +39,6 @@ async function getSessionAttendanceReport({ userId, role, sessionId }) {
   return { success: true, data: { session, records } };
 }
 
-/**
- * UC-ATT-02 — نفس التقرير أعلاه لكن بصيغة CSV جاهزة للتنزيل
- */
 async function exportSessionAttendanceCSV({ userId, role, sessionId, req }) {
   const { data } = await getSessionAttendanceReport({ userId, role, sessionId });
 
@@ -87,9 +78,6 @@ async function exportSessionAttendanceCSV({ userId, role, sessionId, req }) {
   return { success: true, data: { csv, filename: `attendance_session_${sessionId}.csv` } };
 }
 
-/**
- * UC-ATT-02 — ملخص نسبة الحضور لكل طالب عبر كل جلسات كورس معيّن
- */
 async function getCourseAttendanceSummary({ userId, role, courseId }) {
   const safeCourseId = toObjectId(courseId, 'courseId');
   await assertCanViewCourseAttendance({ userId, role, courseId: safeCourseId });
@@ -150,13 +138,6 @@ async function getCourseAttendanceSummary({ userId, role, courseId }) {
   return { success: true, data: { totalSessions, summary } };
 }
 
-/**
- * UC-ATT-03 — Manual Attendance Correction (present فقط)
- * محصور بالمحاضر مالك الكورس حصراً — وليس Admin/SuperAdmin هنا، خلافاً
- * لبقية دوال هذا الملف (قرار مقصود، وليس إغفالاً).
- * يعيد استخدام recordLiveSessionCompletion حرفياً — بلا تكرار منطق
- * إنشاء CourseProgressEvent، وهي Idempotent أصلاً بنفس idempotency_key.
- */
 async function correctAttendanceToPresent({ instructorId, sessionId, studentId, reason, req }) {
   const safeSessionId = toObjectId(sessionId, 'sessionId');
   const safeStudentId = toObjectId(studentId, 'studentId');
@@ -171,7 +152,6 @@ async function correctAttendanceToPresent({ instructorId, sessionId, studentId, 
     throw new AppError(404, 'SESSION_NOT_FOUND', 'الجلسة غير موجودة.');
   }
 
-  // محصور بمالك الكورس فقط — قرار مقصود يختلف عن assertCanViewCourseAttendance أعلاه
   const course = await Course.findById(session.courseId).select('owner_instructor_id').lean();
   if (!course || course.owner_instructor_id.toString() !== safeInstructorId.toString()) {
     throw new AppError(403, 'FORBIDDEN', 'لا تملك صلاحية تصحيح حضور هذه الجلسة.');
@@ -192,8 +172,6 @@ async function correctAttendanceToPresent({ instructorId, sessionId, studentId, 
   record.correctedAt = new Date();
   await record.save();
 
-  // DEVIATION: غير حرج عمداً، بنفس نمط tracking.service.js — فشل تسجيل
-  // حدث التقدّم لا يجب أن يمنع حفظ التصحيح نفسه.
   if (session.unit_id) {
     try {
       await recordLiveSessionCompletion({

@@ -1,5 +1,4 @@
 // src/services/ai/studentQuery.service.js
-// UC-AI-02 — Query AI Assistant (Student)
 
 const AIConversation = require('../../models/AIConversation');
 const { AppError } = require('../../middleware/errorHandler');
@@ -13,19 +12,12 @@ const {
   detectExamAnswerRequest,
 } = require('./promptInjection.util');
 
-// UC-AI-02 امتداد [b2] — رد ثابت لا يستدعي أي مزوّد LLM إطلاقاً عند رصد
-// طلب إجابة امتحان مباشرة، بنفس النص الحرفي الوارد في الوثيقة الأصلية.
 const EXAM_ANSWER_REFUSAL =
   'لا أستطيع تزويدك بإجابات الامتحانات مباشرةً، لكن يمكنني مساعدتك في فهم المفهوم.';
 
-// UC-AI-02 امتداد [a2] — رد ثابت عند رصد محاولة Prompt Injection، أيضاً
-// بلا أي استدعاء لمزوّد LLM (لا داعي لإنفاق أي استدعاء على رسالة مرفوضة أصلاً).
 const INJECTION_REFUSAL =
   'لم أتمكن من معالجة هذه الرسالة. برجاء إعادة صياغة سؤالك ضمن نطاق محتوى الكورس.';
 
-/**
- * UC-AI-02 — يكتب الطالب سؤاله ضمن جلسة مفتوحة مسبقاً (UC-AI-01 + SF-AI-02).
- */
 async function queryAssistant({ studentId, courseId, message, req }) {
   const safeStudentId = toObjectId(studentId, 'studentId');
   const safeCourseId = toObjectId(courseId, 'courseId');
@@ -47,7 +39,6 @@ async function queryAssistant({ studentId, courseId, message, req }) {
 
   const sanitized = sanitizeForLLM(message);
 
-  // [2a] رصد محاولة Prompt Injection — حجب الطلب قبل الوصول لأي مزوّد LLM
   const injectionCheck = detectPromptInjection(sanitized);
   if (injectionCheck.flagged) {
     await persistExchange({
@@ -68,7 +59,6 @@ async function queryAssistant({ studentId, courseId, message, req }) {
     return { success: true, data: { reply: INJECTION_REFUSAL, flagged: true } };
   }
 
-  // [b2] رصد طلب إجابة امتحان مباشرة — رد ثابت بلا استدعاء LLM
   const examCheck = detectExamAnswerRequest(sanitized);
   if (examCheck.flagged) {
     await persistExchange({
@@ -108,17 +98,13 @@ async function queryAssistant({ studentId, courseId, message, req }) {
     action: 'AI_STUDENT_QUERY',
     resourceType: 'AIConversation',
     resourceId: conversation._id.toString(),
-    metadata: { provider: completion.provider }, // لا يُسجَّل نص السؤال/الجواب في AuditLog أبداً
+    metadata: { provider: completion.provider },
     req,
   });
 
   return { success: true, data: { reply: completion.text, flagged: false } };
 }
 
-/**
- * يُخزِّن رسالتَي التبادل (مستخدم + مساعد) مُشفَّرتين AES-256-GCM كلٌّ على
- * حدة، بمفتاح مشتَق من userId (نفس آلية KYC — crypto.encryptForUser).
- */
 async function persistExchange({ conversation, userText, assistantText, flagged }) {
   const userId = conversation.userId;
   conversation.messages.push({

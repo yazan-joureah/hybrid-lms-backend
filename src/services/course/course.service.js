@@ -95,7 +95,7 @@ async function updateCourse({ courseId, instructorId, updateData, req }) {
   }
 
   Object.assign(course, updateData);
-  await course.save(); // حفظ واحد فقط الآن — لا حاجة لحفظَين منفصلَين
+  await course.save();
 
   await auditService.record({
     actorId: safeInstructorId,
@@ -107,7 +107,7 @@ async function updateCourse({ courseId, instructorId, updateData, req }) {
       status_changed_to: course.status,
       sensitive_change: sensitiveChangeDetected,
       changes: changesSnapshot,
-      reverted_to_draft: revertedToDraft, // بدل review_request_id
+      reverted_to_draft: revertedToDraft,
     },
     req,
   });
@@ -260,7 +260,6 @@ async function deleteCourse({ courseId, instructorId, req }) {
   });
   const deletedAssignments = await PeerAssignment.deleteMany({ courseId: safeCourseId });
 
-  // --- سجلات مراجعة تاريخية (rejected/cancelled فقط، بحكم حارس published_at)
   const deletedReviewRequests = await CourseReviewRequest.deleteMany({
     course_id: safeCourseId,
   });

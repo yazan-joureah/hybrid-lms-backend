@@ -97,9 +97,6 @@ async function approveKyc(req, res, next) {
     });
 
     if (!result.success) {
-      // AGE_DISCREPANCY_REQUIRES_CONFIRMATION carries tier/discrepancyYears
-      // the frontend needs to render the confirmation prompt — must not be
-      // swallowed into a generic AppError with no body.
       if (result.reason === 'AGE_DISCREPANCY_REQUIRES_CONFIRMATION') {
         return res.status(409).json({
           success: false,

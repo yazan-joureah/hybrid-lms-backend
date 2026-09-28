@@ -1,11 +1,6 @@
 const mongoose = require('mongoose');
-const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util'); // أعلى الملف
+const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 
-/**
- * ATT — سجل الحضور
- * يُنشَأ تلقائياً بواسطة UC-ATT-01 عند انضمام الطالب فعلياً عبر UC-LIVE-04،
- * ويُحدَّث عند مغادرته (leaveTime + durationSeconds) لدعم UC-ATT-02 (التقارير).
- */
 const attendanceSchema = new mongoose.Schema(
   {
     sessionId: {
@@ -34,13 +29,10 @@ const attendanceSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
-    // مدة البقاء الفعلية بالثواني — تُحسَب عند تسجيل المغادرة (UC-ATT-01 خطوة 4)
     durationSeconds: {
       type: Number,
       default: 0,
     },
-    // preliminary: أُنشئ عند الانضمام ولم تُحسم المغادرة بعد
-    // present: نسبة حضور كافية | partial: حضور جزئي | absent: لم يحضر فعلياً
     status: {
       type: String,
       enum: ['preliminary', 'present', 'partial', 'absent'],
@@ -76,7 +68,6 @@ applyReferentialIntegrity(attendanceSchema, [
   { path: 'correctedBy', ref: 'User', required: false },
 ]);
 
-// Idempotent by design: سجل حضور واحد فقط لكل طالب لكل جلسة
 attendanceSchema.index({ sessionId: 1, studentId: 1 }, { unique: true });
 attendanceSchema.index({ courseId: 1, studentId: 1 });
 

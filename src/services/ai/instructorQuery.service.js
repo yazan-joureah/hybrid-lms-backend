@@ -1,6 +1,4 @@
 // src/services/ai/instructorQuery.service.js
-// UC-AI-05 — Generate Content Improvement Suggestions
-// UC-AI-06 — View AI Performance Summary
 
 const AIConversation = require('../../models/AIConversation');
 const User = require('../../models/User');
@@ -19,8 +17,6 @@ const {
 const INJECTION_REFUSAL =
   'لم أتمكن من معالجة هذه الرسالة. برجاء إعادة صياغة طلبك ضمن نطاق محتوى الكورس.';
 
-// UC-AI-06 امتداد [a4] — رد بديل ثابت عندما يُحجَب مخرَج المساعد بسبب
-// احتوائه اسم طالب فعلي (انتهاك خصوصية) — لا يُعرَض النص الأصلي إطلاقاً.
 const PRIVACY_VIOLATION_FALLBACK =
   'تعذَّر عرض الملخص لأن المخرَج تضمَّن إشارة إلى هوية فردية. برجاء إعادة المحاولة — سيتم تسجيل هذا الحدث.';
 
@@ -41,7 +37,6 @@ async function loadActiveInstructorConversation({ instructorId, courseId }) {
   return conversation;
 }
 
-/** UC-AI-05 — اقتراح تحسينات محتوى. */
 async function generateContentSuggestions({ instructorId, courseId, message, req }) {
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
   const safeCourseId = toObjectId(courseId, 'courseId');
@@ -99,7 +94,6 @@ async function generateContentSuggestions({ instructorId, courseId, message, req
   return { success: true, data: { reply: completion.text, flagged: false } };
 }
 
-/** UC-AI-06 — ملخص أداء الطلاب (مُجمَّع، بلا هوية فردية). */
 async function performanceSummary({ instructorId, courseId, focus, req }) {
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
   const safeCourseId = toObjectId(courseId, 'courseId');
@@ -126,7 +120,6 @@ async function performanceSummary({ instructorId, courseId, focus, req }) {
     context: { mode: 'instructor_performance_summary' },
   });
 
-  // [a4] فحص خصوصية إلزامي قبل أي عرض: هل يحتوي المخرَج اسم طالب فعلي؟
   const studentIds = activeEnrollments.map((e) => e.student_id);
   const students = await User.find({ _id: { $in: studentIds } })
     .select('full_name')

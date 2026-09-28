@@ -37,15 +37,11 @@ async function submitAssignment({ studentId, assignmentId, textContent, file, re
     (existingSubmission.finalScore !== null || existingSubmission.gradeOverridden)
   );
 
-  // ============================================================
   // Retry is allowed ONLY for asynchronous courses.
-  // In synchronous courses, once graded, no more submissions.
-  // ============================================================
   const isRetry = isGraded && assignment.status === 'distributed' && isAsync;
 
-  // ============================================================
   // Gate 1 — Normal time‑based gates (skipped entirely for retries)
-  // ============================================================
+
   if (!isRetry) {
     if (assignment.status === 'open') {
       if (assignment.submissionDeadline && new Date() > assignment.submissionDeadline) {
@@ -60,10 +56,7 @@ async function submitAssignment({ studentId, assignmentId, textContent, file, re
       throw new AppError(400, 'SUBMISSIONS_CLOSED', 'Submissions are closed for this assignment.');
     }
   } else {
-    // ============================================================
     // Gate 2 — Retry‑specific: only attempts limit applies
-    // (this only runs for async courses)
-    // ============================================================
     if (currentAttempt >= assignment.maxAttempts) {
       throw new AppError(
         403,
@@ -100,10 +93,7 @@ async function submitAssignment({ studentId, assignmentId, textContent, file, re
     throw new AppError(400, 'EMPTY_SUBMISSION', 'You must provide text content or a file.');
   }
 
-  // ============================================================
   // Prevent editing once any reviewer has already evaluated the current attempt
-  // (even if final grade isn't calculated yet)
-  // ============================================================
   if (existingSubmission && !isGraded) {
     const anyReviewStarted = await PeerReview.exists({
       submissionId: existingSubmission._id,
@@ -150,7 +140,6 @@ async function submitAssignment({ studentId, assignmentId, textContent, file, re
     update.overrideReason = null;
     update.displaySequentialId = null;
   } else if (!existingSubmission) {
-    // First‑time submission: set attemptNumber = 1 (default on insert)
     update.attemptNumber = 1;
   }
 

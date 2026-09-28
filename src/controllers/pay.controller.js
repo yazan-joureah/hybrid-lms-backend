@@ -13,7 +13,7 @@ const {
 const { AppError } = require('../middleware/errorHandler');
 const User = require('../models/User');
 
-/** UC-PAY-01/02: student-initiated payment for a pending enrollment. */
+/** student-initiated payment for a pending enrollment. */
 async function initiate(req, res, next) {
   try {
     const studentId = req.user.id;
@@ -26,7 +26,7 @@ async function initiate(req, res, next) {
   }
 }
 
-/** UC-PAY-09: student requests a refund on a paid payment. */
+/** student requests a refund on a paid payment. */
 async function requestRefundHandler(req, res, next) {
   try {
     const studentId = req.user.id;
@@ -39,7 +39,7 @@ async function requestRefundHandler(req, res, next) {
   }
 }
 
-/** UC-PAY-07: admin approves/rejects a refund request. */
+/** admin approves/rejects a refund request. */
 async function reviewRefundHandler(req, res, next) {
   try {
     const reviewerId = req.user.id;
@@ -60,7 +60,7 @@ async function reviewRefundHandler(req, res, next) {
 }
 
 /**
- * UC-PAY-03: Stripe webhook receiver.
+ * Stripe webhook receiver.
  */
 async function webhook(req, res, next) {
   try {
@@ -72,7 +72,6 @@ async function webhook(req, res, next) {
     const event = verifyWebhookSignature({ rawBody: req.body, signatureHeader });
     await processStripeWebhook({ event, req });
 
-    // UC-PAY-03: always acknowledge 200 to Stripe
     return res.status(200).json({ received: true });
   } catch (err) {
     return next(err);
@@ -81,10 +80,6 @@ async function webhook(req, res, next) {
 
 async function paymentStatus(req, res, next) {
   try {
-    // ⚠️ req.user فقط { id, sessionId } — authMiddleware.js عمداً ما بيحط
-    // role جوا التوكن (FR-34: role هو server-side truth من الـ DB، مو من
-    // التوكن). هاد الراوت مشترك بين الطالب والأدمن (بدون requireRole قبله)
-    // فلازم نستعلم عن الدور هون مباشرة، متل ما requireRole.js بالضبط بيعمل.
     const user = await User.findById(req.user.id).select('role').lean();
     const isAdmin = ['Admin', 'SuperAdmin'].includes(user?.role);
     const result = await getPaymentStatus({

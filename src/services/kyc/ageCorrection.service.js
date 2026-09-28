@@ -1,11 +1,4 @@
 // src/services/kyc/ageCorrection.service.js
-//
-// نقل العبء للطالب (بدون أتمتة جديدة): الطالب المُعلَّق بـ age_flagged
-// يقترح تاريخ ميلاد مصحَّح + بريد ولي أمر، فنحدّث birth_date فوراً ونقفل
-// الحساب بنفس القيمة المستخدمة أصلاً لمسار القاصر (User.status =
-// 'guardian_pending')، وننشئ GuardianApproval بنفس البنية الحرفية
-// المستخدمة في registration.service.js. فتح القفل يتم لاحقاً عبر
-// processGuardianApproval الموجودة أصلاً بدون أي تعديل هنا.
 
 const User = require('../../models/User');
 const GuardianApproval = require('../../models/GuardianApproval');
@@ -15,7 +8,7 @@ const auditService = require('../auditService');
 const env = require('../../config/env');
 const logger = require('../../utils/logger');
 
-const GUARDIAN_APPROVAL_TTL_HOURS = 48; // نفس ثابت registration.service.js
+const GUARDIAN_APPROVAL_TTL_HOURS = 48;
 
 async function requestAgeCorrection({ userId, newBirthDate, guardianEmail, req }) {
   const user = await User.findById(userId);
@@ -55,8 +48,6 @@ async function requestAgeCorrection({ userId, newBirthDate, guardianEmail, req }
     student_device_fingerprint: req.get('x-device-fingerprint') || null,
   });
 
-  // تحديث تاريخ الميلاد فوراً + قفل تسجيل الدخول القادم بنفس القيمة
-  // المستخدمة أصلاً للقاصر — لا حالة جديدة، إعادة استخدام حرفية.
   user.birth_date = new Date(newBirthDate);
   user.status = 'guardian_pending';
   await user.save();

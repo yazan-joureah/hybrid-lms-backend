@@ -1,14 +1,3 @@
-/**
- * E08 — GuardianApproval
- * Source: Module_DB_Design_Specification_v1.3, Section 4.
- *
- * Two independent token pairs are issued in parallel at creation time:
- *  - approval_token_hash        → sent to the guardian's email
- *  - student_access_token_hash  → sent to the student, allowing them to
- *    resend/edit the guardian email WITHOUT a JWT session (the account is
- *    not `active` yet, so no session can exist — this closes the circular
- *    dead-end identified during the Register/Guardian logic review).
- */
 const mongoose = require('mongoose');
 const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;

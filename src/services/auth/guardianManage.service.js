@@ -1,13 +1,3 @@
-/**
- * Guardian Approval Self-Management — Bounded Context.
- * Source: UC-AUTH-02 (Guardian Approval) — closes the documented
- * "missing /guardian/manage route" gap. Lets the STUDENT (not the
- * guardian) view status, resend the approval email, or correct a
- * mistyped guardian address — via student_access_token issued alongside
- * the guardian's own token at registration/OAuth-registration time.
- * No JWT session required: the account isn't 'active' yet (see
- * GuardianApproval.js docstring).
- */
 const User = require('../../models/User');
 const GuardianApproval = require('../../models/GuardianApproval');
 const { sha256, generateOpaqueToken } = require('../../utils/crypto');
@@ -17,8 +7,8 @@ const logger = require('../../utils/logger');
 const { AppError } = require('../../middleware/errorHandler');
 const env = require('../../config/env');
 
-const MAX_RESEND_COUNT = 5; // consistent with MAX_OTP_ATTEMPTS elsewhere
-const GUARDIAN_APPROVAL_TTL_HOURS = 48; // matches original TTL
+const MAX_RESEND_COUNT = 5;
+const GUARDIAN_APPROVAL_TTL_HOURS = 48;
 
 async function loadPendingApprovalByStudentToken(rawToken) {
   const tokenHash = sha256(rawToken);
@@ -66,9 +56,6 @@ async function resendGuardianApproval({ rawToken, req }) {
     );
   }
 
-  // Invalidate the previous guardian link (a stale forwarded copy must
-  // stop working) and grant a fresh full TTL window — safe to extend
-  // repeatedly since resend_count itself hard-caps total extensions.
   const { raw: approvalRaw, hash: approvalHash } = generateOpaqueToken();
   approval.approval_token_hash = approvalHash;
   approval.resend_count += 1;
@@ -121,7 +108,6 @@ async function updateGuardianEmail({ rawToken, newGuardianEmail, req }) {
     throw new AppError(404, 'USER_NOT_FOUND', 'Associated account no longer exists.');
   }
 
-  // SECURITY: same MUC-AUTH-09 protection as initial registration.
   if (newGuardianEmail.toLowerCase() === user.email?.toLowerCase()) {
     throw new AppError(
       400,
@@ -134,8 +120,6 @@ async function updateGuardianEmail({ rawToken, newGuardianEmail, req }) {
   approval.guardian_email = newGuardianEmail;
   approval.approval_token_hash = approvalHash;
   approval.expires_at = new Date(Date.now() + GUARDIAN_APPROVAL_TTL_HOURS * 60 * 60 * 1000);
-  // A corrected address is a fresh request to a new recipient — reset the
-  // counter instead of penalizing the student for their own typo.
   approval.resend_count = 0;
   await approval.save();
 

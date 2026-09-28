@@ -92,10 +92,9 @@ const ai = {
     model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
   },
   ollama: {
-    apiKey: process.env.OLLAMA_API_KEY || null, // Ollama doesn't need an API key for local runs
+    apiKey: process.env.OLLAMA_API_KEY || null,
     model: process.env.OLLAMA_MODEL || 'llama3.2',
   },
-  // Dedicated TinyLlama config (if you want to use a separate provider name)
   tinyllama: {
     model: process.env.TINYLLAMA_MODEL || 'tinyllama',
   },

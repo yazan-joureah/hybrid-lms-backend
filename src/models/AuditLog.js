@@ -1,12 +1,3 @@
-/**
- * E12 — AuditLog
- * Source: Module_DB_Design_Specification_v1.3, Section 4.
- *
- * Append-only security record (FR-30, OWASP A09). No update/delete
- * operations should ever be performed against this collection — enforced
- * at the service layer (auditService.js exposes only a `record()` function,
- * no update/delete helpers).
- */
 const mongoose = require('mongoose');
 const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;

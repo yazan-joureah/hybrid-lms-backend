@@ -1,8 +1,3 @@
-/* ==========================================================================
-   src/models/peerReview.model.js
-   UC-PEER-02 (يُنشئها التوزيع) + UC-PEER-03 (الطالب يملأها)
-   ========================================================================== */
-
 const mongoose = require('mongoose');
 
 const rubricScoreSchema = new mongoose.Schema(
@@ -27,7 +22,6 @@ const peerReviewSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    // المراجِع — هو من نستخدم هويته للتحقق من الصلاحية (IDOR prevention)
     reviewerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -37,17 +31,15 @@ const peerReviewSchema = new mongoose.Schema(
 
     scores: { type: [rubricScoreSchema], default: [] },
     feedbackText: { type: String, trim: true, maxlength: 5000, default: null },
-    totalScore: { type: Number, default: null }, // مجموع مرجَّح حسب أوزان الـ Rubric
+    totalScore: { type: Number, default: null },
     attemptNumber: { type: Number, default: 1, min: 1 },
 
-    // assigned: انتُدِب المراجِع ولم يُقيِّم بعد | completed: أرسل تقييمه
     status: { type: String, enum: ['assigned', 'completed'], default: 'assigned' },
     submittedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
 
-// مراجعة واحدة فقط لكل (تسليم، مراجِع) — يمنع الازدواجية عند إعادة تشغيل التوزيع بالخطأ
 peerReviewSchema.index({ submissionId: 1, reviewerId: 1, attemptNumber: 1 }, { unique: true });
 peerReviewSchema.index({ assignmentId: 1, reviewerId: 1 });
 peerReviewSchema.index({ submissionId: 1, attemptNumber: 1 });

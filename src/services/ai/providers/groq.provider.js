@@ -1,9 +1,3 @@
-// src/services/ai/providers/groq.provider.js
-//
-// مزوّد Groq — مجاني بالكامل، بلا بطاقة ائتمان، بلا حد زمني معلن لانتهاء
-// الصلاحية (بعكس DeepSeek). واجهة OpenAI-compatible قياسية.
-// التسجيل: https://console.groq.com/keys
-
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const REQUEST_TIMEOUT_MS = 30000;

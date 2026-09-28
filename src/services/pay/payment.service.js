@@ -1,8 +1,5 @@
 // src/services/pay/payment.service.js
-/**
- * UC-PAY-01/UC-PAY-02 (merged): creates a Payment record and a Stripe
- * Checkout Session.
- */
+
 const Payment = require('../../models/Payment');
 const stripe = require('../../config/stripe');
 const env = require('../../config/env');
@@ -15,7 +12,7 @@ const { buildPaymentIdempotencyKey, atomicInsertOrFetch } = require('./idempoten
 /**
  * PCI DSS SAQ-A note: no card data ever touches our server — the student
  * is redirected directly to Stripe's own hosted Checkout page to enter
- * payment details (Hosted Payment Page), exactly as UC-PAY-02 requires.
+ * payment details (Hosted Payment Page).
  */
 async function initiatePayment({ studentId, enrollmentId, req }) {
   const safeStudentId = toObjectId(studentId, 'studentId');
@@ -44,8 +41,8 @@ async function initiatePayment({ studentId, enrollmentId, req }) {
     findQuery: { idempotency_key: idempotencyKey },
   });
 
-  // If this Payment already has a live Stripe session (e.g. a retry within
-  // the same 24h window) and hasn't failed, reuse it instead of creating
+  // If this Payment already has a live Stripe session
+  // and hasn't failed, reuse it instead of creating
   // a second Checkout Session pointing at the same Payment record.
   if (!created && payment.status === 'pending' && payment.gateway_session_id) {
     const existingSession = await stripe.checkout.sessions.retrieve(payment.gateway_session_id);

@@ -1,6 +1,4 @@
 // src/controllers/peer/allocation.controller.js
-// UC-PEER-02 — يُستدعى تلقائياً من jobs/peerCron.job.js، وهذا المسار خيار
-// احتياطي يدوي للمحاضر/الإدارة (مثلاً لتجربة النظام قبل انتظار الـ Cron)
 const peerService = require('../../services/peerService');
 
 /** POST /api/v1/peer/assignments/:assignmentId/distribute */

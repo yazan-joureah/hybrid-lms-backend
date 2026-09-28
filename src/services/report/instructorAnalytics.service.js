@@ -1,5 +1,4 @@
 // src/services/report/instructorAnalytics.service.js
-// UC-REPORT-02 — View Instructor Analytics
 const Course = require('../../models/Course');
 const Quiz = require('../../models/quiz.model');
 const QuizAttempt = require('../../models/quizAttempt.model');
@@ -24,7 +23,7 @@ async function assertOwnsCourse({ instructorId, courseId }) {
   return course;
 }
 
-/** GET /report/instructor/courses/:courseId — UC-REPORT-02. */
+/** GET /report/instructor/courses/:courseId */
 async function getInstructorCourseAnalytics({ instructorId, courseId, req }) {
   const safeInstructorId = toObjectId(instructorId, 'instructorId');
   const safeCourseId = toObjectId(courseId, 'courseId');
@@ -70,11 +69,6 @@ async function getInstructorCourseAnalytics({ instructorId, courseId, req }) {
     };
   });
 
-  // SECURITY/PRIVACY: full names ARE shown here, deliberately — the UC
-  // text's own note is explicit that this is legitimate ("Instructor له
-  // الحق المشروع" — the instructor is responsible for these specific
-  // students), unlike UC-REPORT-01's platform-wide aggregates which
-  // never expose any identity.
   const studentIds = enrolledStudents.map((e) => e.student_id?._id).filter(Boolean);
   const [completedContentByStudent, attendanceByStudent] = await Promise.all([
     CourseProgressEvent.aggregate([
@@ -130,8 +124,6 @@ async function getInstructorCourseAnalytics({ instructorId, courseId, req }) {
 
   const courseLevelAlerts = await computeAlertsForCourse(safeCourseId);
 
-  // Per-student below-threshold flags — the identity-revealing layer
-  // UC-REPORT-02 explicitly allows and UC-REPORT-01 explicitly forbids.
   const flaggedStudents = students
     .filter(
       (s) =>

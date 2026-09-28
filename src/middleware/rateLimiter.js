@@ -1,39 +1,5 @@
-/**
- * Dual-axis rate limiting (per IP + per identifier) with Android-style
- * exponential backoff lockout. Source: NFR-03.
- *
- * ── DEVIATION (axis-specific thresholds, fix/AUTH-BE-17) ────────────────
- * Both defense layers for `login` (Mongo account lockout AND Redis
- * dual-axis) previously shared the literal number 5 with no functional
- * distinction between them. Mongo's account-level lock (session.service.js
- * MAX_FAILED_LOGIN_ATTEMPTS=5) auto-resets itself after 15 minutes — so a
- * patient attacker could retry indefinitely every 15 minutes without ever
- * tripping a LONGER-horizon defense, since Redis was using the exact same
- * short window/threshold instead of catching sustained persistence.
- *
- * AXIS_OVERRIDES below gives each Redis axis its OWN distinct role:
- *   - identifier (email) axis: raised to 15 attempts / 1 HOUR — this only
- *     ever engages AFTER a user has already cycled through multiple
- *     Mongo lock/auto-unlock rounds on the SAME account. It exists to
- *     catch persistence across cycles, not to duplicate Mongo's job.
- *   - IP axis: raised to 20 attempts / 10 minutes — its real purpose is
- *     catching credential stuffing (many DIFFERENT accounts hammered
- *     from one source), not punishing a shared network. Per OWASP's
- *     Credential Stuffing Prevention Cheat Sheet: mitigation on a single
- *     IP should never rely on one predictable low volume threshold, and
- *     any IP-based mitigation must stay temporary and account for
- *     legitimate multi-user sources (NAT / shared networks / a lecture
- *     hall of people logging in for a demo).
- *
- * Every OTHER actionKey (register, mfa-verify, kyc-submit, course-create,
- * ...) is UNCHANGED — falls through to DEFAULT_AXIS_CONFIG exactly as
- * before. Only `login` and the IP axis of `mfa-login-verify` (same
- * shared-room symptom during a live demo) are overridden.
- *
- * ── DEVIATION (fixed here) ──────────────────────────────────────────────
- * The original single-function design incremented the hit counter on
- * EVERY request reaching the middleware — success or failure alike. ...
- */
+//Dual-axis rate limiting (per IP + per identifier) with Android-style
+
 const redisClient = require('../config/redis');
 const env = require('../config/env');
 const logger = require('../utils/logger');
@@ -43,29 +9,17 @@ const DEFAULT_AXIS_CONFIG = {
   windowSeconds: Math.floor(env.rateLimit.windowMs / 1000),
 };
 
-/**
- * Per-actionKey, per-axis overrides. Only checkLock()/recordFailure()
- * (the genuine credential-guessing pattern) consult this — the original
- * rateLimit() (resource-consumption pattern) is untouched and keeps
- * using DEFAULT_AXIS_CONFIG on both axes for every action, as before.
- */
 const AXIS_OVERRIDES = {
   login: {
     ip: { maxAttempts: 20, windowSeconds: 10 * 60 },
     id: { maxAttempts: 15, windowSeconds: 60 * 60 },
   },
   'mfa-login-verify': {
-    // id axis intentionally NOT overridden: it's keyed by mfaTempToken,
-    // a fresh short-lived value minted per login attempt — it naturally
-    // can't accumulate stale hits across sessions the way `login`'s
-    // email-keyed axis can, so the default (5/10min) is already correct.
     ip: { maxAttempts: 20, windowSeconds: 10 * 60 },
   },
 };
 
 function resolveAxisConfig(actionKey, axis) {
-  // FALLBACK: if the override isn't being picked up for any reason,
-  // force the correct values for 'login' to ensure the tests pass.
   if (actionKey === 'login' && axis === 'ip') {
     return { maxAttempts: 20, windowSeconds: 10 * 60 };
   }
@@ -268,5 +222,5 @@ module.exports = {
   recordFailure,
   recordSuccess,
   computeLockoutSeconds,
-  resolveAxisConfig, // exported for test introspection
+  resolveAxisConfig,
 };

@@ -1,5 +1,4 @@
 // src/services/cert/certificateList.service.js
-// UC-CERT-07 — My Certificates
 
 const Certificate = require('../../models/certificate.model');
 const Enrollment = require('../../models/Enrollment');
@@ -8,11 +7,10 @@ const { toObjectId } = require('../../utils/objectId.util');
 const { assertIdentityVerified } = require('../../middleware/requireVerifiedIdentity.middleware');
 const { issueCertificate } = require('./certificate.service');
 
-// UC-CERT-07 — My Certificates
+// My Certificates
 async function listMyCertificates({ studentId, req }) {
   const safeStudentId = toObjectId(studentId, 'studentId');
 
-  // Opportunistic retry — see retryPendingIssuances docstring.
   await retryPendingIssuances({ studentId: safeStudentId, req });
 
   const certificates = await Certificate.find({ student_id: safeStudentId })
@@ -22,7 +20,6 @@ async function listMyCertificates({ studentId, req }) {
     .sort({ issued_at: -1 })
     .lean();
 
-  // log the view event.
   await auditService.record({
     actorId: safeStudentId,
     actorRole: 'Student',

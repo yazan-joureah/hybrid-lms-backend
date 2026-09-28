@@ -1,6 +1,6 @@
 // src/services/ai/promptInjection.util.js
 //
-// OWASP LLM01 — Prompt Injection defenses for SF-AI-01 / SF-AI-02.
+// OWASP LLM01 — Prompt.
 // Pattern-level detection is inherently incomplete (no static regex list
 // catches every jailbreak phrasing) — this is a first line of defense
 // meant to be layered with the fixed, server-locked system prompt itself
@@ -32,9 +32,6 @@ const INJECTION_PATTERNS = [
   /أظهر\s+(لي\s+)?(الـ)?prompt/i,
 ];
 
-// محاولة إفلات عبر بنية رسائل مزيَّفة (تقليد فواصل الأدوار التي يفهمها
-// الـ LLM كحدود بين System/Assistant/User) — نُحيِّدها عوضاً عن رفض
-// الرسالة بالكامل، لأنها قد تظهر بالصدفة في نص بريء.
 const ROLE_MARKER_PATTERN = /\b(system|assistant|user)\s*:/gi;
 
 function detectPromptInjection(text) {
@@ -47,7 +44,6 @@ function detectPromptInjection(text) {
   return { flagged: false, reason: null };
 }
 
-// UC-AI-02 امتداد [b2] — طلب إجابة امتحان مباشرة (طالب فقط)
 const EXAM_ANSWER_PATTERNS = [
   /answer\s+(to|for)\s+(question|exam|quiz)/i,
   /correct\s+answer\s+(is|for)/i,
@@ -67,29 +63,16 @@ function detectExamAnswerRequest(text) {
   return { flagged: false, reason: null };
 }
 
-/**
- * تعقيم النص قبل تمريره لأي مزوّد LLM: إزالة محارف التحكم غير المرئية
- * (التي قد تُستخدَم لإخفاء تعليمات)، وتحييد فواصل الأدوار المزيَّفة، مع
- * قصّ الطول كطبقة دفاع إضافية بصرف النظر عن حد Zod الأعلى في الـ Route.
- */
 function sanitizeForLLM(rawText, { maxLength = 4000 } = {}) {
   if (typeof rawText !== 'string') return '';
-  // يزيل محارف التحكم غير المرئية التي قد تُخفي تعليمات مُحقَنة عن مراجِع
-  // بشري بينما تبقى مقروءة لنموذج لغوي — مقصودة، وليست خطأ اعتراضياً.
   const stripped = rawText
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
-    .replace(ROLE_MARKER_PATTERN, '[$1]') // "system:" → "[system]" (يُبطل تقليد الأدوار)
+    .replace(ROLE_MARKER_PATTERN, '[$1]')
     .trim();
   return stripped.slice(0, maxLength);
 }
 
-/**
- * UC-AI-06 امتداد [a4] — يفحص مخرجات المساعد بحثاً عن أي اسم من طلاب
- * الكورس المسجَّلين قبل عرضها للمحاضر (بيانات مُجمَّعة فقط، بلا هوية
- * فردية). مطابقة حرفية بسيطة — وليست NLP كاملة — وهي متعمَّدة: نفضِّل
- * حجب مخرَج بالخطأ (False Positive) على تسريب اسم طالب فعلي.
- */
 function containsAnyStudentName(text, studentFullNames = []) {
   if (!text) return false;
   const lowerText = text.toLowerCase();

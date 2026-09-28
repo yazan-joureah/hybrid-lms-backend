@@ -16,8 +16,6 @@ const kycUpload = createMemoryUpload(KYC_DOCUMENT_POLICY.maxFileSizeBytes, 2).fi
   { name: 'selfie', maxCount: 1 },
 ]);
 
-// Normalizes MulterError (no .statusCode) into ApiError before it reaches
-// the central errorHandler, which would otherwise misreport it as a 500.
 function handleUploadErrors(uploadMiddleware) {
   return (req, res, next) => {
     uploadMiddleware(req, res, (err) => {
@@ -42,7 +40,7 @@ router.post(
 router.post(
   '/age-correction',
   requireAuth,
-  rateLimit('kyc-age-correction', (req) => req.user.id), // uses DEFAULT_AXIS_CONFIG automatically — no changes to rateLimiter.js
+  rateLimit('kyc-age-correction', (req) => req.user.id),
   validateBody(ageCorrectionSchema),
   kycController.requestCorrection
 );

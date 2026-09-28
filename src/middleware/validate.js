@@ -1,9 +1,3 @@
-/**
- * Generic Zod validation middleware factory.
- * On failure, returns the standard error envelope with a generic message
- * (no field-level details leaked for security-sensitive endpoints) while
- * logging the precise Zod issues server-side for debugging.
- */
 const logger = require('../utils/logger');
 const { AppError } = require('./errorHandler');
 

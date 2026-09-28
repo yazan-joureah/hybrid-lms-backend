@@ -307,13 +307,6 @@ async function reorderContents({ courseId, unitId, instructorId, orderedContentI
   return { success: true, data: { content } };
 }
 
-// SECURITY: single source of truth for "who may access this content item's
-// file" — shared by BOTH streamContentFile (direct download with a real
-// Authorization header) AND issueContentStreamTicket (media ticket for
-// <video>/<embed>), so the eligibility rule can never drift between the two
-// entry points. Ownership rule differs per role, kept separate from
-// loadOwnedCourse (that helper is instructor-only; this one also serves
-// Student/Admin/SuperAdmin read access).
 async function assertContentAccess({ userId, role, courseId, contentId }) {
   const safeUserId = toObjectId(userId, 'userId');
   const safeCourseId = toObjectId(courseId, 'courseId');
@@ -346,7 +339,7 @@ async function assertContentAccess({ userId, role, courseId, contentId }) {
   return { safeCourseId, safeContentId, content };
 }
 
-// Streams a content item's file — assumes access was already validated.
+// Streams a content item's file
 async function streamContentFile({ userId, role, courseId, contentId, range = null }) {
   const { content } = await assertContentAccess({ userId, role, courseId, contentId });
 
@@ -363,10 +356,6 @@ async function streamContentFile({ userId, role, courseId, contentId, range = nu
   };
 }
 
-// UC-COURSE — SF-COURSE-03: يصدر تذكرة بث موقَّعة قصيرة الصلاحية لعنصر <video>/
-// <embed> بعد إجراء نفس فحص الأهلية أعلاه بالضبط — لا فتح لأي Stream هنا،
-// فقط إصدار التذكرة. re-usable لاحقاً من وحدة LIVE لتسجيلات الجلسات (UC-LIVE-03)
-// بنفس نمط SF-COURSE-02.
 async function issueContentStreamTicket({ userId, role, courseId, contentId }) {
   const { safeCourseId, safeContentId } = await assertContentAccess({
     userId,

@@ -1,14 +1,3 @@
-/**
- * E06 — BackupCode
- * Source: Module_DB_Design_Specification_v1.3, Section 4.
- *
- * Stored as an Argon2id hash (NOT SHA-256 like AuthToken/GuardianApproval)
- * — a deliberate distinction (DP-08 note in the spec itself): backup
- * codes are user-chosen-adjacent secrets a human might reuse/guess-adjacent
- * patterns for, closer in threat model to a password than to a
- * system-generated opaque token, so they get the slower, memory-hard
- * hash used for actual credentials.
- */
 const mongoose = require('mongoose');
 const { applyReferentialIntegrity } = require('../utils/referentialIntegrity.util');
 const { Schema } = mongoose;

@@ -343,12 +343,11 @@ async function getUnitDetails({ userId, role, courseId, unitId }) {
   let navigationExtras = {};
 
   if (isEnrolled) {
-    // تمرير مصفوفة فارغة بدلاً من liveSessions لإلغاء تضمين الجلسات المباشرة
     ({ completedSet } = await buildEnrolledProgressExtras({
       courseId: safeCourseId,
       unitId: unit._id,
       studentId: safeUserId,
-      liveSessions: [], // لا نريد جلسات مباشرة
+      liveSessions: [],
     }));
     navigationExtras = await buildNavigationExtras({
       courseId: safeCourseId,

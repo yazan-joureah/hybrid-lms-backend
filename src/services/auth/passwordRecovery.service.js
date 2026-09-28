@@ -1,6 +1,5 @@
 /**
  * Password Recovery — Bounded Context.
- * Covers: UC-AUTH-06 (Reset Password) + FR-03b (Session Revocation).
  */
 const User = require('../../models/User');
 const Session = require('../../models/Session');
@@ -15,7 +14,7 @@ const crypto = require('crypto');
 const FORGOT_PASSWORD_TOKEN_TTL_MS = 15 * 60 * 1000;
 const MAX_OTP_ATTEMPTS = 5;
 
-/** POST /auth/forgot-password. Same success signal regardless of email existence. */
+/** POST /auth/forgot-password. */
 async function forgotPassword({ email, req }) {
   const user = await User.findOne({ email });
   if (!user) {

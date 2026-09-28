@@ -1,5 +1,4 @@
 // src/services/cert/verification.service.js
-// UC-CERT-04 — Verify Certificate via QR (public, no login required)
 
 const Certificate = require('../../models/certificate.model');
 const Course = require('../../models/Course');

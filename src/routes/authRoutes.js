@@ -56,12 +56,7 @@ router.post(
 
 router.post('/logout', requireAuth, authController.logout);
 
-router.post(
-  '/refresh',
-  // rateLimit('refresh', (req) => req.ip),
-  requireTrustedOrigin,
-  authController.refresh
-);
+router.post('/refresh', requireTrustedOrigin, authController.refresh);
 
 router.post(
   '/forgot-password',
@@ -106,41 +101,29 @@ const {
   googleRegisterConfirmSchema,
 } = require('../validators/authSchemas');
 
-router.get(
-  '/google',
-  // rateLimit('google-consent', (req) => req.ip),
-  authController.googleConsent
-);
+router.get('/google', authController.googleConsent);
 
-router.get(
-  '/google/callback',
-  // rateLimit('google-callback', (req) => req.ip),
-  authController.googleCallback
-);
+router.get('/google/callback', authController.googleCallback);
 
 router.post(
   '/google/link/confirm',
-  // rateLimit('google-link', (req) => req.ip),
   validateBody(googleLinkConfirmSchema),
   authController.googleLinkConfirm
 );
 
 router.post(
   '/google/register/confirm',
-  // rateLimit('google-register', (req) => req.ip),
   validateBody(googleRegisterConfirmSchema),
   authController.googleRegisterConfirm
 );
 
 router.post(
   '/google/guardian-email',
-  // rateLimit('google-guardian-email', (req) => req.ip),
   validateBody(googleGuardianEmailSchema),
   authController.googleGuardianEmail
 );
 
-// UC-AUTH-08.6 — self-service deletion request. Behind requireAuth (the
-// account is still active/reachable at this point).
+// self-service deletion request.
 router.delete(
   '/account',
   requireAuth,
@@ -149,10 +132,6 @@ router.delete(
   authController.requestOwnDeletion
 );
 
-// Account Restore — step 1. Deliberately NOT behind requireAuth (see
-// accountSelfService.controller.js docstring: a deleted account holds
-// no valid session to authenticate with — same reasoning as
-// forgot-password). Rate-limited by email, mirroring forgotPassword.
 router.post(
   '/account/restore/request',
   rateLimit('account-restore-request', (req) => req.body?.email || 'unknown'),
@@ -160,9 +139,6 @@ router.post(
   authController.requestRestore
 );
 
-// Account Restore — step 2. No separate rate limiter, matching
-// reset-password's own confirm step: AuthToken.attempt_count (MAX=5)
-// already throttles brute-forcing the 6-digit code internally.
 router.post(
   '/account/restore/confirm',
   validateBody(restoreConfirmSchema),

@@ -48,8 +48,6 @@ async function verifyTotp(req, res, next) {
     });
 
     if (result.error) {
-      // SECURITY: only INVALID_CODE is a genuine guessing failure.
-      // NO_PENDING_SETUP / ALREADY_ENABLED are state errors, not guesses.
       if (result.error === 'INVALID_CODE') {
         await recordFailure(req, 'mfa-verify', mfaTotpVerifyIdentifier);
       }
@@ -87,9 +85,6 @@ async function verifyMfaLogin(req, res, next) {
     const result = await authService.completeMfaLogin({ ...req.validatedBody, req });
 
     if (result.error) {
-      // SECURITY: only INVALID_CODE is a genuine guessing failure against
-      // the mfaTempToken axis. MFA_CHALLENGE_EXPIRED / _INVALID mean the
-      // challenge token itself is stale/unknown — not a wrong-code guess.
       if (result.error === 'INVALID_CODE') {
         await recordFailure(req, 'mfa-login-verify', mfaLoginVerifyIdentifier);
       }

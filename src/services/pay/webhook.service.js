@@ -1,5 +1,4 @@
 // src/services/pay/webhook.service.js
-/** UC-PAY-03/04/06: processes a verified Stripe webhook event. */
 const Payment = require('../../models/Payment');
 const ProcessedWebhookEvent = require('../../models/ProcessedWebhookEvent');
 const courseService = require('../courseService');

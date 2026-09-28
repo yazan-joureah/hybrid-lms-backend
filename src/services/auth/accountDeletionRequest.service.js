@@ -13,7 +13,6 @@ const { AppError } = require('../../middleware/errorHandler');
  * SuperAdmin → blocked entirely.
  */
 async function requestOwnAccountDeletion({ userId, reason, req }) {
-  // Fetch the user to get role and verify existence/status
   const user = await User.findById(userId).select('role status');
   if (!user) {
     throw new AppError(404, 'USER_NOT_FOUND', 'User account does not exist.');

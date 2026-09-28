@@ -1,6 +1,6 @@
 const { recordProgress, getProgressSummary } = require('../services/progress.service');
 
-/** UC-COURSE-04: records a content-completion event, server-computed progress. */
+/** records a content-completion event, server-computed progress. */
 async function record(req, res, next) {
   try {
     const studentId = req.user.id;

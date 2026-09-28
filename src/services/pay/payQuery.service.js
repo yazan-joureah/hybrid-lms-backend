@@ -1,5 +1,4 @@
 // src/services/pay/payQuery.service.js
-/** Read-only queries for the PAY module: status polling, history, admin queue. */
 const Payment = require('../../models/Payment');
 const RefundRequest = require('../../models/RefundRequest');
 const { AppError } = require('../../middleware/errorHandler');
@@ -19,9 +18,6 @@ async function getPaymentStatus({ studentId, paymentId, isAdmin = false }) {
     )
     .populate('course_id', 'title');
 
-  // Admin detail view needs to see who the student is — students polling
-  // their own payment already know who they are, so we only pay this
-  // extra populate cost when isAdmin is true.
   if (isAdmin) {
     paymentQuery = paymentQuery.populate('student_id', 'full_name email');
   }
@@ -32,9 +28,6 @@ async function getPaymentStatus({ studentId, paymentId, isAdmin = false }) {
     throw new AppError(404, 'PAYMENT_NOT_FOUND', 'Payment not found.');
   }
 
-  // Admin detail view also needs refund status, same enrichment pattern
-  // already used in listMyPayments/listAllPayments (avoid N+1 by scoping
-  // this single extra query to the admin path only).
   if (isAdmin) {
     const refundRequest = await RefundRequest.findOne({ payment_id: payment._id })
       .select('status decision_reason')
@@ -65,7 +58,6 @@ async function listMyPayments({ studentId, queryParams = {} }) {
     Payment.countDocuments(query),
   ]);
 
-  // one extra query instead of N+1 — attach refund status per payment
   const paymentIds = payments.map((p) => p._id);
   const refunds = await RefundRequest.find({ payment_id: { $in: paymentIds } })
     .select('payment_id status reviewed_at')
@@ -90,7 +82,7 @@ async function listMyPayments({ studentId, queryParams = {} }) {
   };
 }
 
-/** GET /pay/refund-requests — admin review queue (defaults to pending only). */
+/** GET /pay/refund-requests — admin review queue */
 async function listRefundRequests({ queryParams = {} }) {
   const page = parseInt(queryParams.page, 10) || 1;
   const limit = parseInt(queryParams.limit, 10) || 10;

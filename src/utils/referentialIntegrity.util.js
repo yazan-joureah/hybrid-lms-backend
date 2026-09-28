@@ -1,7 +1,5 @@
 // Reusable Mongoose plugin — enforces Foreign-Key-like existence checks
 // at the application layer, since MongoDB has no native FK constraints.
-// Mirrors the FK relationships that will appear in the ERD (regular
-// relational-style diagram) for the final report.
 
 const mongoose = require('mongoose');
 

@@ -1,16 +1,4 @@
 // src/services/report/securityAuditStats.service.js
-// UC-REPORT-04 — View Security Audit Statistics (SuperAdmin only)
-// SF-REPORT-02 — Aggregate Audit Log Metrics
-//
-// DEVIATION/SECURITY: deliberately data-driven, NOT a hardcoded list of
-// "critical action names". Modules whose services weren't reviewed in
-// this session (KYC/PAY/CERT/QUIZ/PEER/LIVE) already log rich
-// security-relevant AuditLog events per their UC text (e.g.
-// CSRF_ATTACK_DETECTED, WEBHOOK_SIGNATURE_INVALID), but hardcoding those
-// exact strings without verifying them against the real service code
-// risks silently-wrong filters that match nothing. Every aggregate below
-// groups by whatever `action` values genuinely exist in the collection —
-// correct today, and automatically stays correct as more modules ship.
 
 const AuditLog = require('../../models/AuditLog');
 const auditService = require('../auditService');
@@ -18,8 +6,8 @@ const { AppError } = require('../../middleware/errorHandler');
 const { toObjectId } = require('../../utils/objectId.util');
 
 const DEFAULT_RANGE_DAYS = 30;
-const MAX_RANGE_DAYS = 90; // caps aggregation cost — no new infra/cron needed at this scale
-const MAX_PAGE_SIZE = 50; // consistent with accountListing.service.js
+const MAX_RANGE_DAYS = 90;
+const MAX_PAGE_SIZE = 50;
 
 function resolveRangeDays(days) {
   const parsed = Number(days) || DEFAULT_RANGE_DAYS;
@@ -42,7 +30,7 @@ function buildDailyBuckets(rangeDays) {
 }
 
 /**
- * GET /admin/security-audit/overview?days=30 — UC-REPORT-04 main view.
+ * GET /admin/security-audit/overview?days=30
  */
 async function getSecurityAuditOverview({ actorId, actorRole, days, req }) {
   const rangeDays = resolveRangeDays(days);
@@ -52,8 +40,6 @@ async function getSecurityAuditOverview({ actorId, actorRole, days, req }) {
     await Promise.all([
       AuditLog.countDocuments({ created_at: { $gte: cutoff } }),
 
-      // Confirmed real action name (session.service.js handleFailedLogin) —
-      // the one KPI we DO call out explicitly since it's directly verified.
       AuditLog.countDocuments({ action: 'ACCOUNT_LOCKED', created_at: { $gte: cutoff } }),
 
       AuditLog.aggregate([
@@ -107,9 +93,6 @@ async function getSecurityAuditOverview({ actorId, actorRole, days, req }) {
             actorId: '$_id',
             actorRole: 1,
             count: 1,
-            // full_name/email may be null if the actor was anonymized in
-            // the meantime (fix/AUTH-BE-17 lazy sweep) — surfaced as-is,
-            // never masked as an error here.
             fullName: '$actor.full_name',
             email: '$actor.email',
           },
@@ -147,7 +130,7 @@ async function getSecurityAuditOverview({ actorId, actorRole, days, req }) {
 
 /**
  * GET /admin/security-audit/events — drill-down / raw browsing, with
- * optional filters. Mirrors accountListing.service.js's pagination shape.
+ * optional filters.
  */
 async function listAuditEvents({
   action,

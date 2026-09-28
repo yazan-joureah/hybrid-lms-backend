@@ -4,7 +4,7 @@ const {
   cancelMyEnrollment,
 } = require('../../services/courseService');
 
-/** UC-COURSE-02: student enrollment. */
+/**student enrollment. */
 async function enroll(req, res, next) {
   try {
     const studentId = req.user.id;
@@ -31,7 +31,7 @@ async function getMyEnrollments(req, res, next) {
   }
 }
 
-/** UC-COURSE-02x: student self-cancels their own enrollment (free/pending_payment only). */
+/** student self-cancels their own enrollment (free/pending_payment only). */
 async function cancelMyEnrollmentHandler(req, res, next) {
   try {
     const studentId = req.user.id;

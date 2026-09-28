@@ -1,10 +1,4 @@
 // src/services/ai/history.service.js
-// UC-AI-03 — View AI Conversation History (Student)
-//
-// أمنياً (منع MUC-AI-07 / IDOR): studentId يأتي حصراً من req.user.id
-// (JWT) في الـ controller — هذه الدالة لا تقبل أي معرِّف آخر، ولا يوجد
-// أي مسار في aiRoutes.js يمرِّر studentId كـ param أو body.
-
 const AIConversation = require('../../models/AIConversation');
 const { toObjectId } = require('../../utils/objectId.util');
 const auditService = require('../auditService');
@@ -56,15 +50,10 @@ function toRealBuffer(value) {
     return Buffer.from(value.data);
   }
 
-  // شكل BSON الفعلي لحقول Buffer المُخزَّنة داخل subdocuments مصفوفة عند
-  // الاستعلام عبر .lean() — كائن bson.Binary يحمل البايتات الحقيقية في
-  // .buffer (Uint8Array)، وليس بالشكل POJO {type:'Buffer', data:[]} أعلاه.
   if (value && value._bsontype === 'Binary' && value.buffer) {
     return Buffer.from(value.buffer);
   }
 
-  // فشل صريح بدل إنتاج Buffer بطول خاطئ بصمت — أي شكل غير متوقَّع يجب أن
-  // يظهر كخطأ واضح فوراً وليس كفشل غامض لاحقاً في createDecipheriv.
   throw new TypeError(
     `toRealBuffer: unrecognized encrypted value shape (constructor: ${value?.constructor?.name || typeof value})`
   );

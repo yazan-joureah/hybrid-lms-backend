@@ -1,8 +1,3 @@
-/**
- * Thin write-only wrapper around AuditLog (E12) — enforces Append-Only
- * discipline by exposing only `record()`. No update/delete function exists
- * by design (FR-30, OWASP A09).
- */
 const AuditLog = require('../models/AuditLog');
 const logger = require('../utils/logger');
 
@@ -27,7 +22,6 @@ async function record({
       user_agent: req?.get?.('user-agent') || null,
     });
   } catch (err) {
-    // Audit logging must never crash the primary request flow — log and continue.
     logger.error('Failed to write AuditLog entry', { error: err.message, action, resourceType });
   }
 }

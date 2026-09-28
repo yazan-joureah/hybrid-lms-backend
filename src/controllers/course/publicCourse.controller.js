@@ -1,6 +1,6 @@
 const { browseCourses, getCourseForUser } = require('../../services/courseService');
 
-/** UC-COURSE-01: public course browsing. */
+/** public course browsing. */
 async function browse(req, res, next) {
   try {
     const result = await browseCourses({ queryParams: req.query });

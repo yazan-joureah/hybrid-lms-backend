@@ -1,23 +1,4 @@
 // src/services/kyc/kycSubmission.service.js
-//
-// Implementation of the complete UC-KYC-01: Receives two files (ID document + Selfie),
-// verifies eligibility prerequisites, passes each file through
-// kycDocumentStorage.service.js (SF-KYC-02: format validation + virus scan +
-// encryption + storage), then creates a KYCRequest record and updates
-// User.kyc_status.
-//
-// Intentional Note: The "Email Admin Notification" feature (Step 8 in the original UC text)
-// has been explicitly removed — we rely solely on Audit Logging. Admins discover
-// new requests via direct queries in UC-KYC-02 (Pending Requests List), not via
-// immediate notification. This deviation from the original UC must be documented in the
-// final thesis document.
-//
-// References: FR-42, FR-43, FR-44, FR-30 | MUC-KYC-01, MUC-KYC-02
-// Decisions previously established in this conversation:
-//    - Instructor: Lighter check (mfa_enabled === true) instead of full SF-AUTH-03
-//    - age_flagged is treated as an existing request that blocks a new submission
-//      (same as review_pending)
-//    - User.kyc_status: 'pending' renamed to 'review_pending' to match KYCRequest.status
 
 const User = require('../../models/User');
 const KYCRequest = require('../../models/KYCRequest');
@@ -29,21 +10,13 @@ const ELIGIBLE_APPLICANT_ROLES = ['Student', 'Instructor'];
 const RESUBMITTABLE_KYC_STATUSES = ['not_submitted', 'rejected'];
 const BLOCKING_KYC_STATUSES = ['review_pending', 'age_flagged'];
 
-/**
- * Function 1: Validate eligibility prerequisites (Prerequisites 1-5 in UC-KYC-01)
- * before any file processing — Fail Fast to avoid wasting virus scanning/
- * encryption cycles on a request that will be rejected anyway.
- *
- * @param {object} user - Full User document from database
- * @returns {{eligible: boolean, reason?: string}}
- */
 function checkSubmissionEligibility(user) {
   if (user.status !== 'active') {
     return { eligible: false, reason: 'ACCOUNT_NOT_ACTIVE' };
   }
 
   if (!ELIGIBLE_APPLICANT_ROLES.includes(user.role)) {
-    // Admin/SuperAdmin لا يقدّمون طلبات KYC عبر هذا المسار إطلاقاً
+    // Admin/SuperAdmin
     return { eligible: false, reason: 'ROLE_NOT_ELIGIBLE' };
   }
 
@@ -65,10 +38,6 @@ function checkSubmissionEligibility(user) {
   return { eligible: true };
 }
 
-/**
- * Function 2: Handle storage of a single document, with clear failure indications
- * (format/virus/technical) to be displayed appropriately to the user later in the upper layer.
- */
 async function storeSingleDocument({ buffer, filename, userId, actorRole, documentType, req }) {
   return encryptAndStoreDocument({
     buffer,
@@ -80,20 +49,8 @@ async function storeSingleDocument({ buffer, filename, userId, actorRole, docume
   });
 }
 
-/**
- * Main exported function — complete UC-KYC-01.
- *
- * @param {object} params
- * @param {string} params.userId
- * @param {'national_id'|'passport'} params.idDocumentType - Chosen official document type
- * @param {{buffer: Buffer, filename: string}} params.idDocumentFile
- * @param {{buffer: Buffer, filename: string}} params.selfieFile
- * @param {import('express').Request} params.req
- * @returns {Promise<{success: boolean, reason?: string}>}
- */
 async function submitKycRequest({ userId, idDocumentType, idDocumentFile, selfieFile, req }) {
-  // Step 1: Fetch the user freshly from the database — we do not trust any field
-  // coming from the JWT (same philosophy as SF-AUTH-01: role and status are server-side truths only).
+  // Step 1: Fetch the user freshly from the database
   const user = await User.findById(userId);
   if (!user) {
     return { success: false, reason: 'USER_NOT_FOUND' };
@@ -101,7 +58,6 @@ async function submitKycRequest({ userId, idDocumentType, idDocumentFile, selfie
 
   const actorRole = user.role;
 
-  // الخطوة 2: فحص الأهلية (فشل سريع قبل أي معالجة ملفات مكلفة)
   const eligibility = checkSubmissionEligibility(user);
   if (!eligibility.eligible) {
     await auditService.record({
@@ -127,7 +83,6 @@ async function submitKycRequest({ userId, idDocumentType, idDocumentFile, selfie
   });
 
   if (!idDocumentResult.success) {
-    // لا شيء لتنظيفه بعد — الفشل حدث قبل أي تخزين فعلي
     return { success: false, reason: idDocumentResult.reason };
   }
 
@@ -157,8 +112,7 @@ async function submitKycRequest({ userId, idDocumentType, idDocumentFile, selfie
     status: 'review_pending',
   });
 
-  // Step 6: Update KYC status directly on the user (used later in SF-AUTH-03,
-  // UC-COURSE-05, etc. — single server-side truth synchronized with the request)
+  // Step 6: Update KYC status directly on the user
   await User.findByIdAndUpdate(userId, { kyc_status: 'review_pending' });
 
   // Step 7: Record success

@@ -1,4 +1,4 @@
-// src/services/peerService.js — Facade (نفس نمط courseService.js / liveService.js)
+// src/services/peerService.js
 const assignmentService = require('./peer/assignment.service');
 const submissionService = require('./peer/submission.service');
 const allocationService = require('./peer/allocation.service');

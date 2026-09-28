@@ -1,8 +1,3 @@
-/* ==========================================================================
-   src/models/peerAssignment.model.js
-   UC-PEER-01 — Create Peer Assessment Task
-   ========================================================================== */
-
 const mongoose = require('mongoose');
 
 const rubricCriterionSchema = new mongoose.Schema(

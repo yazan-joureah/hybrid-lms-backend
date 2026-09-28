@@ -40,10 +40,6 @@ async function checkQuizEligibility({ studentId, quizId }) {
     throw new AppError(400, 'QUIZ_WINDOW_CLOSED', 'This quiz is not currently available.');
   }
 
-  // A quiz with no max_attempts configured (or set to 0) is intentionally
-  // unlimited — made explicit here instead of relying on
-  // `count >= undefined` being implicitly false, so "unlimited" is a
-  // documented decision rather than an accident of comparison semantics.
   const hasDailyCap = typeof quiz.max_attempts === 'number' && quiz.max_attempts > 0;
   if (hasDailyCap) {
     const dailyAttemptsCount = await QuizAttempt.countDocuments({

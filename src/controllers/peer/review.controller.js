@@ -1,5 +1,4 @@
 // src/controllers/peer/review.controller.js
-// UC-PEER-03 — Submit Peer Review
 const peerService = require('../../services/peerService');
 
 /** GET /api/v1/peer/assignments/:assignmentId/my-reviews */

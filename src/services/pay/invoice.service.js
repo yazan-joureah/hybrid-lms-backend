@@ -1,5 +1,4 @@
 // src/services/pay/invoice.service.js
-/** UC-PAY-05: generates and emails a simple electronic invoice after successful payment. */
 const Invoice = require('../../models/Invoice');
 const Course = require('../../models/Course');
 const User = require('../../models/User');

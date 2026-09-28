@@ -1,5 +1,4 @@
 // src/services/cert/certificate.service.js
-// UC-CERT-01 — Issue Certificate (System Function, no HTTP route of its own)
 const crypto = require('crypto');
 const Certificate = require('../../models/certificate.model');
 const Course = require('../../models/Course');

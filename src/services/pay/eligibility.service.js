@@ -1,5 +1,4 @@
 // src/services/pay/eligibility.service.js
-/** SF-PAY-01: validates payment eligibility before initiating a charge. */
 const Course = require('../../models/Course');
 const User = require('../../models/User');
 const Enrollment = require('../../models/Enrollment');

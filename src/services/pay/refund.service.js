@@ -1,5 +1,4 @@
 // src/services/pay/refund.service.js
-/** UC-PAY-09 (student request) + UC-PAY-07 (admin review)**/
 const Payment = require('../../models/Payment');
 const RefundRequest = require('../../models/RefundRequest');
 const stripe = require('../../config/stripe');
@@ -16,7 +15,7 @@ function daysElapsedSince(startDate, endDate) {
 }
 
 /**
- * UC-PAY-09: student submits a refund request.
+ * student submits a refund request.
  */
 async function requestRefund({ studentId, paymentId, reason, req }) {
   const safeStudentId = toObjectId(studentId, 'studentId');
@@ -78,7 +77,7 @@ async function requestRefund({ studentId, paymentId, reason, req }) {
 }
 
 /**
- * UC-PAY-07: any Admin/SuperAdmin approves or rejects.
+ * any Admin/SuperAdmin approves or rejects.
  */
 async function reviewRefund({ reviewerId, refundRequestId, decision, decisionReason, req }) {
   const safeReviewerId = toObjectId(reviewerId, 'reviewerId');

@@ -17,8 +17,7 @@
  * management complexity (key pairs, JWKS rotation, RFC 7517) would add
  * risk (more secrets to manage) without a corresponding security benefit.
  *
- * Algorithm-confusion mitigation (mandatory regardless of HS/RS choice —
- * FR-34b, already documented in Hybrid_LMS_UC_Final_Draft.pdf):
+ * Algorithm-confusion mitigation:
  *   1. `algorithms: ['HS256']` is passed explicitly to every verify call —
  *      the `alg` field embedded in the token itself is NEVER trusted.
  *   2. A `type` claim (`access` | `mfa_temp`) is checked explicitly after
@@ -29,30 +28,18 @@
 const jwt = require('jsonwebtoken');
 const env = require('../config/env');
 
-const ACCESS_TOKEN_TTL = '15m'; // matches REST_API_Contract_v1.2 §1 (Access Token)
-const MFA_TEMP_TOKEN_TTL = '5m'; // matches REST_API_Contract_v1.2 §1 (MFA Temp Token)
-// طويلة نسبياً مقارنة بـ Access Token العادي (15 دقيقة) — لكن هذا مبرَّر لأن
-// نطاقها ضيّق جداً (ملف واحد محدَّد، لا شيء آخر) على عكس Access Token الذي
-// يفتح كل الـ API. نفس فلسفة AWS S3 Presigned URLs: مدة أطول تقابلها صلاحية أضيق.
+const ACCESS_TOKEN_TTL = '15m';
+const MFA_TEMP_TOKEN_TTL = '5m';
 const MEDIA_STREAM_TICKET_TTL = '2h';
 const ALLOWED_ALGORITHMS = ['HS256'];
 
 class JwtError extends Error {
   constructor(code, message) {
     super(message);
-    this.code = code; // 'EXPIRED' | 'INVALID'
+    this.code = code;
   }
 }
 
-/**
- * Issues a full Access Token for an already-authenticated, MFA-satisfied
- * session. Deliberately carries ONLY `sub` (user id) and `sid` (session
- * id) — NEVER role, permissions, or kyc_status. Those are looked up
- * fresh from MongoDB on every protected request (SF-AUTH-01), because a
- * JWT's payload is attacker-readable (Base64, not encrypted) and — more
- * importantly — cannot be revoked mid-flight if a role changes; trusting
- * it would violate FR-34 (role is server-side truth only).
- */
 function signAccessToken({ userId, sessionId }) {
   return jwt.sign(
     { sub: String(userId), sid: String(sessionId), type: 'access' },
@@ -61,13 +48,6 @@ function signAccessToken({ userId, sessionId }) {
   );
 }
 
-/**
- * Issues the short-lived token returned by POST /auth/login when MFA is
- * required, BEFORE the user has proven the second factor. Its narrow
- * `type: 'mfa_temp'` claim is what UC-AUTH-05 will check to accept a TOTP/
- * Email OTP submission — it must never grant access to any protected
- * resource on its own.
- */
 function signMfaTempToken({ userId }) {
   return jwt.sign({ sub: String(userId), type: 'mfa_temp' }, env.jwt.accessSecret, {
     algorithm: 'HS256',
@@ -75,12 +55,6 @@ function signMfaTempToken({ userId }) {
   });
 }
 
-/**
- * Shared low-level verification — enforces the algorithm allow-list
- * (mandatory per FR-34b) and normalizes jsonwebtoken's two distinct
- * failure classes (expired vs. anything else invalid) into one
- * predictable error shape the rest of the app can branch on.
- */
 function verifyRaw(token) {
   try {
     return jwt.verify(token, env.jwt.accessSecret, { algorithms: ALLOWED_ALGORITHMS });
@@ -88,33 +62,19 @@ function verifyRaw(token) {
     if (err.name === 'TokenExpiredError') {
       throw new JwtError('EXPIRED', 'Token has expired');
     }
-    // Covers: malformed token, invalid signature, AND any attempt to
-    // present an unlisted algorithm (jsonwebtoken rejects it before this
-    // catch is even reached, but we never rely on that alone — see file
-    // docstring above).
+
     throw new JwtError('INVALID', 'Token is invalid');
   }
 }
 
-/**
- * Verifies an Access Token specifically. Rejects — with the SAME
- * generic 'INVALID' code an attacker would see for a malformed token —
- * any structurally valid JWT whose `type` claim is not `access`. This is
- * the concrete enforcement of the Type Confusion mitigation described
- * in the file docstring.
- */
 function verifyAccessToken(token) {
   const decoded = verifyRaw(token);
   if (decoded.type !== 'access') {
     throw new JwtError('INVALID', 'Token is not an access token');
   }
-  return decoded; // { sub, sid, type, iat, exp }
+  return decoded;
 }
 
-/**
- * Verifies an MFA Temporary Token specifically (used by the not-yet-built
- * UC-AUTH-05 MFA verification endpoint) — same type-confusion guard, mirrored.
- */
 function verifyMfaTempToken(token) {
   const decoded = verifyRaw(token);
   if (decoded.type !== 'mfa_temp') {
@@ -123,7 +83,7 @@ function verifyMfaTempToken(token) {
   return decoded;
 }
 
-const OAUTH_PENDING_TTL = '10m'; // enough time for a user to type a password or birth date, not so long it's a lingering risk
+const OAUTH_PENDING_TTL = '10m';
 
 function signOAuthLinkPendingToken({ email, providerUserId }) {
   return jwt.sign(
@@ -172,19 +132,6 @@ function verifyOAuthGuardianPendingToken(token) {
   return decoded;
 }
 
-/**
- * Issues a narrow-scoped ticket allowing <video>/<embed> tags to stream one
- * specific content file WITHOUT an Authorization header (which browsers
- * cannot attach to media elements). Deliberately carries `courseId` +
- * `contentId` in the payload — the caller (requireAuthOrStreamTicket
- * middleware) MUST compare these against req.params before trusting the
- * ticket, exactly like every other narrow-purpose token in this file is
- * validated by its caller, not by verifyRaw alone. Uses the SAME
- * env.jwt.accessSecret as every other token type here (consistent with the
- * existing oauth_*_pending pattern) — the `type` claim + verifyRaw's
- * algorithm allow-list is what prevents type confusion, not a separate
- * secret (see file docstring, FR-34b).
- */
 function signMediaStreamTicket({ userId, courseId, contentId }) {
   return jwt.sign(
     {
@@ -203,7 +150,7 @@ function verifyMediaStreamTicket(token) {
   if (decoded.type !== 'media_stream') {
     throw new JwtError('INVALID', 'Token is not a media streaming ticket');
   }
-  return decoded; // { sub, courseId, contentId, type, iat, exp }
+  return decoded;
 }
 
 module.exports = {

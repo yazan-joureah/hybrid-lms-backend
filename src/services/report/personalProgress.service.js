@@ -1,15 +1,4 @@
 // src/services/report/personalProgress.service.js
-// UC-REPORT-03 — View Personal Progress Summary
-//
-// DESIGN NOTE (from the UC text itself): deliberately does NOT call
-// SF-AUTH-01 or SF-AUTH-03 — a Student viewing their OWN data needs
-// neither role-verification nor MFA/KYC, only a valid session. This
-// keeps friction minimal by design, not by oversight.
-//
-// Reuses getCompletionCounts() from course/progress.service.js rather
-// than recomputing per-course completion logic — same Golden Rule
-// ("As Simple As Possible" / no duplicated SF logic) already applied
-// throughout COURSE/QUIZ/PEER.
 
 const Enrollment = require('../../models/Enrollment');
 const LiveSession = require('../../models/liveSession.model');
@@ -21,13 +10,7 @@ const { toObjectId } = require('../../utils/objectId.util');
 const LATEST_QUIZ_RESULTS_LIMIT = 10;
 
 /**
- * GET /report/me — UC-REPORT-03.
- * Returns:
- *  - per-course completion percentage for every actively-enrolled course
- *  - the student's most recent graded quiz/exam results (across all courses)
- *  - one overall attendance percentage across every ended live session in
- *    every enrolled course (FR-29's "نسبة الحضور الكلية" — a single
- *    platform-wide figure, not per-course)
+ * GET /report/me
  */
 async function getPersonalProgressSummary({ studentId }) {
   const safeStudentId = toObjectId(studentId, 'studentId');
@@ -44,7 +27,7 @@ async function getPersonalProgressSummary({ studentId }) {
   const [courseProgress, latestQuizResults, overallAttendance] = await Promise.all([
     Promise.all(
       enrollments
-        .filter((e) => e.course_id) // defensive: course could theoretically be gone
+        .filter((e) => e.course_id)
         .map(async (e) => {
           const { percentage, completedCount, totalCount } = await getCompletionCounts({
             courseId: e.course_id._id,
@@ -75,7 +58,7 @@ async function getPersonalProgressSummary({ studentId }) {
     data: {
       courses: courseProgress,
       latestQuizResults: latestQuizResults
-        .filter((a) => a.quiz_id) // quiz could have been deleted after grading
+        .filter((a) => a.quiz_id)
         .map((a) => ({
           quizId: a.quiz_id._id,
           quizTitle: a.quiz_id.title,
@@ -90,14 +73,8 @@ async function getPersonalProgressSummary({ studentId }) {
   };
 }
 
-/**
- * One platform-wide figure: attended (present/partial) ÷ total ENDED live
- * sessions across every course the student is/was actively enrolled in.
- * No $lookup needed — Attendance.courseId is denormalized on the model
- * specifically for queries like this one.
- */
 async function computeOverallAttendancePercentage({ studentId, courseIds }) {
-  if (courseIds.length === 0) return null; // no enrollments at all — distinct from 0%
+  if (courseIds.length === 0) return null;
 
   const [totalEndedSessions, attendedCount] = await Promise.all([
     LiveSession.countDocuments({ courseId: { $in: courseIds }, status: 'ended' }),
@@ -108,8 +85,8 @@ async function computeOverallAttendancePercentage({ studentId, courseIds }) {
     }),
   ]);
 
-  if (totalEndedSessions === 0) return null; // no synchronous sessions have concluded yet
-  return Math.round((attendedCount / totalEndedSessions) * 1000) / 1000; // 3-decimal fraction, matches getCompletionCounts' style
+  if (totalEndedSessions === 0) return null;
+  return Math.round((attendedCount / totalEndedSessions) * 1000) / 1000;
 }
 
 module.exports = { getPersonalProgressSummary };
